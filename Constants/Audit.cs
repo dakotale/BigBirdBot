@@ -1,0 +1,39 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Data.SqlClient;
+using System.Data;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace DiscordBot.Constants
+{
+    public class Audit
+    {
+        public Audit() { }
+
+        public void InsertAudit(string command, string createdBy, string connStr)
+        {
+            using (SqlConnection conn = new SqlConnection(connStr))
+            {
+                conn.Open();
+
+                // 1.  create a command object identifying the stored procedure
+                SqlCommand cmd = new SqlCommand("AddAudit", conn);
+
+                // 2. set the command object so it knows to execute a stored procedure
+                cmd.CommandType = CommandType.StoredProcedure;
+
+                // 3. add parameter to command, which will be passed to the stored procedure
+                cmd.Parameters.Add(new SqlParameter("@Command", command));
+                cmd.Parameters.Add(new SqlParameter("@CreatedBy", createdBy));
+
+                // execute the command
+                cmd.ExecuteNonQuery();
+
+                conn.Close();
+                cmd.Dispose();
+            }
+        }
+    }
+}
