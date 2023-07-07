@@ -119,7 +119,7 @@ class Program
 
                             message = "Provide a response like a cat to the following: \"" + message + "\"";
                             var api = new OpenAI_API.OpenAIAPI(Constants.openAiSecret);
-                            var result = await api.Completions.CreateCompletionAsync(new OpenAI_API.Completions.CompletionRequest(message, model: Model.GPT4, max_tokens: 1000, temperature: 0.9, null, null, 1, null, null));
+                            var result = await api.Completions.CreateCompletionAsync(new OpenAI_API.Completions.CompletionRequest(message, model: Model.DavinciText, max_tokens: 1000, temperature: 0.9, null, null, 1, null, null));
                             var response = result.ToString();
 
                             int length = response.Length;
