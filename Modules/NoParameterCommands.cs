@@ -369,5 +369,30 @@ namespace DiscordBot.Modules
             EmbedHelper embed = new EmbedHelper();
             await ReplyAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Low Level", $"**The low level content counter was updated to {currentCounter} on {currentDateTime}**\n{counterHistory}", "", Context.Message.Author.Username, Discord.Color.Green).Build());
         }
+
+        [Command("twitter")]
+        public async Task HandleTwitterEmbeds()
+        {
+            audit.InsertAudit("twitter", Context.User.Username, Constants.Constants.discordBotConnStr);
+            StoredProcedure procedure = new StoredProcedure();
+            string result = "";
+
+            DataTable dt = procedure.Select(Constants.Constants.discordBotConnStr, "UpdateTwitterBroken", new List<SqlParameter>());
+
+            if (dt.Rows.Count > 0)
+            {
+                foreach (DataRow dr in dt.Rows)
+                    result = dr["Result"].ToString();
+            }
+
+            string title = "BigBirdBot - Twitter Embeds";
+            string desc = result;
+            string thumbnailUrl = "";
+            string imageUrl = "";
+            string embedCreatedBy = "Command from: " + Context.User.Username;
+
+            EmbedHelper embed = new EmbedHelper();
+            await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Green, imageUrl).Build());
+        }
     }
 }

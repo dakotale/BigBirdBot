@@ -119,7 +119,7 @@ class Program
 
                             message = "Provide a response like a cat to the following: \"" + message + "\"";
                             var api = new OpenAI_API.OpenAIAPI(Constants.openAiSecret);
-                            var result = await api.Completions.CreateCompletionAsync(new OpenAI_API.Completions.CompletionRequest(message, model: Model.DavinciText, max_tokens: 1000, temperature: 0.9, null, null, 1, null, null));
+                            var result = await api.Completions.CreateCompletionAsync(new OpenAI_API.Completions.CompletionRequest(message, model: Model.GPT4, max_tokens: 1000, temperature: 0.9, null, null, 1, null, null));
                             var response = result.ToString();
 
                             int length = response.Length;
@@ -297,63 +297,74 @@ class Program
                         }
                         else if (message.Contains("https://twitter.com"))
                         {
-                            await msg.Channel.SendMessageAsync(message.Replace("twitter", "fxtwitter"));
-                            // Until Elon fixes his shit
-                            //var urlStuff = message.Split(new string[] { "https://twitter.com/" }, StringSplitOptions.None);
-                            //try
-                            //{
-                            //    if (urlStuff.Length > 0)
-                            //    {
-                            //        urlStuff = urlStuff[1].Split("/");
-                            //        if (urlStuff.Length > 0)
-                            //        {
-                            //            var user = urlStuff[0];
-                            //            var id = urlStuff[2];
-                            //            if (id.Contains("?"))
-                            //            {
-                            //                id = id.Split('?')[0];
+                            DataTable dtTwitter = stored.Select(connStr, "UpdateTwitterBroken", new List<SqlParameter>());
+                            bool isTwitterBroken = false;
+                            foreach (DataRow dr in dtTwitter.Rows)
+                            {
+                                isTwitterBroken = bool.Parse(dr["TwitterBroken"].ToString());
+                            }
+                            if (isTwitterBroken)
+                            {
+                                await msg.Channel.SendMessageAsync(message.Replace("twitter", "fxtwitter"));
+                            }
+                            else
+                            {
+                                var urlStuff = message.Split(new string[] { "https://twitter.com/" }, StringSplitOptions.None);
+                                try
+                                {
+                                    if (urlStuff.Length > 0)
+                                    {
+                                        urlStuff = urlStuff[1].Split("/");
+                                        if (urlStuff.Length > 0)
+                                        {
+                                            var user = urlStuff[0];
+                                            var id = urlStuff[2];
+                                            if (id.Contains("?"))
+                                            {
+                                                id = id.Split('?')[0];
 
-                            //                if (id.Contains(' '))
-                            //                    id = id.Split(' ')[0];
-                            //            }
-                            //            else
-                            //            {
-                            //                if (id.Contains(' '))
-                            //                    id = id.Split(' ')[0];
-                            //            }
+                                                if (id.Contains(' '))
+                                                    id = id.Split(' ')[0];
+                                            }
+                                            else
+                                            {
+                                                if (id.Contains(' '))
+                                                    id = id.Split(' ')[0];
+                                            }
 
-                            //            string apiUrl = $"https://api.fxtwitter.com/{user}/status/{id}/en";
+                                            string apiUrl = $"https://api.fxtwitter.com/{user}/status/{id}/en";
 
-                            //            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(apiUrl);
-                            //            request.AutomaticDecompression = DecompressionMethods.GZip;
-                            //            string results = string.Empty;
+                                            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(apiUrl);
+                                            request.AutomaticDecompression = DecompressionMethods.GZip;
+                                            string results = string.Empty;
 
-                            //            using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
-                            //            using (Stream stream = response.GetResponseStream())
-                            //            using (StreamReader reader = new StreamReader(stream))
-                            //            {
-                            //                results = reader.ReadToEnd();
-                            //                StoredProcedure storedProcedure = new StoredProcedure();
-                            //                DataTable dt = storedProcedure.Select(connStr, "GetTwitterType", new List<SqlParameter> { new SqlParameter("@json", results) });
-                            //                if (dt.Rows.Count > 0)
-                            //                {
-                            //                    foreach (DataRow dr in dt.Rows)
-                            //                    {
-                            //                        if (dr["videoUrl"].ToString().Length > 0)
-                            //                        {
-                            //                            string url = dr["tweetUrl"].ToString();
-                            //                            url = url.Replace("twitter", "fxtwitter");
+                                            using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
+                                            using (Stream stream = response.GetResponseStream())
+                                            using (StreamReader reader = new StreamReader(stream))
+                                            {
+                                                results = reader.ReadToEnd();
+                                                StoredProcedure storedProcedure = new StoredProcedure();
+                                                DataTable dt = storedProcedure.Select(connStr, "GetTwitterType", new List<SqlParameter> { new SqlParameter("@json", results) });
+                                                if (dt.Rows.Count > 0)
+                                                {
+                                                    foreach (DataRow dr in dt.Rows)
+                                                    {
+                                                        if (dr["videoUrl"].ToString().Length > 0)
+                                                        {
+                                                            string url = dr["tweetUrl"].ToString();
+                                                            url = url.Replace("twitter", "fxtwitter");
 
-                            //                            await msg.Channel.SendMessageAsync(url);
-                            //                        }
-                            //                    }
-                            //                }
-                            //            }
-                            //        }
-                            //    }
-                            //}
-                            //catch (Exception e)
-                            //{ }
+                                                            await msg.Channel.SendMessageAsync(url);
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                catch (Exception e)
+                                { }
+                            }
                         }
                         else
                         {
