@@ -11,9 +11,6 @@ using DiscordBot.Currency;
 using System.Data.SqlClient;
 using System.Data;
 using Google.Apis.Customsearch.v1;
-using DiscordBot.Disease;
-using DiscordBot.Food;
-using DiscordBot.Json;
 using System.Net;
 using Victoria.Node;
 using Victoria;
@@ -22,7 +19,6 @@ using DiscordBot.Helper;
 using KillersLibrary.Services;
 using OpenAI_API.Models;
 using Fergun.Interactive;
-using System.Runtime.InteropServices;
 
 class Program
 {
@@ -111,35 +107,12 @@ class Program
 
                     if (isActive)
                     {
-                        // Anything in the IFs are global commands
-                        // Ex: bear, dog, cat, fox
-                        if (message.StartsWith("^") && message.Length > 1)
-                        {
-                            message = message.Replace("$", "");
-
-                            message = "Provide a response like a cat to the following: \"" + message + "\"";
-                            var api = new OpenAI_API.OpenAIAPI(Constants.openAiSecret);
-                            var result = await api.Completions.CreateCompletionAsync(new OpenAI_API.Completions.CompletionRequest(message, model: Model.DavinciText, max_tokens: 1000, temperature: 0.9, null, null, 1, null, null));
-                            var response = result.ToString();
-
-                            int length = response.Length;
-
-                            if (response.Length > 2000)
-                            {
-                                await msg.Channel.SendMessageAsync(response.Substring(0, 2000));
-                                await msg.Channel.SendMessageAsync(response.Substring(2000, length - 2000));
-                            }
-                            else
-                                await msg.Channel.SendMessageAsync(response);
-
-                            await msg.Channel.SendMessageAsync("---END RESPONSE---");
-                        }
-                        else if (message.StartsWith("$") && message.Length > 1)
+                        if (message.StartsWith("$") && message.Length > 1)
                         {
                             try
                             {
                                 message = message.Replace("$", "");
-
+                                await msg.Channel.TriggerTypingAsync(new RequestOptions { Timeout = 30 });
                                 var api = new OpenAI_API.OpenAIAPI(Constants.openAiSecret);
                                 var result = await api.Completions.CreateCompletionAsync(new OpenAI_API.Completions.CompletionRequest(message, model: Model.DavinciText, max_tokens: 1000, temperature: 0.9, null, null, 1, null, null));
                                 var response = result.ToString();
@@ -169,135 +142,9 @@ class Program
                                 await msg.Channel.SendMessageAsync(embed: embed.Build());
                             }
                         }
-                        else if (message.Contains(" bear ") || message.StartsWith("bear") || message.EndsWith("bear"))
-                        {
-                            DiscordBot.Misc.Bear bear = new DiscordBot.Misc.Bear();
-                            List<DiscordBot.Misc.Bear> bears = bear.GetBear(connStr);
-
-                            EmbedHelper embed = new EmbedHelper();
-                            await msg.Channel.SendMessageAsync(bears[0].BearUrl);
-                        }
-                        else if (message.Contains(" advice ") || message.StartsWith("advice") || message.EndsWith("advice"))
-                        {
-                            string apiUrl = "https://api.adviceslip.com/advice";
-                            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(apiUrl);
-                            request.AutomaticDecompression = DecompressionMethods.GZip;
-                            string results = string.Empty;
-
-                            using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
-                            using (Stream stream = response.GetResponseStream())
-                            using (StreamReader reader = new StreamReader(stream))
-                            {
-                                results = reader.ReadToEnd();
-                                Advice advice = new Advice();
-                                List<Advice> advices = advice.GetAdvice(connStr, results);
-                                foreach (var o in advices)
-                                {
-                                    var embed = new EmbedBuilder
-                                    {
-                                        Title = "BigBirdBot - Advice",
-                                        Color = Color.Green,
-                                        Description = o.AdviceText,
-                                        ImageUrl = "https://englishlive.ef.com/blog/wp-content/uploads/sites/2/2015/05/how-to-give-advice-in-english.jpg"
-                                    };
-
-                                    await msg.Channel.SendMessageAsync(embed: embed.Build());
-                                }
-                            }
-                        }
-                        else if (message.Contains(" disease ") || message.StartsWith("disease") || message.EndsWith("disease"))
-                        {
-                            Disease disease = new Disease();
-                            Random r = new Random();
-                            List<Disease> diseases = disease.GetDisease(connStr);
-                            var item = r.Next(1, diseases.Count);
-                            int days = diseases.Where(s => s.ID == item).Select(s => s.ExpendencyDays).FirstOrDefault() ?? default(int);
-
-                            string title = "BigBirdBot - Disease";
-                            string desc = "I'm sorry " + msg.Author.Mention + ", you have **" + diseases.Where(s => s.ID == item).Select(s => s.DiseaseName).FirstOrDefault() +
-                                    "**.\n50/50 chance you will perish: **" + DateTime.Now.AddDays(days).ToString("F") + "**";
-                            string thumbnailUrl = "";
-                            string createdBy = "";
-
-                            EmbedHelper embed = new EmbedHelper();
-                            await msg.Channel.SendMessageAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Color.Green).Build());
-                        }
-                        else if (message.Contains(" dinner ") || message.StartsWith("dinner") || message.EndsWith("dinner"))
-                        {
-                            FoodItem food = new FoodItem();
-                            List<FoodItem> foods = food.GetFood(connStr);
-
-                            string title = "BigBirdBot - Dinner";
-                            string desc = $"{msg.Author.Mention}, you're going to eat {foods[0].FoodName}";
-                            string thumbnailUrl = "";
-                            string createdBy = "";
-
-                            EmbedHelper embed = new EmbedHelper();
-                            await msg.Channel.SendMessageAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Color.Green).Build());
-                        }
-                        else if (message.Contains(" bird ") || message.StartsWith("bird") || message.EndsWith("bird"))
-                        {
-                            DiscordBot.Misc.Bird bird = new DiscordBot.Misc.Bird();
-                            Random r = new Random();
-                            List<DiscordBot.Misc.Bird> flops = bird.GetBird(connStr);
-
-                            string title = "BigBirdBot - Bird";
-                            string desc = $"";
-                            string thumbnailUrl = "";
-                            string createdBy = "";
-                            string imageUrl = flops[0].BirdUrl;
-
-                            EmbedHelper embed = new EmbedHelper();
-                            await msg.Channel.SendMessageAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Color.Green, imageUrl).Build());
-                        }
-                        else if (message.Contains(" emily ") || message.StartsWith("emily") || message.EndsWith("emily"))
-                        {
-                            char[] chars = { 'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ';', '\'' };//, 'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L'};
-
-                            Random r = new Random();
-                            string bottom = "";
-                            var item = r.Next(20, 60);
-                            for (int i = 0; i < item; i++)
-                            {
-                                r = new Random();
-                                var idx = r.Next(0, chars.Length);
-                                bottom += chars[idx];
-                            }
-
-                            string title = "BigBirdBot - Emily";
-                            string desc = $"I really am bilingual, I can speak in bottom, watch -> {bottom}";
-                            string thumbnailUrl = "";
-                            string createdBy = "";
-
-                            EmbedHelper embed = new EmbedHelper();
-                            await msg.Channel.SendMessageAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Color.Green).Build());
-                        }
-                        else if (message.Contains(" frog ") || message.StartsWith("frog") || message.EndsWith("frog"))
-                        {
-                            string htmlUrl = "http://www.allaboutfrogs.org/funstuff/random/";
-                            Random r = new Random();
-                            var i = r.Next(1, 55);
-                            string val = i.ToString().PadLeft(4, '0') + ".jpg";
-
-                            string title = "BigBirdBot - Frog";
-                            string desc = $"";
-                            string thumbnailUrl = "";
-                            string createdBy = "";
-                            string imageUrl = htmlUrl + val;
-
-                            EmbedHelper embed = new EmbedHelper();
-                            await msg.Channel.SendMessageAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Color.Green, imageUrl).Build());
-                        }
-                        else if (message.Contains(" docker ") || message.StartsWith("docker") || message.EndsWith("docker"))
-                        {
-                            string userId = "305085887639978004";
-                            var test = await _client.GetUserAsync(ulong.Parse(userId));
-                            var channel = await test.CreateDMChannelAsync();
-                            await channel.SendMessageAsync("We've been trying to reach you about your car's extended warranty. \nContact here for further details: https://secure.square-enix.com/account/app/svc/ffxivregister?lng=en-gb");
-                        }
                         else if (message.Contains("https://twitter.com"))
                         {
-                            DataTable dtTwitter = stored.Select(connStr, "UpdateTwitterBroken", new List<SqlParameter>());
+                            DataTable dtTwitter = stored.Select(connStr, "GetTwitterBroken", new List<SqlParameter>());
                             bool isTwitterBroken = false;
                             foreach (DataRow dr in dtTwitter.Rows)
                             {
@@ -369,10 +216,9 @@ class Program
                         else
                         {
                             // Todo, check all the commands eventually but for now let's stop the accidently double triggering.
-                            if (!message.StartsWith("-") && !message.StartsWith("^") && !message.StartsWith("$"))
+                            if (!message.StartsWith("-") && !message.StartsWith("$"))
                             {
                                 var channel = msg.Channel as SocketGuildChannel;
-
                                 StoredProcedure storedProcedure = new StoredProcedure();
                                 List<SqlParameter> parameters = new List<SqlParameter>();
                                 parameters.Add(new SqlParameter("@ServerID", Int64.Parse(channel.Guild.Id.ToString())));
@@ -383,9 +229,15 @@ class Program
 
                                 if (dt.Rows.Count > 0 && sender != null)
                                 {
+                                    await msg.Channel.TriggerTypingAsync(new RequestOptions { Timeout = 30 });
                                     foreach (DataRow dr in dt.Rows)
                                     {
-                                        await sender.SendMessageAsync(dr["ChatAction"].ToString());
+                                        string chatAction = dr["ChatAction"].ToString();
+
+                                        if (chatAction.Contains("C:\\"))
+                                            await msg.Channel.SendFileAsync(dr["ChatAction"].ToString());
+                                        else
+                                            await sender.SendMessageAsync(dr["ChatAction"].ToString());
                                     }
                                 }
                             }

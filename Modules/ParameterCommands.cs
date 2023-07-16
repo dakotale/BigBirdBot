@@ -3,24 +3,17 @@ using DiscordBot.Constants;
 using DiscordBot.Helper;
 using DiscordBot.Misc;
 using Figgle;
-using Microsoft.VisualBasic;
-using OpenAI_API.Images;
 using OpenAI_API.Models;
-using System;
 using System.Data;
 using System.Net;
-using Fergun.Interactive;
 using Discord;
-using Newtonsoft.Json;
-using Flurl.Http;
-using Newtonsoft.Json.Linq;
+using System.Data.SqlClient;
 
 namespace DiscordBot.Modules
 {
     public class ParameterCommands : ModuleBase<SocketCommandContext>
     {
         Audit audit = new Audit();
-        public InteractiveService Interactive { get; set; }
 
         [Command("random")]
         [Alias("r")]
@@ -289,7 +282,7 @@ namespace DiscordBot.Modules
 
             if (dt.Rows.Count > 0)
             {
-                procedure.UpdateCreate(Constants.Constants.discordBotConnStr, "UpdateChatKeyword", new List<System.Data.SqlClient.SqlParameter>
+                procedure.UpdateCreate(Constants.Constants.discordBotConnStr, "DisableChatKeyword", new List<System.Data.SqlClient.SqlParameter>
                 {
                     new System.Data.SqlClient.SqlParameter("@ServerID", serverId),
                     new System.Data.SqlClient.SqlParameter("@Keyword", keyword.Trim())
@@ -348,30 +341,6 @@ namespace DiscordBot.Modules
             }
         }
 
-        [Command("tts")]
-        public async Task HandleTTS([Remainder] string msg)
-        {
-            audit.InsertAudit("tts", Context.User.Username, Constants.Constants.discordBotConnStr);
-            if (msg.Length > 0)
-            {
-                await ReplyAsync(msg, true);
-            }
-            else
-            {
-                EmbedHelper embed = new EmbedHelper();
-                await ReplyAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Error", "Please provide a message to use this command.", Constants.Constants.errorImageUrl, "", Discord.Color.Red, "").Build());
-            }
-        }
-
-        [Command("timestamp")]
-        [Alias("ts")]
-        public async Task HandleTimeStamp([Remainder] DateTime dateTime)
-        {
-            audit.InsertAudit("timestamp", Context.User.Username, Constants.Constants.discordBotConnStr);
-            EmbedHelper embed = new EmbedHelper();
-            await ReplyAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Timestamp", Constants.Constants.ToDiscordUnixTimeestampFormat(dateTime), "", Context.Message.Author.ToString(), Discord.Color.Green, "").Build());
-        }
-
         [Command("math")]
         public async Task HandleMath([Remainder] int number)
         {
@@ -412,7 +381,7 @@ namespace DiscordBot.Modules
             else
             {
                 string title = "BigBirdBot - Error";
-                string desc = $"There must be more than one choose specified.";
+                string desc = $"There must be more than one choice specified.";
                 string thumbnailUrl = Constants.Constants.errorImageUrl;
                 string imageUrl = "";
                 string createdByMsg = "Command from: " + Context.User.Username;
@@ -493,13 +462,234 @@ namespace DiscordBot.Modules
             }
         }
 
-        [Command("xiv")]
-        public async Task HandleXIVAPI([Remainder] string query)
+        [Command("poll")]
+        [Alias("p")]
+        public async Task HandlePoll([Remainder] string args = "")
         {
-            string apiUrl = $"https://xivapi.com/search?string={query}";
-            var result = await apiUrl.GetAsync();
-            string test = JsonConvert.DeserializeObject(result.ResponseMessage.Content.ReadAsStringAsync().Result).ToString();
-            var jsonObject = JObject.Parse(test);   
+            audit.InsertAudit("poll", Context.User.Username, Constants.Constants.discordBotConnStr);
+            List<Emoji> emojis = new List<Emoji>
+            {
+                new Emoji("1️⃣"),
+                new Emoji("2️⃣"),
+                new Emoji("3️⃣"),
+                new Emoji("4️⃣"),
+                new Emoji("5️⃣"),
+                new Emoji("6️⃣"),
+                new Emoji("7️⃣"),
+                new Emoji("8️⃣"),
+                new Emoji("9️⃣"),
+                new Emoji("🔟")
+            };
+
+            if (args.Length > 0 && args.Split(',').Count() > 2)
+            {
+                if (args.Split(',').Count() > 11)
+                {
+                    // Error handling, let's be reasonable with the number of choices
+                    string title = "BigBirdBot - Error";
+                    string desc = $"The maximum number of poll choices is 10.";
+                    string thumbnailUrl = Constants.Constants.errorImageUrl;
+                    string imageUrl = "";
+                    string createdByMsg = "Command from: " + Context.User.Username;
+
+                    EmbedHelper embed = new EmbedHelper();
+                    await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdByMsg, Discord.Color.Red, imageUrl).Build());
+                }
+                else
+                {
+                    List<string> items = args.Split(',').Select(s => s.Trim()).ToList();
+                    EmbedHelper embed = new EmbedHelper();
+                    string title = "BigBirdBot - Poll";
+                    string desc = $"Poll Item: **{items[0]}**\n\nChoices:";
+                    string createdByMsg = "Command from: " + Context.User.Username;
+
+                    for (int i = 1; i < items.Count; i++)
+                        desc += "\n" + i.ToString() + ". **" + items[i] + "**";
+
+                    IUserMessage msg = await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, "", createdByMsg, Discord.Color.Blue).Build());
+                    
+                    for (int i = 0; i < items.Count - 1; i++)
+                        await msg.AddReactionAsync(emojis[i]);
+                }
+            }
+            else
+            {
+                // Error hnadling
+                string title = "BigBirdBot - Error";
+                string desc = $"There must be more than one choice specified.";
+                string thumbnailUrl = Constants.Constants.errorImageUrl;
+                string imageUrl = "";
+                string createdByMsg = "Command from: " + Context.User.Username;
+
+                EmbedHelper embed = new EmbedHelper();
+                await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdByMsg, Discord.Color.Red, imageUrl).Build());
+            }
+        }
+
+        [Command("ericadd")]
+        [Alias("tbadd", "tba")]
+        public async Task HandleEricAdd([Remainder] string args = "")
+        {
+            if (args.Length > 0)
+            {
+                StoredProcedure stored = new StoredProcedure();
+
+                stored.UpdateCreate(Constants.Constants.discordBotConnStr, "AddEric", new List<System.Data.SqlClient.SqlParameter>
+                {
+                    new System.Data.SqlClient.SqlParameter("@URL", args)
+                });
+
+                EmbedHelper embed = new EmbedHelper();
+                string title = "BigBirdBot - Added Image";
+                string desc = $"Added {args} successfully.";
+                string createdByMsg = "Command from: " + Context.User.Username;
+
+                await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, "", createdByMsg, Color.Blue).Build());
+            }
+            else if (Context.Message.Attachments.Count > 0)
+            {
+                var attachments = Context.Message.Attachments;
+                try
+                {
+                    StoredProcedure stored = new StoredProcedure();
+                    foreach (var attachment in attachments)
+                    {
+                        string path = @"C:\Users\Unmolded\Desktop\DiscordBot\Eric\" + attachment.Filename;
+                        using (WebClient client = new WebClient())
+                        {
+                            client.DownloadFileAsync(new Uri(attachment.Url), path);
+                        }
+
+                        stored.UpdateCreate(Constants.Constants.discordBotConnStr, "AddEric", new List<System.Data.SqlClient.SqlParameter>
+                        {
+                            new SqlParameter("@URL", path)
+                        });
+                    }
+
+                    EmbedHelper embed = new EmbedHelper();
+                    string title = "BigBirdBot - Added Image";
+                    string desc = $"Added attachment(s) successfully.";
+                    string createdByMsg = "Command from: " + Context.User.Username;
+                    await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, "", createdByMsg, Color.Blue).Build());
+                }
+                catch (Exception ex)
+                {
+                    // Error handling
+                    string title = "BigBirdBot - Error";
+                    string desc = ex.Message;
+                    string thumbnailUrl = Constants.Constants.errorImageUrl;
+                    string imageUrl = "";
+                    string createdByMsg = "Command from: " + Context.User.Username;
+
+                    EmbedHelper embed = new EmbedHelper();
+                    await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdByMsg, Discord.Color.Red, imageUrl).Build());
+                }
+            }
+            else
+            {
+                // Error hnadling
+                string title = "BigBirdBot - Error";
+                string desc = $"Please provide a URL of Eric.";
+                string thumbnailUrl = Constants.Constants.errorImageUrl;
+                string imageUrl = "";
+                string createdByMsg = "Command from: " + Context.User.Username;
+
+                EmbedHelper embed = new EmbedHelper();
+                await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdByMsg, Discord.Color.Red, imageUrl).Build());
+            }
+        }
+
+        [Command("ericdelete")]
+        [Alias("tbdelete", "tbd")]
+        public async Task HandleEricDelete([Remainder] string args = "")
+        {
+            if (args.Length > 0)
+            {
+                StoredProcedure stored = new StoredProcedure();
+                DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "DeleteEric", new List<System.Data.SqlClient.SqlParameter>
+                {
+                    new System.Data.SqlClient.SqlParameter("@URL", args)
+                });
+                string result = "";
+
+                foreach (DataRow dr in dt.Rows)
+                    result = dr["Result"].ToString();
+
+                EmbedHelper embed = new EmbedHelper();
+                string title = "BigBirdBot - Delete Image";
+                string desc = result;
+                string createdByMsg = "Command from: " + Context.User.Username;
+
+                await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, "", createdByMsg, Color.Blue).Build());
+            }
+            else
+            {
+                // Error hnadling
+                string title = "BigBirdBot - Error";
+                string desc = $"Please provide a URL of Eric to delete.";
+                string thumbnailUrl = Constants.Constants.errorImageUrl;
+                string imageUrl = "";
+                string createdByMsg = "Command from: " + Context.User.Username;
+
+                EmbedHelper embed = new EmbedHelper();
+                await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdByMsg, Discord.Color.Red, imageUrl).Build());
+            }
+        }
+
+        [Command("emetadd")]
+        public async Task HandleEmetAdd()
+        {
+            var attachments = Context.Message.Attachments;
+            if (attachments.Count > 0)
+            {
+                try
+                {
+                    StoredProcedure stored = new StoredProcedure();
+                    foreach (var attachment in attachments)
+                    {
+                        string path = @"C:\Users\Unmolded\Desktop\DiscordBot\Emet\" + attachment.Filename;
+                        using (WebClient client = new WebClient())
+                        {
+                            client.DownloadFileAsync(new Uri(attachment.Url), path);
+                        }
+
+                        stored.UpdateCreate(Constants.Constants.discordBotConnStr, "AddEmet", new List<System.Data.SqlClient.SqlParameter>
+                        {
+                            new SqlParameter("@FilePath", path)
+                        });
+                    }
+
+                    EmbedHelper embed = new EmbedHelper();
+                    string title = "BigBirdBot - Added Image";
+                    string desc = $"Added attachment(s) successfully.";
+                    string createdByMsg = "Command from: " + Context.User.Username;
+                    await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, "", createdByMsg, Color.Blue).Build());
+                }
+                catch (Exception ex)
+                {
+                    // Error handling
+                    string title = "BigBirdBot - Error";
+                    string desc = ex.Message;
+                    string thumbnailUrl = Constants.Constants.errorImageUrl;
+                    string imageUrl = "";
+                    string createdByMsg = "Command from: " + Context.User.Username;
+
+                    EmbedHelper embed = new EmbedHelper();
+                    await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdByMsg, Discord.Color.Red, imageUrl).Build());
+                }
+            }
+            else
+            {
+                // Error handling
+                string title = "BigBirdBot - Error";
+                string desc = $"Please provide an image.";
+                string thumbnailUrl = Constants.Constants.errorImageUrl;
+                string imageUrl = "";
+                string createdByMsg = "Command from: " + Context.User.Username;
+
+                EmbedHelper embed = new EmbedHelper();
+                await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdByMsg, Discord.Color.Red, imageUrl).Build());
+            }
         }
     }
 }
