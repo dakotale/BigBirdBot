@@ -202,7 +202,7 @@ namespace DiscordBot.Modules
                                         var track = node.Tracks.FirstOrDefault();
                                         if (track != null)
                                         {
-                                            AddMusicTable(track, serverId);
+                                            AddMusicTable(track, serverId, Context.Message.Author.Username);
                                             lavaTracks.Add(track);
                                         }
                                     }
@@ -233,7 +233,7 @@ namespace DiscordBot.Modules
                                         var track = node.Tracks.FirstOrDefault();
                                         if (track != null)
                                         {
-                                            AddMusicTable(track, serverId);
+                                            AddMusicTable(track, serverId, Context.Message.Author.Username);
                                             lavaTracks.Add(track);
                                         }
                                     }
@@ -267,7 +267,7 @@ namespace DiscordBot.Modules
                                         return;
                                     }
                                     player.Vueue.TryDequeue(out var lavaTrack);
-                                    AddMusicTable(track, serverId);
+                                    AddMusicTable(track, serverId, Context.Message.Author.Username);
                                     await player.PlayAsync(lavaTrack);
                                 }
                             }
@@ -296,7 +296,7 @@ namespace DiscordBot.Modules
                 if (!string.IsNullOrWhiteSpace(searchResponse.Playlist.Name))
                 {
                     foreach (var track in searchResponse.Tracks)
-                        AddMusicTable(track, serverId);
+                        AddMusicTable(track, serverId, Context.Message.Author.Username);
 
                     player.Vueue.Enqueue(searchResponse.Tracks);
 
@@ -307,7 +307,7 @@ namespace DiscordBot.Modules
                 else
                 {
                     LavaTrack? track = searchResponse.Tracks.FirstOrDefault();
-                    AddMusicTable(track, serverId);
+                    AddMusicTable(track, serverId, Context.Message.Author.Username);
                     player.Vueue.Enqueue(track);
 
                     string msg = $"**{track?.Title}** coming right up!\nURL: {track?.Url}\nDuration: **{track?.Duration}**\nSource: **{track?.Source.ToUpper()}**\nVolume: **{GetVolume(long.Parse(Context.Guild.Id.ToString()))} out of 150**";
@@ -1164,7 +1164,7 @@ namespace DiscordBot.Modules
                                     var itemList = player.Vueue.ToList();
                                     itemList.Insert(0, track);
 
-                                    AddMusicTable(track, serverId);
+                                    AddMusicTable(track, serverId, Context.Message.Author.Username);
 
                                     player.Vueue.Clear();
                                     player.Vueue.Enqueue(itemList);
@@ -1205,7 +1205,7 @@ namespace DiscordBot.Modules
                     }
                     
                     LavaTrack? track = searchResponse.Tracks.FirstOrDefault();
-                    AddMusicTable(track, serverId);
+                    AddMusicTable(track, serverId, Context.Message.Author.Username);
                     var itemList = player.Vueue.ToList();
                     itemList.Insert(0, track);
 
@@ -1255,7 +1255,7 @@ namespace DiscordBot.Modules
                                             var track = node.Tracks.FirstOrDefault();
                                             if (track != null)
                                             {
-                                                AddMusicTable(track, serverId);
+                                                AddMusicTable(track, serverId, Context.Message.Author.Username);
                                                 lavaTracks.Add(track);
                                             }
                                         }
@@ -1286,7 +1286,7 @@ namespace DiscordBot.Modules
                                             var track = node.Tracks.FirstOrDefault();
                                             if (track != null)
                                             {
-                                                AddMusicTable(track, serverId);
+                                                AddMusicTable(track, serverId, Context.Message.Author.Username);
                                                 lavaTracks.Add(track);
                                             }
                                         }
@@ -1305,7 +1305,7 @@ namespace DiscordBot.Modules
                                     if (node.Status != SearchStatus.NoMatches || node.Status != SearchStatus.LoadFailed)
                                     {
                                         var track = node.Tracks.FirstOrDefault();
-                                        AddMusicTable(track, serverId);
+                                        AddMusicTable(track, serverId, Context.Message.Author.Username);
                                         player.Vueue.Enqueue(track);
 
                                         msg = $"One {track?.Title} coming right up!\n {track?.Url}\n {track?.Duration}\n {track?.Source.ToUpper()}";
@@ -1391,7 +1391,7 @@ namespace DiscordBot.Modules
             return embed;
         }
 
-        public void AddMusicTable(LavaTrack lavaTrack, string serverId)
+        public void AddMusicTable(LavaTrack lavaTrack, string serverId, string createdBy)
         {
             if (lavaTrack == null)
                 return;
@@ -1403,7 +1403,8 @@ namespace DiscordBot.Modules
                 new SqlParameter("@VideoID", lavaTrack.Id),
                 new SqlParameter("@Author", lavaTrack.Author),
                 new SqlParameter("@Title", lavaTrack.Title),
-                new SqlParameter("@URL", lavaTrack.Url)
+                new SqlParameter("@URL", lavaTrack.Url),
+                new SqlParameter("@CreatedBy", createdBy)
             });
         }
         public int GetVolume(long guildId)
