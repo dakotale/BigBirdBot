@@ -589,7 +589,7 @@ namespace DiscordBot.Modules
             {
                 // Error hnadling
                 string title = "BigBirdBot - Error";
-                string desc = $"Please provide a URL of Eric.";
+                string desc = $"Please provide a URL or image of Eric.";
                 string thumbnailUrl = Constants.Constants.errorImageUrl;
                 string imageUrl = "";
                 string createdByMsg = "Command from: " + Context.User.Username;
@@ -637,7 +637,7 @@ namespace DiscordBot.Modules
         }
 
         [Command("emetadd")]
-        public async Task HandleEmetAdd()
+        public async Task HandleEmetAdd([Remainder] string args = "")
         {
             var attachments = Context.Message.Attachments;
             if (attachments.Count > 0)
@@ -683,6 +683,78 @@ namespace DiscordBot.Modules
                 // Error handling
                 string title = "BigBirdBot - Error";
                 string desc = $"Please provide an image.";
+                string thumbnailUrl = Constants.Constants.errorImageUrl;
+                string imageUrl = "";
+                string createdByMsg = "Command from: " + Context.User.Username;
+
+                EmbedHelper embed = new EmbedHelper();
+                await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdByMsg, Discord.Color.Red, imageUrl).Build());
+            }
+        }
+
+        [Command("themisadd")]
+        public async Task HandleThemisAdd([Remainder] string args = "")
+        {
+            if (args.Length > 0)
+            {
+                StoredProcedure stored = new StoredProcedure();
+
+                stored.UpdateCreate(Constants.Constants.discordBotConnStr, "AddThemis", new List<System.Data.SqlClient.SqlParameter>
+                {
+                    new System.Data.SqlClient.SqlParameter("@FilePath", args)
+                });
+
+                EmbedHelper embed = new EmbedHelper();
+                string title = "BigBirdBot - Added Image";
+                string desc = $"Added {args} successfully.";
+                string createdByMsg = "Command from: " + Context.User.Username;
+
+                await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, "", createdByMsg, Color.Blue).Build());
+            }
+            else if (Context.Message.Attachments.Count > 0)
+            {
+                var attachments = Context.Message.Attachments;
+                try
+                {
+                    StoredProcedure stored = new StoredProcedure();
+                    foreach (var attachment in attachments)
+                    {
+                        string path = @"C:\Users\Unmolded\Desktop\DiscordBot\Themis\" + attachment.Filename;
+                        using (WebClient client = new WebClient())
+                        {
+                            client.DownloadFileAsync(new Uri(attachment.Url), path);
+                        }
+
+                        stored.UpdateCreate(Constants.Constants.discordBotConnStr, "AddThemis", new List<System.Data.SqlClient.SqlParameter>
+                        {
+                            new SqlParameter("@FilePath", path)
+                        });
+                    }
+
+                    EmbedHelper embed = new EmbedHelper();
+                    string title = "BigBirdBot - Added Image";
+                    string desc = $"Added attachment(s) successfully.";
+                    string createdByMsg = "Command from: " + Context.User.Username;
+                    await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, "", createdByMsg, Color.Blue).Build());
+                }
+                catch (Exception ex)
+                {
+                    // Error handling
+                    string title = "BigBirdBot - Error";
+                    string desc = ex.Message;
+                    string thumbnailUrl = Constants.Constants.errorImageUrl;
+                    string imageUrl = "";
+                    string createdByMsg = "Command from: " + Context.User.Username;
+
+                    EmbedHelper embed = new EmbedHelper();
+                    await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdByMsg, Discord.Color.Red, imageUrl).Build());
+                }
+            }
+            else
+            {
+                // Error hnadling
+                string title = "BigBirdBot - Error";
+                string desc = $"Please provide a URL or image of Themis.";
                 string thumbnailUrl = Constants.Constants.errorImageUrl;
                 string imageUrl = "";
                 string createdByMsg = "Command from: " + Context.User.Username;
