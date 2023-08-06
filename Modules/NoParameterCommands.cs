@@ -6,6 +6,7 @@ using System.Data;
 using DiscordBot.Anime;
 using DiscordBot.Helper;
 using Discord.Interactions;
+using System.Runtime.CompilerServices;
 
 namespace DiscordBot.Modules
 {
@@ -393,6 +394,59 @@ namespace DiscordBot.Modules
 
             EmbedHelper embed = new EmbedHelper();
             await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Green, imageUrl).Build());
+        }
+
+        [Command("kalist")]
+        [Alias("kal")]
+        public async Task HandleKeywordList()
+        {
+            string connStr = Constants.Constants.discordBotConnStr;
+            var serverId = Int64.Parse(Context.Guild.Id.ToString());
+            int i = 1;
+
+            StoredProcedure stored = new StoredProcedure();
+            string output = "__**Keyword - Added On - Added By**__\n";
+
+            DataTable dt = stored.Select(connStr, "GetKeywordsByServerUID", new List<SqlParameter>
+            {
+                new SqlParameter("@ServerUID", serverId)
+            });
+
+            if (dt.Rows.Count > 0) 
+            {
+                foreach (DataRow dr in dt.Rows)
+                {
+                    output += $"**{i.ToString()}.** {dr["Keyword"].ToString()} - {DateTime.Parse(dr["CreatedOn"].ToString()).ToString("M/dd/yyyy")} - {dr["CreatedBy"].ToString()}\n";
+                    i++;
+                }
+
+                EmbedHelper embed = new EmbedHelper();
+                await ReplyAsync(embed: embed.BuildMessageEmbed("BigBirdBot - List of Active Keywords", output, "", Context.Message.Author.Username, Discord.Color.Green).Build());
+            }
+        }
+
+        [Command("log")]
+        public async Task HandleLog()
+        {
+            string connStr = Constants.Constants.discordBotConnStr;
+            StoredProcedure stored = new StoredProcedure();
+            string output = "";
+
+            DataTable dt = stored.Select(connStr, "GetLog", new List<SqlParameter>());
+            EmbedHelper embed = new EmbedHelper();
+
+            if (dt.Rows.Count > 0)
+            {
+                foreach(DataRow dr in dt.Rows)
+                {
+                    output += $"__Most Recent Error Message Reported__\nSource: {dr["Source"].ToString()}\nSeverity: {dr["Severity"].ToString()}\nMessage: {dr["Message"].ToString()}\nException: {dr["Exception"].ToString()}";
+                }
+                await ReplyAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Error Log", output, "", Context.Message.Author.Username, Discord.Color.Red).Build());
+            }
+            else
+            {
+                await ReplyAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Error Log", "No recent exceptions found.", "", Context.Message.Author.Username, Discord.Color.Green).Build());
+            }
         }
     }
 }

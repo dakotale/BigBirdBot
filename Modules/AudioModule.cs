@@ -52,6 +52,7 @@ namespace DiscordBot.Modules
         }
 
         [Command("Join", RunMode = RunMode.Async)]
+        [Alias("j")]
         [Discord.Commands.Summary("Bot joins the voice channel to play audio.")]
         public async Task JoinAsync()
         {
@@ -130,6 +131,7 @@ namespace DiscordBot.Modules
         }
 
         [Command("Play", RunMode = RunMode.Async)]
+        [Alias("p")]
         [Discord.Commands.Summary("Bot will join (if not already in) and play audio from Youtube, Soundcloud, Spotify, and local files.")]
         public async Task PlayAsync([Optional] string searchQuery)
         {
@@ -1096,6 +1098,7 @@ namespace DiscordBot.Modules
         }
 
         [Command("playnext", RunMode = RunMode.Async)]
+        [Alias("pn")]
         public async Task PlayNext([Optional] string searchQuery)
         {
             audit.InsertAudit("playnext", Context.User.Username, Constants.Constants.discordBotConnStr);
