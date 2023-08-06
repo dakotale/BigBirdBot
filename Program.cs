@@ -19,6 +19,7 @@ using DiscordBot.Helper;
 using KillersLibrary.Services;
 using OpenAI_API.Models;
 using Fergun.Interactive;
+using SpotifyAPI.Web;
 
 class Program
 {
@@ -60,8 +61,15 @@ class Program
             _client.JoinedGuild += JoinedGuild;
             _client.UserJoined += UserJoined;
             _client.UserLeft += UserLeft;
+
             _client.UserVoiceStateUpdated += (user, before, after) =>
             {
+                if (user.IsBot && after.VoiceChannel == null)
+                {
+                    if (lavaNode.TryGetPlayer(before.VoiceChannel.Guild, out var player))
+                        lavaNode.LeaveAsync(before.VoiceChannel);
+                }
+                
                 if (user.IsBot)
                     return Task.CompletedTask;
 
@@ -213,6 +221,67 @@ class Program
                                 { }
                             }
                         }
+                        else if (message.Contains("remind "))
+                        {
+                            var channel = msg.Channel as SocketGuildChannel;
+                            var sender = _client.GetChannel(channel.Id) as IMessageChannel;
+                            StoredProcedure storedProcedure = new StoredProcedure();
+                            List<SqlParameter> parameters = new List<SqlParameter>();
+                            string createdBy = msg.Author.Mention;
+
+                            parameters.Add(new SqlParameter("@Message", message));
+                            DataTable dt = storedProcedure.Select(connStr, "GetEventTimeRange", parameters);
+
+                            if (dt.Rows.Count > 0)
+                            {
+                                if (msg.MentionedUsers.Count > 0)
+                                    createdBy = string.Join(",", msg.MentionedUsers.Select(s => s.Mention.ToString()));
+                                if (msg.MentionedRoles.Count > 0)
+                                    createdBy = string.Join(",", msg.MentionedRoles.Select(s => s.Mention.ToString()));
+
+                                foreach (DataRow dr in dt.Rows)
+                                {
+                                    string split = message.Split(dr["EventKeyword"].ToString())[1];
+                                    if (split.Contains("to")) { split = split.Replace("to", ""); }
+
+                                    DataTable dtNewEvent = storedProcedure.Select(Constants.discordBotConnStr, "AddEvent", new List<SqlParameter>
+                                    {
+                                        new SqlParameter("@EventDateTime", DateTime.Now.AddMinutes(double.Parse(dr["Minutes"].ToString()))),
+                                        new SqlParameter("@EventName", split),
+                                        new SqlParameter("@EventDescription", split),
+                                        new SqlParameter("@EventUserUTCDate", TimeZoneInfo.ConvertTimeToUtc(DateTime.Now.AddMinutes(double.Parse(dr["Minutes"].ToString())), TimeZoneInfo.Local)),
+                                        new SqlParameter("@EventChannelSource", long.Parse(channel.Id.ToString())),
+                                        new SqlParameter("@CreatedBy", createdBy)
+                                    });
+
+                                    foreach (DataRow drEvent in dtNewEvent.Rows)
+                                    {
+                                        // Defaulting to 15 minutes reminder
+                                        storedProcedure.UpdateCreate(Constants.discordBotConnStr, "AddEventReminder", new List<SqlParameter>
+                                        {
+                                            new SqlParameter("@EventID", int.Parse(drEvent["EventID"].ToString())),
+                                            new SqlParameter("@EventDateTime", DateTime.Now.AddMinutes(double.Parse(dr["Minutes"].ToString()))),
+                                            new SqlParameter("@EventName", split),
+                                            new SqlParameter("@EventDescription", split),
+                                            new SqlParameter("@EventReminderTime", 15),
+                                            new SqlParameter("@EventUserUTCDate", TimeZoneInfo.ConvertTimeToUtc(DateTime.Now.AddMinutes(int.Parse(dr["Minutes"].ToString())), TimeZoneInfo.Local)),
+                                            new SqlParameter("@CreatedBy", createdBy)
+                                        });
+
+                                        var embed = new EmbedBuilder
+                                        {
+                                            Title = ":calendar_spiral: BigBirdBot - Event - " + split,
+                                            Color = Color.Gold
+                                        };
+                                        embed
+                                            .AddField("Time (EST)", DateTime.Now.AddMinutes(double.Parse(dr["Minutes"].ToString())))
+                                            .WithFooter(footer => footer.Text = "Created by " + msg.Author.Username)
+                                            .WithCurrentTimestamp();
+                                        await sender.SendMessageAsync(embed: embed.Build());
+                                    }
+                                }
+                            }
+                        }
                         else
                         {
                             // Todo, check all the commands eventually but for now let's stop the accidently double triggering.
@@ -229,15 +298,18 @@ class Program
 
                                 if (dt.Rows.Count > 0 && sender != null)
                                 {
-                                    await msg.Channel.TriggerTypingAsync(new RequestOptions { Timeout = 30 });
                                     foreach (DataRow dr in dt.Rows)
                                     {
                                         string chatAction = dr["ChatAction"].ToString();
 
-                                        if (chatAction.Contains("C:\\"))
-                                            await msg.Channel.SendFileAsync(dr["ChatAction"].ToString());
-                                        else
-                                            await sender.SendMessageAsync(dr["ChatAction"].ToString());
+                                        if (!string.IsNullOrEmpty(chatAction))
+                                        {
+                                            await msg.Channel.TriggerTypingAsync(new RequestOptions { Timeout = 30 });
+                                            if (chatAction.Contains("C:\\"))
+                                                await msg.Channel.SendFileAsync(dr["ChatAction"].ToString());
+                                            else
+                                                await sender.SendMessageAsync(dr["ChatAction"].ToString());
+                                        }
                                     }
                                 }
                             }
@@ -330,7 +402,24 @@ class Program
 
     private Task LogAsync(LogMessage log)
     {
-        Console.WriteLine(log.ToString());
+        StoredProcedure stored = new StoredProcedure();
+        string connStr = Constants.discordBotConnStr;
+        List<SqlParameter> parameters = new List<SqlParameter>();
+        string exception = "";
+
+        if (log.Exception != null)
+        {
+            exception = log.Exception.Message;
+        }
+
+        parameters.Add(new SqlParameter("@Severity", log.Severity));
+        parameters.Add(new SqlParameter("@Source", log.Source));
+        parameters.Add(new SqlParameter("@Message", log.Message));
+        parameters.Add(new SqlParameter("@Exception", exception));
+
+        stored.UpdateCreate(connStr, "AddLog", parameters);
+
+        Console.WriteLine("Log written successfully to the database.");
 
         return Task.CompletedTask;
     }

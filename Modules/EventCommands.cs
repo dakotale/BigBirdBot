@@ -18,8 +18,8 @@ namespace DiscordBot.Modules
     {
         Audit audit = new Audit();
         [Command("event")]
-        [Alias("eve", "plan")]
-        [Discord.Commands.Summary("Plan an event and get a notification when it's ready.  In 'Date/Time, Event Name, Event Description' format.")]
+        [Alias("eve", "plan", "remind")]
+        [Discord.Commands.Summary("Plan an event and get a notification when it's ready.  In 'Date/Time, Event Name' format.")]
         public async Task HandleEventCommand([Remainder] string eventMsg)
         {
             audit.InsertAudit("event", Context.User.Username, Constants.Constants.discordBotConnStr);
@@ -28,20 +28,19 @@ namespace DiscordBot.Modules
              * Objects
              * 0 - Date/Time
              * 1 - Event Name
-             * 2 - Description
              */
             try
             {
                 StoredProcedure storedProcedure = new StoredProcedure();
                 string[] objects = eventMsg.Split(',');
-                if (objects.Length >= 3)
+                if (objects.Length >= 2)
                 {
                     string eventTitle = objects[1];
-                    string eventDescription = objects[2];
+                    //string eventDescription = objects[2];
                     DateTime eventDateTime;
 
                     eventTitle = eventTitle.Trim();
-                    eventDescription = eventDescription.Trim();
+                    //eventDescription = eventDescription.Trim();
 
                     var test = objects[0];
                     bool hasAmPm = objects[0].Contains("PM", StringComparison.OrdinalIgnoreCase) || objects[0].Contains("AM", StringComparison.OrdinalIgnoreCase);
@@ -83,7 +82,7 @@ namespace DiscordBot.Modules
                             {
                                 new SqlParameter("@EventDateTime", eventDateTime),
                                 new SqlParameter("@EventName", eventTitle),
-                                new SqlParameter("@EventDescription", eventDescription),
+                                new SqlParameter("@EventDescription", ""),
                                 new SqlParameter("@EventUserUTCDate", TimeZoneInfo.ConvertTimeToUtc(eventDateTime, TimeZoneInfo.Local)),
                                 new SqlParameter("@EventChannelSource", Context.Message.Channel.Id.ToString()),
                                 new SqlParameter("@CreatedBy", Context.User.Mention)
@@ -97,7 +96,7 @@ namespace DiscordBot.Modules
                                     new SqlParameter("@EventID", int.Parse(dr["EventID"].ToString())),
                                     new SqlParameter("@EventDateTime", eventDateTime),
                                     new SqlParameter("@EventName", eventTitle),
-                                    new SqlParameter("@EventDescription", eventDescription),
+                                    new SqlParameter("@EventDescription", ""),
                                     new SqlParameter("@EventReminderTime", 15),
                                     new SqlParameter("@EventUserUTCDate", TimeZoneInfo.ConvertTimeToUtc(eventDateTime, TimeZoneInfo.Local)),
                                     new SqlParameter("@CreatedBy", Context.User.Mention)
@@ -151,7 +150,7 @@ namespace DiscordBot.Modules
                             {
                                 new SqlParameter("@EventDateTime", eventDateTime),
                                 new SqlParameter("@EventName", eventTitle),
-                                new SqlParameter("@EventDescription", eventDescription),
+                                new SqlParameter("@EventDescription", ""),
                                 new SqlParameter("@EventUserUTCDate", eventDateTime.AddHours(4)),
                                 new SqlParameter("@EventChannelSource", Context.Message.Channel.Id.ToString()),
                                 new SqlParameter("@CreatedBy", Context.User.Mention)
@@ -165,7 +164,7 @@ namespace DiscordBot.Modules
                                     new SqlParameter("@EventID", int.Parse(dr["EventID"].ToString())),
                                     new SqlParameter("@EventDateTime", eventDateTime),
                                     new SqlParameter("@EventName", eventTitle),
-                                    new SqlParameter("@EventDescription", eventDescription),
+                                    new SqlParameter("@EventDescription", ""),
                                     new SqlParameter("@EventReminderTime", 15),
                                     new SqlParameter("@EventUserUTCDate", TimeZoneInfo.ConvertTimeToUtc(eventDateTime, TimeZoneInfo.Local)),
                                     new SqlParameter("@CreatedBy", Context.User.Mention)
@@ -173,7 +172,7 @@ namespace DiscordBot.Modules
 
                                 var embed = new EmbedBuilder
                                 {
-                                    Title = ":calendar_spiral: BigBirdBot - Event - " + dr["EventName"].ToString(),
+                                    Title = ":calendar_spiral: BigBirdBot - Reminder/Event - " + dr["EventName"].ToString(),
                                     Color = Color.Gold
                                 };
                                 embed
@@ -198,7 +197,7 @@ namespace DiscordBot.Modules
                 else
                 {
                     EmbedHelper embedHelper = new EmbedHelper();
-                    var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "Please enter a date/time, name, and description.  Example for today -> 8PM, Movie, Watching Movie Stuff", Constants.Constants.errorImageUrl, "", Color.Red, "");
+                    var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "Please enter a date/time and name.  Example for today -> 8PM, Movie", Constants.Constants.errorImageUrl, "", Color.Red, "");
                     await ReplyAsync(embed: embed.Build());
                 }
             }

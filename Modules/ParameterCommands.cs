@@ -252,6 +252,50 @@ namespace DiscordBot.Modules
                     await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Discord.Color.Red, imageUrl).Build());
                 }
             }
+            else if (keyword.Trim().Length > 0)
+            {
+                string word = keyword.Trim();
+                string createdBy = Context.User.Username;
+                var serverId = Int64.Parse(Context.Guild.Id.ToString());
+
+                StoredProcedure procedure = new StoredProcedure();
+
+                DataTable dt = procedure.Select(Constants.Constants.discordBotConnStr, "GetChatActionActiveAndInActive", new List<System.Data.SqlClient.SqlParameter>
+                        {
+                            new System.Data.SqlClient.SqlParameter("@ServerID", serverId),
+                            new System.Data.SqlClient.SqlParameter("@Message", word)
+                        });
+
+                if (dt.Rows.Count > 0)
+                {
+                    procedure.UpdateCreate(Constants.Constants.discordBotConnStr, "UpdateChatAction", new List<System.Data.SqlClient.SqlParameter>
+                            {
+                                new System.Data.SqlClient.SqlParameter("@ServerID", serverId),
+                                new System.Data.SqlClient.SqlParameter("@Keyword", word),
+                                new System.Data.SqlClient.SqlParameter("@Action", "")
+                            });
+
+                    string title = "BigBirdBot - Keyword Updated";
+                    string desc = $"Successfully enabled Keyword -> **{word}**\n";
+                    string thumbnailUrl = "";
+                    string imageUrl = "";
+                    string embedCreatedBy = "Command from: " + Context.User.Username;
+
+                    EmbedHelper embed = new EmbedHelper();
+                    await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Green, imageUrl).Build());
+                }
+                else
+                {
+                    string title = "BigBirdBot - Error";
+                    string desc = $"This keyword does not exist for this server.";
+                    string thumbnailUrl = Constants.Constants.errorImageUrl;
+                    string imageUrl = "";
+                    string createdByMsg = "Command from: " + Context.User.Username;
+
+                    EmbedHelper embed = new EmbedHelper();
+                    await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdByMsg, Discord.Color.Red, imageUrl).Build());
+                }
+            }
             else
             {
                 string title = "BigBirdBot - Error";
@@ -755,6 +799,222 @@ namespace DiscordBot.Modules
                 // Error hnadling
                 string title = "BigBirdBot - Error";
                 string desc = $"Please provide a URL or image of Themis.";
+                string thumbnailUrl = Constants.Constants.errorImageUrl;
+                string imageUrl = "";
+                string createdByMsg = "Command from: " + Context.User.Username;
+
+                EmbedHelper embed = new EmbedHelper();
+                await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdByMsg, Discord.Color.Red, imageUrl).Build());
+            }
+        }
+
+        [Command("ereadd")]
+        public async Task HandleEreAdd([Remainder] string args = "")
+        {
+            if (args.Length > 0)
+            {
+                StoredProcedure stored = new StoredProcedure();
+
+                stored.UpdateCreate(Constants.Constants.discordBotConnStr, "AddErenville", new List<System.Data.SqlClient.SqlParameter>
+                {
+                    new System.Data.SqlClient.SqlParameter("@FilePath", args)
+                });
+
+                EmbedHelper embed = new EmbedHelper();
+                string title = "BigBirdBot - Added Image";
+                string desc = $"Added {args} successfully.";
+                string createdByMsg = "Command from: " + Context.User.Username;
+
+                await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, "", createdByMsg, Color.Blue).Build());
+            }
+            else if (Context.Message.Attachments.Count > 0)
+            {
+                var attachments = Context.Message.Attachments;
+                try
+                {
+                    StoredProcedure stored = new StoredProcedure();
+                    foreach (var attachment in attachments)
+                    {
+                        string path = @"C:\Users\Unmolded\Desktop\DiscordBot\Erenville\" + attachment.Filename;
+                        using (WebClient client = new WebClient())
+                        {
+                            client.DownloadFileAsync(new Uri(attachment.Url), path);
+                        }
+
+                        stored.UpdateCreate(Constants.Constants.discordBotConnStr, "AddErenville", new List<System.Data.SqlClient.SqlParameter>
+                        {
+                            new SqlParameter("@FilePath", path)
+                        });
+                    }
+
+                    EmbedHelper embed = new EmbedHelper();
+                    string title = "BigBirdBot - Added Image";
+                    string desc = $"Added attachment(s) successfully.";
+                    string createdByMsg = "Command from: " + Context.User.Username;
+                    await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, "", createdByMsg, Color.Blue).Build());
+                }
+                catch (Exception ex)
+                {
+                    // Error handling
+                    string title = "BigBirdBot - Error";
+                    string desc = ex.Message;
+                    string thumbnailUrl = Constants.Constants.errorImageUrl;
+                    string imageUrl = "";
+                    string createdByMsg = "Command from: " + Context.User.Username;
+
+                    EmbedHelper embed = new EmbedHelper();
+                    await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdByMsg, Discord.Color.Red, imageUrl).Build());
+                }
+            }
+            else
+            {
+                // Error hnadling
+                string title = "BigBirdBot - Error";
+                string desc = $"Please provide a URL or image of Erenville.";
+                string thumbnailUrl = Constants.Constants.errorImageUrl;
+                string imageUrl = "";
+                string createdByMsg = "Command from: " + Context.User.Username;
+
+                EmbedHelper embed = new EmbedHelper();
+                await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdByMsg, Discord.Color.Red, imageUrl).Build());
+            }
+        }
+
+        [Command("stinkyadd")]
+        public async Task HandleEstinenAdd([Remainder] string args = "")
+        {
+            if (args.Length > 0)
+            {
+                StoredProcedure stored = new StoredProcedure();
+
+                stored.UpdateCreate(Constants.Constants.discordBotConnStr, "AddStinky", new List<System.Data.SqlClient.SqlParameter>
+                {
+                    new System.Data.SqlClient.SqlParameter("@FilePath", args)
+                });
+
+                EmbedHelper embed = new EmbedHelper();
+                string title = "BigBirdBot - Added Image";
+                string desc = $"Added {args} successfully.";
+                string createdByMsg = "Command from: " + Context.User.Username;
+
+                await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, "", createdByMsg, Color.Blue).Build());
+            }
+            else if (Context.Message.Attachments.Count > 0)
+            {
+                var attachments = Context.Message.Attachments;
+                try
+                {
+                    StoredProcedure stored = new StoredProcedure();
+                    foreach (var attachment in attachments)
+                    {
+                        string path = @"C:\Users\Unmolded\Desktop\DiscordBot\Stinky\" + attachment.Filename;
+                        using (WebClient client = new WebClient())
+                        {
+                            client.DownloadFileAsync(new Uri(attachment.Url), path);
+                        }
+
+                        stored.UpdateCreate(Constants.Constants.discordBotConnStr, "AddStinky", new List<System.Data.SqlClient.SqlParameter>
+                        {
+                            new SqlParameter("@FilePath", path)
+                        });
+                    }
+
+                    EmbedHelper embed = new EmbedHelper();
+                    string title = "BigBirdBot - Added Image";
+                    string desc = $"Added attachment(s) successfully.";
+                    string createdByMsg = "Command from: " + Context.User.Username;
+                    await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, "", createdByMsg, Color.Blue).Build());
+                }
+                catch (Exception ex)
+                {
+                    // Error handling
+                    string title = "BigBirdBot - Error";
+                    string desc = ex.Message;
+                    string thumbnailUrl = Constants.Constants.errorImageUrl;
+                    string imageUrl = "";
+                    string createdByMsg = "Command from: " + Context.User.Username;
+
+                    EmbedHelper embed = new EmbedHelper();
+                    await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdByMsg, Discord.Color.Red, imageUrl).Build());
+                }
+            }
+            else
+            {
+                // Error hnadling
+                string title = "BigBirdBot - Error";
+                string desc = $"Please provide a URL or image of Stinky.";
+                string thumbnailUrl = Constants.Constants.errorImageUrl;
+                string imageUrl = "";
+                string createdByMsg = "Command from: " + Context.User.Username;
+
+                EmbedHelper embed = new EmbedHelper();
+                await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdByMsg, Discord.Color.Red, imageUrl).Build());
+            }
+        }
+
+        [Command("alucadd")]
+        public async Task HandleAlucardAdd([Remainder] string args = "")
+        {
+            if (args.Length > 0)
+            {
+                StoredProcedure stored = new StoredProcedure();
+
+                stored.UpdateCreate(Constants.Constants.discordBotConnStr, "AddAlucard", new List<System.Data.SqlClient.SqlParameter>
+                {
+                    new System.Data.SqlClient.SqlParameter("@FilePath", args)
+                });
+
+                EmbedHelper embed = new EmbedHelper();
+                string title = "BigBirdBot - Added Image";
+                string desc = $"Added {args} successfully.";
+                string createdByMsg = "Command from: " + Context.User.Username;
+
+                await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, "", createdByMsg, Color.Blue).Build());
+            }
+            else if (Context.Message.Attachments.Count > 0)
+            {
+                var attachments = Context.Message.Attachments;
+                try
+                {
+                    StoredProcedure stored = new StoredProcedure();
+                    foreach (var attachment in attachments)
+                    {
+                        string path = @"C:\Users\Unmolded\Desktop\DiscordBot\Alucard\" + attachment.Filename;
+                        using (WebClient client = new WebClient())
+                        {
+                            client.DownloadFileAsync(new Uri(attachment.Url), path);
+                        }
+
+                        stored.UpdateCreate(Constants.Constants.discordBotConnStr, "AddAlucard", new List<System.Data.SqlClient.SqlParameter>
+                        {
+                            new SqlParameter("@FilePath", path)
+                        });
+                    }
+
+                    EmbedHelper embed = new EmbedHelper();
+                    string title = "BigBirdBot - Added Image";
+                    string desc = $"Added attachment(s) successfully.";
+                    string createdByMsg = "Command from: " + Context.User.Username;
+                    await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, "", createdByMsg, Color.Blue).Build());
+                }
+                catch (Exception ex)
+                {
+                    // Error handling
+                    string title = "BigBirdBot - Error";
+                    string desc = ex.Message;
+                    string thumbnailUrl = Constants.Constants.errorImageUrl;
+                    string imageUrl = "";
+                    string createdByMsg = "Command from: " + Context.User.Username;
+
+                    EmbedHelper embed = new EmbedHelper();
+                    await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdByMsg, Discord.Color.Red, imageUrl).Build());
+                }
+            }
+            else
+            {
+                // Error hnadling
+                string title = "BigBirdBot - Error";
+                string desc = $"Please provide a URL or image of Stinky.";
                 string thumbnailUrl = Constants.Constants.errorImageUrl;
                 string imageUrl = "";
                 string createdByMsg = "Command from: " + Context.User.Username;
