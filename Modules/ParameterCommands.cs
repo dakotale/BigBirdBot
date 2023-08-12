@@ -633,7 +633,7 @@ namespace DiscordBot.Modules
 
                     // Output when we are all good
                     title = "BigBirdBot - Added Thirst Command";
-                    desc = "Added command successfully, please check the **" + tableName + "** created.";
+                    desc = "Added command successfully, please check the **" + tableName + "** channel created.";
                     await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, "", createdByMsg, Color.Blue).Build());
                 }
                 catch (Exception ex)
