@@ -284,6 +284,75 @@ class Program
                         }
                         else
                         {
+                            if (message.StartsWith("-"))
+                            {
+                                string keyword = "";
+                                if (message.Split(' ').Count() == 1)
+                                    keyword = message.Replace("-", "");
+                                if (message.Split(' ').Count() > 1)
+                                    keyword = message.Split(' ')[0].Replace("-", "");
+
+                                // Check if it's in the ThirstMap and run the add command
+                                List<SqlParameter> parameters = new List<SqlParameter>();
+                                parameters.Add(new SqlParameter("@AddKeyword", keyword));
+
+                                DataTable dt = stored.Select(connStr, "GetThirstTableByMap", parameters);
+                                if (dt.Rows.Count > 0)
+                                {
+                                    if (msg.Attachments.Count > 0)
+                                    {
+                                        foreach (DataRow dr in dt.Rows)
+                                        {
+                                            var attachments = msg.Attachments;
+                                            foreach (var attachment in attachments)
+                                            {
+                                                string path = @"C:\Users\Unmolded\Desktop\DiscordBot\" + dr["TableName"].ToString() + @"\" + attachment.Filename;
+                                                using (WebClient client = new WebClient())
+                                                {
+                                                    client.DownloadFileAsync(new Uri(attachment.Url), path);
+                                                }
+
+                                                stored.UpdateCreate(connStr, "AddThirstByMap", new List<System.Data.SqlClient.SqlParameter>
+                                                {
+                                                    new SqlParameter("@FilePath", path),
+                                                    new SqlParameter("@TableName", dr["TableName"].ToString())
+                                                });
+                                            }
+
+                                            var embed = new EmbedBuilder
+                                            {
+                                                Title = "BigBirdBot - Added Image",
+                                                Color = Color.Blue,
+                                                Description = "Added attachment(s) successfully."
+                                            };
+
+                                            await msg.Channel.SendMessageAsync(embed: embed.Build());
+                                        }
+                                    }
+                                    if (message.Split(' ').Count() > 2)
+                                    {
+                                        string content = message.Split(' ')[1];
+                                        foreach (DataRow dr in dt.Rows)
+                                        {
+                                            stored.UpdateCreate(connStr, "AddThirstByMap", new List<System.Data.SqlClient.SqlParameter>
+                                            {
+                                                new SqlParameter("@FilePath", content),
+                                                new SqlParameter("@TableName", dr["TableName"].ToString())
+                                            });
+
+                                            var embed = new EmbedBuilder
+                                            {
+                                                Title = "BigBirdBot - Added Image",
+                                                Color = Color.Blue,
+                                                Description = "Added attachment(s) successfully."
+                                            };
+
+                                            await msg.Channel.SendMessageAsync(embed: embed.Build());
+                                        }
+                                    }
+                                }
+                            }
+
                             // Todo, check all the commands eventually but for now let's stop the accidently double triggering.
                             if (!message.StartsWith("-") && !message.StartsWith("$"))
                             {
