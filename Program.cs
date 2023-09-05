@@ -6,8 +6,6 @@ using Discord.Commands;
 using DiscordBot.Services;
 using DiscordBot.Constants;
 using Microsoft.Extensions.DependencyInjection;
-using DiscordBot.Anime;
-using DiscordBot.Currency;
 using System.Data.SqlClient;
 using System.Data;
 using Google.Apis.Customsearch.v1;
@@ -20,6 +18,7 @@ using KillersLibrary.Services;
 using OpenAI_API.Models;
 using Fergun.Interactive;
 using SpotifyAPI.Web;
+using static System.Net.WebRequestMethods;
 
 class Program
 {
@@ -150,21 +149,31 @@ class Program
                                 await msg.Channel.SendMessageAsync(embed: embed.Build());
                             }
                         }
-                        else if (message.Contains("https://twitter.com"))
+                        else if (message.Contains("https://twitter.com") || message.Contains("https://x.com"))
                         {
                             DataTable dtTwitter = stored.Select(connStr, "GetTwitterBroken", new List<SqlParameter>());
                             bool isTwitterBroken = false;
                             foreach (DataRow dr in dtTwitter.Rows)
-                            {
                                 isTwitterBroken = bool.Parse(dr["TwitterBroken"].ToString());
-                            }
+                            
                             if (isTwitterBroken)
                             {
-                                await msg.Channel.SendMessageAsync(message.Replace("twitter", "fxtwitter"));
+                                if (message.Contains("https://twitter.com"))
+                                    message = message.Replace("twitter", "fxtwitter");
+                                if (message.Contains("https://x.com"))
+                                    message = message.Replace("x.com", "fxtwitter.com");
+
+                                message = message.Split("https://")[1];
+
+                                if (message.Split(' ').Count() > 1)
+                                    message = message.Split(' ')[0];
+
+                                message = "https://" + message;
+                                await msg.Channel.SendMessageAsync(message);
                             }
                             else
                             {
-                                var urlStuff = message.Split(new string[] { "https://twitter.com/" }, StringSplitOptions.None);
+                                var urlStuff = message.Split(new string[] { "https://twitter.com/", "https://x.com" }, StringSplitOptions.None);
                                 try
                                 {
                                     if (urlStuff.Length > 0)
@@ -378,6 +387,12 @@ class Program
                                                 await msg.Channel.SendFileAsync(dr["ChatAction"].ToString());
                                             else
                                                 await sender.SendMessageAsync(dr["ChatAction"].ToString());
+
+                                            parameters.Clear();
+                                            parameters.Add(new SqlParameter("@ChatKeywordID", int.Parse(dr["ChatKeywordID"].ToString())));
+                                            parameters.Add(new SqlParameter("@MessageText", message));
+                                            parameters.Add(new SqlParameter("@CreatedBy", msg.Author.Username));
+                                            storedProcedure.UpdateCreate(connStr, "AddAuditKeyword", parameters);
                                         }
                                     }
                                 }
@@ -445,6 +460,16 @@ class Program
         {
             await channel.SendMessageAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Color.Gold, imageUrl).Build());
         }
+
+        StoredProcedure stored = new StoredProcedure();
+        stored.UpdateCreate(Constants.discordBotConnStr, "AddUser", new List<SqlParameter>
+        {
+            new SqlParameter("@UserID", arg.Id.ToString()),
+            new SqlParameter("@Username", arg.Username),
+            new SqlParameter("@JoinDate", arg.JoinedAt),
+            new SqlParameter("@GuildName", arg.Guild.Name),
+            new SqlParameter("@Nickname", arg.Nickname)
+        });
     }
 
     private Task JoinedGuild(SocketGuild arg)
@@ -498,7 +523,8 @@ class Program
         return new ServiceCollection()
             .AddSingleton(new DiscordSocketConfig
             {
-                GatewayIntents = GatewayIntents.AllUnprivileged | GatewayIntents.MessageContent | GatewayIntents.GuildMembers
+                GatewayIntents = GatewayIntents.AllUnprivileged | GatewayIntents.MessageContent | GatewayIntents.GuildMembers,
+                AlwaysDownloadUsers = true
             })
             .AddSingleton<DiscordSocketClient>()
             .AddSingleton<CommandService>()
@@ -521,10 +547,6 @@ class Program
 
     private async Task HandleReactionAsync(Cacheable<IUserMessage, ulong> message, Cacheable<IMessageChannel, ulong> channel, SocketReaction reaction)
     {
-        Emoji emoji = new Emoji("\uD83E\uDD0D");
-        Emoji questionEmoji = new Emoji("\u2754");
-        Emoji deactivateEmoji = new Emoji("❌");
-
         Emoji triviaA = new Emoji("🇦");
         Emoji triviaB = new Emoji("🇧");
         Emoji triviaC = new Emoji("🇨");
@@ -534,137 +556,6 @@ class Program
         StoredProcedure stored = new StoredProcedure();
         if (_client.GetUser(reaction.UserId).IsBot) return;
 
-        if (reaction.Emote.Name == deactivateEmoji.Name)
-        {
-            string connStr = Constants.discordBotConnStr;
-            try
-            {
-                if (embed.Count > 0)
-                {
-                    //Marriage marriage = new Marriage();
-                    //List<Marriage> marriages = marriage.GetMarriages(connStr);
-                    //MarriageCharacter marriageCharacter = new MarriageCharacter();
-                    //List<MarriageCharacter> marriageCharacters = marriageCharacter.GetMarriageCharacters(connStr);
-                    foreach (var e in embed)
-                    {
-                        //var marriageCount = marriages.Where(s => s.ImageURL.Equals(e.Image.Value.Url)).Count();
-                        // SP: GetMarriageCharactersByURL
-                        stored.UpdateCreate(connStr, "UpdateMarriageCharacters", new List<SqlParameter>
-                        {
-                            new SqlParameter("@CharacterImageURL", e.Image.Value.Url),
-                            new SqlParameter("@DeactivatedBy", _client.GetUser(reaction.UserId).Username)
-                        });
-                        
-                        await channel.Value.SendMessageAsync(e.Title + " was deactivated by " + _client.GetUser(reaction.UserId).Username + " and won't pop up again, thanks for cleaning up the database! You are the best :smile:");
-                        await reaction.Channel.DeleteMessageAsync(reaction.MessageId);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                EmbedHelper errorEmbed = new EmbedHelper();
-                await channel.Value.SendMessageAsync(embed: errorEmbed.BuildMessageEmbed("BigBirdBot - Error", ex.Message, Constants.errorImageUrl, "", Color.Red, "").Build());
-            }
-        }
-        if (reaction.Emote.Name == questionEmoji.Name)
-        {
-            string connStr = Constants.discordBotConnStr;
-            try
-            {
-                if (embed.Count > 0)
-                {
-                    foreach (var e in embed)
-                    {
-                        CustomsearchService customSearchService = new CustomsearchService(new Google.Apis.Services.BaseClientService.Initializer() { ApiKey = Constants.googleSearchApiKey });
-                        CseResource.ListRequest listRequest = customSearchService.Cse.List();
-                        listRequest.Cx = Constants.googleSearchId;
-                        listRequest.ExactTerms = e.Title;
-                        listRequest.Start = 1;
-                        listRequest.Num = 1;
-                        var results = listRequest.Execute();
-                        if (results.Items != null)
-                        {
-                            if (results.Items.Count > 0)
-                            {
-                                await channel.Value.SendMessageAsync("Here is more information on " + e.Title + ": " + results.Items.Select(s => s.Link).FirstOrDefault());
-                            }
-                            else
-                            {
-                                await channel.Value.SendMessageAsync("No results found for " + e.Title);
-                            }
-                        }
-                        else
-                        {
-                            await channel.Value.SendMessageAsync("No results found for " + e.Title);
-                        }
-                    }
-                }
-            }
-            catch (Exception e)
-            {
-                EmbedHelper errorEmbed = new EmbedHelper();
-                await channel.Value.SendMessageAsync(embed: errorEmbed.BuildMessageEmbed("BigBirdBot - Error", e.Message, Constants.errorImageUrl, "", Color.Red, "").Build());
-            }
-        }
-        if (reaction.Emote.Name == emoji.Name)
-        {
-            string connStr = Constants.discordBotConnStr;
-            try
-            {
-                if (embed.Count > 0)
-                {
-                    Marriage marriage = new Marriage();
-                    List<Marriage> marriages = marriage.GetMarriages(connStr);
-                    MarriageCharacter marriageCharacter = new MarriageCharacter();
-                    List<MarriageCharacter> marriageCharacters = marriageCharacter.GetMarriageCharacters(connStr);
-
-                    foreach (var e in embed)
-                    {
-                        var marriageCount = marriages.Where(s => s.ImageURL.Equals(e.Image.Value.Url)).Count();
-                        if (marriageCount > 0)
-                        {
-                            foreach (var m in marriages)
-                            {
-                                if (m.CharacterName.Equals(e.Title))
-                                {
-                                    await channel.Value.SendMessageAsync(":frowning: Sorry " + reaction.User.Value.Username + ", " + m.CharacterName + " is already married to " + m.CreatedBy + ":frowning:");
-                                }
-                            }
-
-                        }
-                        else
-                        {
-                            Currency currency = new Currency();
-                            var userId = Convert.ToInt64(reaction.User.Value.Id);
-                            var animeId = marriageCharacters.Where(s => s.CharacterURL.Equals(e.Image.Value.Url)).Select(s => s.AnimeID).FirstOrDefault();
-                            stored.UpdateCreate(Constants.discordBotConnStr, "AddAnimeMarriage", new List<SqlParameter>
-                            {
-                                new SqlParameter("@AnimeID", animeId),
-                                new SqlParameter("@CharacterName", e.Title),
-                                new SqlParameter("@ImageURL", e.Image.Value.Url),
-                                new SqlParameter("@CreatedBy", reaction.User.Value.Username)
-                            });
-
-                            var currencyVal = marriageCharacters.Where(s => s.CharacterURL.Equals(e.Image.Value.Url)).Select(s => s.CurrencyValue).FirstOrDefault();
-                            var currentUser = currency.GetCurrencyUser(Constants.discordBotConnStr, userId);
-                            foreach (var c in currentUser)
-                            {
-                                currency.UpdateCurrencyUser(Constants.discordBotConnStr, userId, (c.CurrencyValue + currencyVal));
-                            }
-
-                            await channel.Value.SendMessageAsync(":two_hearts: Congratulations!  **" + reaction.User.Value.Username + "** and **" + e.Title + "** are now married :two_hearts:");
-                            await reaction.Channel.DeleteMessageAsync(reaction.MessageId);
-                        }
-                    }
-
-                }
-            }
-            catch (Exception e)
-            {
-                EmbedHelper errorEmbed = new EmbedHelper();
-                await channel.Value.SendMessageAsync(embed: errorEmbed.BuildMessageEmbed("BigBirdBot - Error", e.Message, Constants.errorImageUrl, "", Color.Red, "").Build());
-            }
-        }
         if (reaction.Emote.Name == triviaA.Name || reaction.Emote.Name == triviaB.Name || reaction.Emote.Name == triviaC.Name || reaction.Emote.Name == triviaD.Name)
         {
             string connStr = Constants.discordBotConnStr;

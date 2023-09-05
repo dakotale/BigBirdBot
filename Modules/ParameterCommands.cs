@@ -10,6 +10,7 @@ using Discord;
 using System.Data.SqlClient;
 using Discord.WebSocket;
 using Discord.Interactions;
+using System.Threading.Channels;
 
 namespace DiscordBot.Modules
 {
@@ -67,38 +68,6 @@ namespace DiscordBot.Modules
 
             EmbedHelper embed = new EmbedHelper();
             await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Discord.Color.Green).Build());
-        }
-
-        [Command("image")]
-        [Alias("i")]
-        [Discord.Commands.Summary("Generate an image off a prompt.")]
-        public async Task HandleImageGen([Remainder] string prompt)
-        {
-            audit.InsertAudit("image", Context.User.Username, Constants.Constants.discordBotConnStr);
-            CommandHelper helper = new CommandHelper();
-            var image = helper.GetImage(prompt).Result;
-            if (image.Data != null && image.Data.Count > 0)
-            {
-                string title = "BigBirdBot - Image";
-                string desc = $"{prompt}";
-                string thumbnailUrl = "";
-                string imageUrl = image.Data[0].Url;
-                string createdBy = "Command from: " + Context.User.Username;
-
-                EmbedHelper embed = new EmbedHelper();
-                await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Discord.Color.Green, imageUrl).Build());
-            }
-            else
-            {
-                string title = "BigBirdBot - Error";
-                string desc = $"**There were no images found or the prompt was inappropriate.**";
-                string thumbnailUrl = Constants.Constants.errorImageUrl;
-                string imageUrl = "";
-                string createdBy = "Command from: " + Context.User.Username;
-
-                EmbedHelper embed = new EmbedHelper();
-                await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Discord.Color.Red, imageUrl).Build());
-            }
         }
 
         [Command("ka")]
@@ -589,7 +558,8 @@ namespace DiscordBot.Modules
              * 8. Assuming bot has permission, create the text channel using the name of the table and append the first message in it
              * 
              * Command Ex: -addthirst <addtest>, <test>, <testKeyword>
-             */ 
+             */
+            audit.InsertAudit("addthirst", Context.User.Username, Constants.Constants.discordBotConnStr);
             if (args.Length > 0)
             {
                 try
@@ -600,8 +570,8 @@ namespace DiscordBot.Modules
                     string createdBy = Context.User.Username;
                     var serverId = Int64.Parse(Context.Guild.Id.ToString());
                     string addKeyword = thirstParams[0];
-                    string tableName = thirstParams[1];
-                    string keyword = thirstParams[2];
+                    string tableName = thirstParams[1].ToLower();
+                    string keyword = thirstParams[2].ToLower();
 
                     EmbedHelper embed = new EmbedHelper();
                     string title = "";
@@ -644,6 +614,53 @@ namespace DiscordBot.Modules
                     string createdByMsg = "Command from: " + Context.User.Username;
                     await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, "", createdByMsg, Color.Red).Build());
                 }
+            }
+        }
+
+        [Command("addbirthday")]
+        [RequireRole("actual degens")]
+        public async Task HandleBirthday([Remainder] string args = "")
+        {
+            // Format: -addbirthday <date>, <name>
+            // 1142683492447174656 is birthdays role
+            StoredProcedure storedProcedure = new StoredProcedure();
+            string[] objects = args.Split(',');
+            try
+            {
+                if (objects.Length == 2)
+                {
+                    DataTable dtNewEvent = storedProcedure.Select(Constants.Constants.discordBotConnStr, "AddEvent", new List<SqlParameter>
+                    {
+                        new SqlParameter("@EventDateTime", DateTime.Parse(objects[0])),
+                        new SqlParameter("@EventName", objects[1]),
+                        new SqlParameter("@EventDescription", objects[1]),
+                        new SqlParameter("@EventUserUTCDate", TimeZoneInfo.ConvertTimeToUtc(DateTime.Parse(objects[0]), TimeZoneInfo.Local)),
+                        new SqlParameter("@EventChannelSource", Context.Message.Channel.Id.ToString()),
+                        new SqlParameter("@CreatedBy", "<@&1142683492447174656>")
+                    });
+
+                    foreach (DataRow dr in dtNewEvent.Rows)
+                    {
+                        var embed = new EmbedBuilder
+                        {
+                            Title = ":calendar_spiral: BigBirdBot - Birthday - " + dr["EventName"].ToString(),
+                            Color = Color.Gold
+                        };
+                        embed
+                            .AddField("Time", dr["eventDateTime"].ToString())
+                            .WithFooter(footer => footer.Text = "Created by " + Context.User.Username)
+                            .WithCurrentTimestamp();
+                        await ReplyAsync(embed: embed.Build());
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                EmbedHelper embed = new EmbedHelper();
+                string title = "BigBirdBot - Birthday Error";
+                string desc = e.Message;
+                string createdByMsg = "Command from: " + Context.User.Username;
+                await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, "", createdByMsg, Color.Red).Build());
             }
         }
     }

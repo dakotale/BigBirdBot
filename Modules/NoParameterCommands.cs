@@ -3,7 +3,6 @@ using Discord.Commands;
 using DiscordBot.Constants;
 using System.Data.SqlClient;
 using System.Data;
-using DiscordBot.Anime;
 using DiscordBot.Helper;
 using Discord.Interactions;
 using System.Runtime.CompilerServices;
@@ -58,6 +57,7 @@ namespace DiscordBot.Modules
 
                 using (SqlConnection conn = new SqlConnection(Constants.Constants.discordBotConnStr))
                 {
+                    await Context.Guild.DownloadUsersAsync();
                     foreach (var user in Context.Guild.Users.ToList())
                     {
                         if (!user.IsBot)
@@ -85,90 +85,6 @@ namespace DiscordBot.Modules
                     }
                 }
                 await ReplyAsync("All users of the server were added to the database.");
-            }
-            catch (Exception e)
-            {
-                EmbedHelper embedHelper = new EmbedHelper();
-                var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", e.Message, Constants.Constants.errorImageUrl, "", Color.Red, "");
-                await ReplyAsync(embed: embed.Build());
-            }
-        }
-
-        [Command("amm")]
-        [Discord.Commands.Summary("Anime/Manga characters to marry.  This is a data dump and may not be accurate.")]
-        public async Task HandleAmmCommand()
-        {
-            audit.InsertAudit("amm", Context.User.Username, Constants.Constants.discordBotConnStr);
-
-            string connStr = Constants.Constants.discordBotConnStr;
-
-            Random r = new Random();
-            Anime.MarriageCharacter marriage = new Anime.MarriageCharacter();
-
-            List<Anime.MarriageCharacter> marriageCharacters = marriage.GetOneMarriageCharacters(connStr);
-
-            foreach (var m in marriageCharacters)
-            {
-                var embed = new EmbedBuilder
-                {
-                    Title = "BigBirdBot - Marriage - " + m.CharacterName,
-                    Description = "Currency Given: " + m.CurrencyValue + " :diamond_shape_with_a_dot_inside: ",
-                    ImageUrl = m.CharacterURL,
-                    Color = Color.Gold
-                };
-                var message = await ReplyAsync(embed: embed.Build());
-                Emoji emoji = new Emoji("\uD83E\uDD0D");
-                await message.AddReactionAsync(emoji);
-                emoji = new Emoji("\u2754");
-                await message.AddReactionAsync(emoji);
-                emoji = new Emoji("❌");
-                await message.AddReactionAsync(emoji);
-            }
-        }
-
-        [Command("ammlist")]
-        [Discord.Commands.Summary("List all your marriages into a pretty HTML file.")]
-        public async Task HandleAmmListCommand()
-        {
-            try
-            {
-                audit.InsertAudit("ammlist", Context.User.Username, Constants.Constants.discordBotConnStr);
-
-                string connStr = Constants.Constants.discordBotConnStr;
-                string currentUser = Context.User.Username;
-                string html = "";
-                using (SqlConnection conn = new SqlConnection(connStr))
-                {
-                    conn.Open();
-
-                    // 1.  create a command object identifying the stored procedure
-                    SqlCommand cmd = new SqlCommand("GetMarriageList", conn);
-
-                    // 2. set the command object so it knows to execute a stored procedure
-                    cmd.CommandType = CommandType.StoredProcedure;
-
-                    // 3. add parameter to command, which will be passed to the stored procedure
-                    cmd.Parameters.Add(new SqlParameter("@CreatedBy", currentUser));
-
-                    // execute the command
-                    SqlDataReader rdr = cmd.ExecuteReader();
-
-                    if (rdr.Read())
-                    {
-                        html = rdr["HTML"].ToString();
-                        html = html.Replace("td", "td class=text-center");
-                    }
-
-                    conn.Close();
-                    cmd.Dispose();
-                }
-
-                await File.WriteAllTextAsync(@"C:\Users\Administrator\Desktop\HTML\" + currentUser + "Marriages.html", html);
-
-                Marriage marriage = new Marriage();
-                List<Anime.Marriage> marriages = marriage.GetMarriages(connStr);
-                await ReplyAsync(":bell:**" + currentUser + "'s Marriages (" + marriages.Where(s => s.CreatedBy.Equals(currentUser)).ToList().Count.ToString() + " total) - Download the file below** :bell:");
-                await Context.Channel.SendFileAsync(@"C:\Users\DZL\Desktop\HTML\" + currentUser + "Marriages.html");
             }
             catch (Exception e)
             {
@@ -248,85 +164,6 @@ namespace DiscordBot.Modules
 
             EmbedHelper embed = new EmbedHelper();
             await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Green, imageUrl).Build());
-        }
-
-        [Command("snake")]
-        public async Task HandleSnake()
-        {
-            audit.InsertAudit("snake", Context.User.Username, Constants.Constants.discordBotConnStr);
-            StoredProcedure procedure = new StoredProcedure();
-            EmbedHelper embed = new EmbedHelper();
-            CommandHelper helper = new CommandHelper();
-            var image = helper.GetImage("snake").Result;
-
-            DataTable dt = procedure.Select(Constants.Constants.discordBotConnStr, "GetSnake", new List<SqlParameter>());
-            string snakeFact = "";
-
-            if (dt.Rows.Count > 0 && image.Data.Count > 0)
-            {
-                foreach (DataRow row in dt.Rows)
-                {
-                    snakeFact = row["SnakeFact"].ToString();
-
-                    string title = "BigBirdBot - Snake";
-                    string desc = $"{snakeFact}";
-                    string thumbnailUrl = "";
-                    string imageUrl = image.Data[0].Url;
-                    string createdBy = "Command from: " + Context.User.Username;
-
-                    await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Discord.Color.Green, imageUrl).Build());
-                }
-            }
-        }
-
-        [Command("turtle")]
-        public async Task HandleTurtle()
-        {
-            audit.InsertAudit("turtle", Context.User.Username, Constants.Constants.discordBotConnStr);
-            StoredProcedure procedure = new StoredProcedure();
-            EmbedHelper embed = new EmbedHelper();
-            CommandHelper helper = new CommandHelper();
-            var image = helper.GetImage("turtle").Result;
-
-            if (image.Data.Count > 0)
-            {
-                string title = "BigBirdBot - Turtle";
-                string desc = $"";
-                string thumbnailUrl = "";
-                string imageUrl = image.Data[0].Url;
-                string createdBy = "Command from: " + Context.User.Username;
-
-                await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Discord.Color.Green, imageUrl).Build());
-            }
-        }
-
-        [Command("lizard")]
-        public async Task HandleLizard()
-        {
-            audit.InsertAudit("lizard", Context.User.Username, Constants.Constants.discordBotConnStr);
-            StoredProcedure procedure = new StoredProcedure();
-            EmbedHelper embed = new EmbedHelper();
-            CommandHelper helper = new CommandHelper();
-            var image = helper.GetImage("lizard").Result;
-
-            DataTable dt = procedure.Select(Constants.Constants.discordBotConnStr, "GetLizard", new List<SqlParameter>());
-            string lizardFact = "";
-
-            if (dt.Rows.Count > 0 && image.Data.Count > 0)
-            {
-                foreach (DataRow row in dt.Rows)
-                {
-                    lizardFact = row["LizardFact"].ToString();
-
-                    string title = "BigBirdBot - Lizard";
-                    string desc = $"{lizardFact}";
-                    string thumbnailUrl = "";
-                    string imageUrl = image.Data[0].Url;
-                    string createdBy = "Command from: " + Context.User.Username;
-
-                    await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Discord.Color.Green, imageUrl).Build());
-                }
-            }
         }
 
         [Command("raffle")]
@@ -439,7 +276,7 @@ namespace DiscordBot.Modules
             {
                 foreach(DataRow dr in dt.Rows)
                 {
-                    output += $"__Most Recent Error Message Reported__\nSource: {dr["Source"].ToString()}\nSeverity: {dr["Severity"].ToString()}\nMessage: {dr["Message"].ToString()}\nException: {dr["Exception"].ToString()}";
+                    output += $"__Most Recent Error Message Reported__\nDate Logged: {dr["CreatedOn"].ToString()}\nSource: {dr["Source"].ToString()}\nSeverity: {dr["Severity"].ToString()}\nMessage: {dr["Message"].ToString()}\nException: {dr["Exception"].ToString()}";
                 }
                 await ReplyAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Error Log", output, "", Context.Message.Author.Username, Discord.Color.Red).Build());
             }
