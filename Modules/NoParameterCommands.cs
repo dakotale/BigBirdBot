@@ -19,7 +19,7 @@ namespace DiscordBot.Modules
         {
             try
             {
-                audit.InsertAudit("avatar", Context.User.Username, Constants.Constants.discordBotConnStr);
+                audit.InsertAudit("avatar", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
 
                 string title = "BigBirdBot - Avatar";
                 string desc = $"";
@@ -53,7 +53,7 @@ namespace DiscordBot.Modules
         {
             try
             {
-                audit.InsertAudit("populateallusers", Context.User.Username, Constants.Constants.discordBotConnStr);
+                audit.InsertAudit("populateallusers", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
 
                 using (SqlConnection conn = new SqlConnection(Constants.Constants.discordBotConnStr))
                 {
@@ -102,7 +102,7 @@ namespace DiscordBot.Modules
             {
                 string connStr = Constants.Constants.discordBotConnStr;
 
-                audit.InsertAudit("errmusiclog", Context.User.Username, Constants.Constants.discordBotConnStr);
+                audit.InsertAudit("errmusiclog", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
 
                 MusicLog musicLog = new MusicLog();
                 List<MusicLog> musicLogs = musicLog.GetMusicLog(connStr);
@@ -140,7 +140,7 @@ namespace DiscordBot.Modules
         [Command("kaonoff")]
         public async Task HandleKeywordOnOff()
         {
-            audit.InsertAudit("kaonoff", Context.User.Username, Constants.Constants.discordBotConnStr);
+            audit.InsertAudit("kaonoff", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             StoredProcedure procedure = new StoredProcedure();
             var serverId = Int64.Parse(Context.Guild.Id.ToString());
             string result = "";
@@ -169,7 +169,7 @@ namespace DiscordBot.Modules
         [Command("raffle")]
         public async Task HandleRaffle()
         {
-            audit.InsertAudit("raffle", Context.User.Username, Constants.Constants.discordBotConnStr);
+            audit.InsertAudit("raffle", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             var userList = Context.Guild.GetUsersAsync().ToListAsync().Result;
             foreach (var user in userList)
             {
@@ -211,11 +211,11 @@ namespace DiscordBot.Modules
         [Command("twitter")]
         public async Task HandleTwitterEmbeds()
         {
-            audit.InsertAudit("twitter", Context.User.Username, Constants.Constants.discordBotConnStr);
+            audit.InsertAudit("twitter", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             StoredProcedure procedure = new StoredProcedure();
             string result = "";
 
-            DataTable dt = procedure.Select(Constants.Constants.discordBotConnStr, "UpdateTwitterBroken", new List<SqlParameter>());
+            DataTable dt = procedure.Select(Constants.Constants.discordBotConnStr, "UpdateTwitterBroken", new List<SqlParameter> { new SqlParameter("@ServerID", Int64.Parse(Context.Guild.Id.ToString())) });
 
             if (dt.Rows.Count > 0)
             {
@@ -242,7 +242,7 @@ namespace DiscordBot.Modules
             int i = 1;
 
             StoredProcedure stored = new StoredProcedure();
-            string output = "__**Keyword - Added On - Added By**__\n";
+            string output = "";
 
             DataTable dt = stored.Select(connStr, "GetKeywordsByServerUID", new List<SqlParameter>
             {
@@ -253,7 +253,7 @@ namespace DiscordBot.Modules
             {
                 foreach (DataRow dr in dt.Rows)
                 {
-                    output += $"**{i.ToString()}.** {dr["Keyword"].ToString()} - {DateTime.Parse(dr["CreatedOn"].ToString()).ToString("M/dd/yyyy")} - {dr["CreatedBy"].ToString()}\n";
+                    output += $"**{i.ToString()}.** {dr["Keyword"].ToString().Trim()}\n";
                     i++;
                 }
 

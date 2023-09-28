@@ -19,7 +19,7 @@ namespace DiscordBot.Modules
         [Command("trivia")]
         public async Task HandleTrivia()
         {
-            audit.InsertAudit("trivia", Context.User.Username, Constants.Constants.discordBotConnStr);
+            audit.InsertAudit("trivia", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             StoredProcedure stored = new StoredProcedure();
             string token = "";
 

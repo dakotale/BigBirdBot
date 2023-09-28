@@ -11,7 +11,7 @@ namespace DiscordBot.Modules
         [Command("blackjack")]
         public async Task HandleBlackJack()
         {
-            audit.InsertAudit("blackjack", Context.User.Username, Constants.Constants.discordBotConnStr);
+            audit.InsertAudit("blackjack", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             // SPs in use
             // GetCard - Gets TOP(1) Random card and stores it in CardInUse
             // DeleteCardInUse - Truncate CardInUse

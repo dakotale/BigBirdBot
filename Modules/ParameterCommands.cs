@@ -23,7 +23,7 @@ namespace DiscordBot.Modules
         [Discord.Commands.Summary("Random number out of a certain range.")]
         public async Task GenerateRandomNumber([Remainder] int number)
         {
-            audit.InsertAudit("random", Context.User.Username, Constants.Constants.discordBotConnStr);
+            audit.InsertAudit("random", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
 
             Random r = new Random();
             int i = r.Next(1, number + 1);
@@ -42,7 +42,7 @@ namespace DiscordBot.Modules
         [Discord.Commands.Summary("Turn your message into emojis.")]
         public async Task HandleEmojiTextCommand([Remainder] string message)
         {
-            audit.InsertAudit("etext", Context.User.Username, Constants.Constants.discordBotConnStr);
+            audit.InsertAudit("etext", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
 
             EmojiText emoji= new EmojiText();
             await ReplyAsync(emoji.GetEmojiString(message));
@@ -53,7 +53,7 @@ namespace DiscordBot.Modules
         [Discord.Commands.Summary("Shake the figurative Eight Ball.")]
         public async Task HandleEightBallCommand([Remainder] string message)
         {
-            audit.InsertAudit("8ball", Context.User.Username, Constants.Constants.discordBotConnStr);
+            audit.InsertAudit("8ball", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
 
             Random r = new Random();
             EightBall eight = new EightBall();
@@ -73,7 +73,7 @@ namespace DiscordBot.Modules
         [Command("ka")]
         public async Task HandleKeywordAdd([Remainder] string keyword)
         {
-            audit.InsertAudit("ka", Context.User.Username, Constants.Constants.discordBotConnStr);
+            audit.InsertAudit("ka", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             if (keyword.Trim().Length> 0 && keyword.Contains(","))
             {
                 var chatKeywordAction = keyword.Split(",");
@@ -147,7 +147,7 @@ namespace DiscordBot.Modules
         [Alias("kae")]
         public async Task HandleKeywordUpdate([Remainder] string keyword)
         {
-            audit.InsertAudit("kae", Context.User.Username, Constants.Constants.discordBotConnStr);
+            audit.InsertAudit("kae", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             if (keyword.Trim().Length > 0 && keyword.Contains(","))
             {
                 var chatKeywordAction = keyword.Split(",");
@@ -284,7 +284,7 @@ namespace DiscordBot.Modules
         [Alias("kad")]
         public async Task HandleKeywordDelete([Remainder] string keyword)
         {
-            audit.InsertAudit("kad", Context.User.Username, Constants.Constants.discordBotConnStr);
+            audit.InsertAudit("kad", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             var serverId = Int64.Parse(Context.Guild.Id.ToString());
 
             StoredProcedure procedure = new StoredProcedure();
@@ -328,7 +328,7 @@ namespace DiscordBot.Modules
         [Command("mcmod")]
         public async Task MCAddJar()
         {
-            audit.InsertAudit("mcmod", Context.User.Username, Constants.Constants.discordBotConnStr);
+            audit.InsertAudit("mcmod", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             WebClient wc = new WebClient();
             var attachments = Context.Message.Attachments;
             if (attachments != null)
@@ -359,7 +359,7 @@ namespace DiscordBot.Modules
         [Command("math")]
         public async Task HandleMath([Remainder] int number)
         {
-            audit.InsertAudit("math", Context.User.Username, Constants.Constants.discordBotConnStr);
+            audit.InsertAudit("math", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             var royalroad = number * 1.25;
             var normal = number * 1.5;
             var whoknows = number * 1.75;
@@ -371,14 +371,14 @@ namespace DiscordBot.Modules
         [Command("ascii")]
         public async Task HandleAscii([Remainder] string message)
         {
-            audit.InsertAudit("ascii", Context.User.Username, Constants.Constants.discordBotConnStr);
+            audit.InsertAudit("ascii", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             await ReplyAsync($"```{FiggleFonts.Standard.Render(message.Trim())}```");
         }
 
         [Command("choose")]
         public async Task HandleChoose([Remainder] string message)
         {
-            audit.InsertAudit("choose", Context.User.Username, Constants.Constants.discordBotConnStr);
+            audit.InsertAudit("choose", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             if (message.Contains(","))
             {
                 var resultSplit = message.Split(",");
@@ -410,7 +410,7 @@ namespace DiscordBot.Modules
         [Alias("a")]
         public async Task HandleChat([Remainder] string message)
         {
-            audit.InsertAudit("animal", Context.User.Username, Constants.Constants.discordBotConnStr);
+            audit.InsertAudit("animal", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             if (message.Contains(","))
             {
                 var resultSplit = message.Split(",");
@@ -481,7 +481,7 @@ namespace DiscordBot.Modules
         [Alias("p")]
         public async Task HandlePoll([Remainder] string args = "")
         {
-            audit.InsertAudit("poll", Context.User.Username, Constants.Constants.discordBotConnStr);
+            audit.InsertAudit("poll", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             List<Emoji> emojis = new List<Emoji>
             {
                 new Emoji("1️⃣"),
@@ -542,7 +542,6 @@ namespace DiscordBot.Modules
         }
 
         [Command("addthirst")]
-        [RequireRole("actual degens")]
         public async Task HandleAddThirst([Remainder] string args = "")
         {
             /*
@@ -558,8 +557,9 @@ namespace DiscordBot.Modules
              * 8. Assuming bot has permission, create the text channel using the name of the table and append the first message in it
              * 
              * Command Ex: -addthirst <addtest>, <test>, <testKeyword>
+             * TODO: Handle if the keyword exists to create channel in another server or return the keyword and textchannel already exists
              */
-            audit.InsertAudit("addthirst", Context.User.Username, Constants.Constants.discordBotConnStr);
+            audit.InsertAudit("addthirst", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             if (args.Length > 0)
             {
                 try
@@ -584,22 +584,55 @@ namespace DiscordBot.Modules
                     var guild = Context.Client.GetGuild(ulong.Parse(serverId.ToString()));
                     var categoryId = guild.CategoryChannels.First(c => c.Name == "thirsting").Id; // prod: thirsting
 
+                    DataTable dtCheck = stored.Select(Constants.Constants.discordBotConnStr, "CheckKeywordExistsThirstMap", new List<SqlParameter>
+                    {
+                        new SqlParameter("@Keyword", keyword)
+                    });
+
+                    if (dtCheck.Rows.Count > 0)
+                    {
+                        // Keyword exists already so we just need to create the channel and map to the server
+                        foreach (DataRow drCheck in dtCheck.Rows)
+                        {
+                            if (drCheck["ServerID"].ToString().Equals(serverId.ToString()))
+                            {
+                                title = "BigBirdBot - Thirst Command Exists";
+                                desc = "Keyword Exists for this Server.";
+                                await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, "", createdByMsg, Color.Blue).Build());
+                            }
+                        }
+
+                        DataRow dr = dtCheck.Rows[0];
+
+                        stored.UpdateCreate(Constants.Constants.discordBotConnStr, "AddThirstCommand", new List<System.Data.SqlClient.SqlParameter>
+                        {
+                            new SqlParameter("@ServerID", serverId),
+                            new SqlParameter("@Keyword", keyword),
+                            new SqlParameter("@AddKeyword", dr["AddKeyword"].ToString()),
+                            new SqlParameter("@CreatedBy", createdBy),
+                            new SqlParameter("@TableName", dr["TAbleName"].ToString())
+                        });
+                    }
+                    else
+                    {
+                        // Add Thirst Command
+                        stored.UpdateCreate(Constants.Constants.discordBotConnStr, "AddThirstCommand", new List<System.Data.SqlClient.SqlParameter>
+                        {
+                            new SqlParameter("@ServerID", serverId),
+                            new SqlParameter("@Keyword", keyword),
+                            new SqlParameter("@AddKeyword", addKeyword),
+                            new SqlParameter("@CreatedBy", createdBy),
+                            new SqlParameter("@TableName", tableName)
+                        });
+
+                        // Create directory on the server
+                        Directory.CreateDirectory(@"C:\Users\Unmolded\Desktop\DiscordBot\" + tableName + "_Thirst");
+                    }
+                    
+
                     title = "BigBirdBot - " + tableName + " Information";
                     desc = $"Keyword Added: **{keyword}**\nAdd Command: **-{addKeyword}**";
                     await guild.CreateTextChannelAsync(textChannelName, tcp => tcp.CategoryId = categoryId).Result.SendMessageAsync(embed: embed.BuildMessageEmbed(title, desc, "", createdByMsg, Color.Blue).Build()).Result.PinAsync();
-
-                    // Add Thirst Command
-                    stored.UpdateCreate(Constants.Constants.discordBotConnStr, "AddThirstCommand", new List<System.Data.SqlClient.SqlParameter>
-                    {
-                        new SqlParameter("@ServerID", serverId),
-                        new SqlParameter("@Keyword", keyword),
-                        new SqlParameter("@AddKeyword", addKeyword),
-                        new SqlParameter("@CreatedBy", createdBy),
-                        new SqlParameter("@TableName", tableName)
-                    });
-
-                    // Create directory on the server
-                    Directory.CreateDirectory(@"C:\Users\Unmolded\Desktop\DiscordBot\" + tableName + "_Thirst");
 
                     // Output when we are all good
                     title = "BigBirdBot - Added Thirst Command";
@@ -617,8 +650,8 @@ namespace DiscordBot.Modules
             }
         }
 
+        // Requirements: Need a role called Birthday
         [Command("addbirthday")]
-        [RequireRole("actual degens")]
         public async Task HandleBirthday([Remainder] string args = "")
         {
             // Format: -addbirthday <date>, <name>
@@ -629,6 +662,9 @@ namespace DiscordBot.Modules
             {
                 if (objects.Length == 2)
                 {
+                    var serverId = Int64.Parse(Context.Guild.Id.ToString());
+                    var guild = Context.Client.GetGuild(ulong.Parse(serverId.ToString()));
+
                     DataTable dtNewEvent = storedProcedure.Select(Constants.Constants.discordBotConnStr, "AddEvent", new List<SqlParameter>
                     {
                         new SqlParameter("@EventDateTime", DateTime.Parse(objects[0])),
@@ -636,7 +672,7 @@ namespace DiscordBot.Modules
                         new SqlParameter("@EventDescription", objects[1]),
                         new SqlParameter("@EventUserUTCDate", TimeZoneInfo.ConvertTimeToUtc(DateTime.Parse(objects[0]), TimeZoneInfo.Local)),
                         new SqlParameter("@EventChannelSource", Context.Message.Channel.Id.ToString()),
-                        new SqlParameter("@CreatedBy", "<@&1142683492447174656>")
+                        new SqlParameter("@CreatedBy", guild.Roles.Where(s => s.Name.Contains("birthday")).Select(s => s.Mention).FirstOrDefault())
                     });
 
                     foreach (DataRow dr in dtNewEvent.Rows)

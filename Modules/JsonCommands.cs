@@ -19,7 +19,7 @@ namespace DiscordBot.Modules
         {
             try
             {
-                audit.InsertAudit("wikip", Context.User.Username, Constants.Constants.discordBotConnStr);
+                audit.InsertAudit("wikip", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
                 // https://en.wikipedia.org/wiki/Special:Random
                 // https://en.wikipedia.org/api/rest_v1/page/random/summary
                 string apiUrl = "https://en.wikipedia.org/api/rest_v1/page/random/summary";
@@ -59,7 +59,7 @@ namespace DiscordBot.Modules
         [Discord.Commands.Summary("Look up the weather for a location in 'City, State/Province, Country' format.")]
         public async Task HandleWeatherCommand([Remainder] string weatherLocation)
         {
-            audit.InsertAudit("weather", Context.User.Username, Constants.Constants.discordBotConnStr);
+            audit.InsertAudit("weather", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
 
             try
             {
