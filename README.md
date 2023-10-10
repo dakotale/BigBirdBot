@@ -2,6 +2,7 @@
 Discord Bot
 
 BigBirdBot - Help
+
 $ - Alias: $
 Description: Ask the bot a question and receive a possibly accurate answer
 
