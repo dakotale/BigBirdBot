@@ -564,7 +564,7 @@ class Program
 
             if (_client.GetGuild(guildId) != null)
             {
-                if (_client.GetGuild(guildId).GetTextChannel(textChannelId) != null)
+                if (_client.GetGuild(guildId).GetTextChannel(textChannelId) != null && log.Message.Length > 0)
                 {
                     await _client.GetGuild(guildId).GetTextChannel(textChannelId).SendMessageAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Exception Thrown", $"Exception: {exception}\nMessage: {log.Message}", "", "BigBirdBot", Discord.Color.Red, null, null).Build());
                 }
