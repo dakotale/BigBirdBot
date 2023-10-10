@@ -56,7 +56,7 @@ namespace DiscordBot.Modules
         [Discord.Commands.Summary("Bot joins the voice channel to play audio.")]
         public async Task JoinAsync()
         {
-            audit.InsertAudit("join", Context.User.Username, Constants.Constants.discordBotConnStr);
+            audit.InsertAudit("join", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             var voiceState = Context.User as IVoiceState;
             if (voiceState?.VoiceChannel == null)
             {
@@ -91,7 +91,7 @@ namespace DiscordBot.Modules
         [Discord.Commands.Summary("Bot leaves the voice channel.")]
         public async Task LeaveAsync()
         {
-            audit.InsertAudit("leave", Context.User.Username, Constants.Constants.discordBotConnStr);
+            audit.InsertAudit("leave", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             if (!_lavaNode.TryGetPlayer(Context.Guild, out var player))
             {
                 var embed = BuildMusicEmbed("Leave", "I'm not connected to a voice channel!");
@@ -135,7 +135,7 @@ namespace DiscordBot.Modules
         [Discord.Commands.Summary("Bot will join (if not already in) and play audio from Youtube, Soundcloud, Spotify, and local files.")]
         public async Task PlayAsync([Optional] string searchQuery)
         {
-            audit.InsertAudit("play", Context.User.Username, Constants.Constants.discordBotConnStr);
+            audit.InsertAudit("play", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             if (string.IsNullOrWhiteSpace(searchQuery))
             {
                 if (Context.Message.Attachments.Count > 0)
@@ -334,7 +334,7 @@ namespace DiscordBot.Modules
         [Discord.Commands.Summary("Pause the current audio playing.")]
         public async Task PauseAsync()
         {
-            audit.InsertAudit("pause", Context.User.Username, Constants.Constants.discordBotConnStr);
+            audit.InsertAudit("pause", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             if (!_lavaNode.TryGetPlayer(Context.Guild, out var player))
             {
                 var embed = BuildMusicEmbed("Pause", "I'm not connected to a voice channel.");
@@ -369,7 +369,7 @@ namespace DiscordBot.Modules
         [Discord.Commands.Summary("Resume the current audio that is paused.")]
         public async Task ResumeAsync()
         {
-            audit.InsertAudit("resume", Context.User.Username, Constants.Constants.discordBotConnStr);
+            audit.InsertAudit("resume", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             if (!_lavaNode.TryGetPlayer(Context.Guild, out var player))
             {
                 var embed = BuildMusicEmbed("Resume", "I'm not connected to a voice channel.");
@@ -403,7 +403,7 @@ namespace DiscordBot.Modules
         [Discord.Commands.Summary("Stops the audio, clears the queue, and the bot will leave the voice channel.")]
         public async Task StopAsync()
         {
-            audit.InsertAudit("stop", Context.User.Username, Constants.Constants.discordBotConnStr);
+            audit.InsertAudit("stop", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             if (!_lavaNode.TryGetPlayer(Context.Guild, out var player))
             {
                 var embed = BuildMusicEmbed("Stop", "I'm not connected to a voice channel.");
@@ -442,7 +442,7 @@ namespace DiscordBot.Modules
         [Discord.Commands.Summary("Skip the current track playing in the bot.")]
         public async Task ForceSkipTaskAsync()
         {
-            audit.InsertAudit("skip", Context.User.Username, Constants.Constants.discordBotConnStr);
+            audit.InsertAudit("skip", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             if (!_lavaNode.TryGetPlayer(Context.Guild, out var player))
             {
                 var embed = BuildMusicEmbed("Skip", "I'm not connected to a voice channel.");
@@ -488,7 +488,7 @@ namespace DiscordBot.Modules
         [Discord.Commands.Summary("Go to a specific section of the current track playing.")]
         public async Task SeekAsync(TimeSpan timeSpan)
         {
-            audit.InsertAudit("seek", Context.User.Username, Constants.Constants.discordBotConnStr);
+            audit.InsertAudit("seek", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             if (!_lavaNode.TryGetPlayer(Context.Guild, out var player))
             {
                 var embed = BuildMusicEmbed("Seek", "I'm not connected to a voice channel.");
@@ -522,7 +522,7 @@ namespace DiscordBot.Modules
         [Discord.Commands.Summary("Set the volume between 0 and 150.")]
         public async Task VolumeAsync([Remainder] string? volume = null)
         {
-            audit.InsertAudit("volume", Context.User.Username, Constants.Constants.discordBotConnStr);
+            audit.InsertAudit("volume", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             if (!_lavaNode.TryGetPlayer(Context.Guild, out var player))
             {
                 var embed = BuildMusicEmbed("Volume", "I'm not connected to a voice channel.");
@@ -595,7 +595,7 @@ namespace DiscordBot.Modules
         [Discord.Commands.Summary("View the current playing track in the bot.")]
         public async Task NowPlayingAsync()
         {
-            audit.InsertAudit("nowplaying", Context.User.Username, Constants.Constants.discordBotConnStr);
+            audit.InsertAudit("nowplaying", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             if (!_lavaNode.TryGetPlayer(Context.Guild, out var player))
             {
                 var embed = BuildMusicEmbed("Now Playing", "I'm not connected to a voice channel.");
@@ -634,7 +634,7 @@ namespace DiscordBot.Modules
         [Discord.Commands.Summary("View the queue that is set for the bot to play.")]
         public async Task GetQueue()
         {
-            audit.InsertAudit("queue", Context.User.Username, Constants.Constants.discordBotConnStr);
+            audit.InsertAudit("queue", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             if (!_lavaNode.TryGetPlayer(Context.Guild, out var player))
             {
                 var embed = BuildMusicEmbed("Queue", "I'm not connected to a voice channel.");
@@ -731,7 +731,7 @@ namespace DiscordBot.Modules
         [Discord.Commands.Summary("Sets the audio EQ with three settings; Super bass, bass, and pop")]
         public async Task GetEqualizer([Remainder] string? eq = null)
         {
-            audit.InsertAudit("equalizer", Context.User.Username, Constants.Constants.discordBotConnStr);
+            audit.InsertAudit("equalizer", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             if (!_lavaNode.HasPlayer(Context.Guild))
             {
                 return;
@@ -791,7 +791,7 @@ namespace DiscordBot.Modules
         [Discord.Commands.Summary("Repeats the current track")]
         public async Task RepeatTrack()
         {
-            audit.InsertAudit("repeat", Context.User.Username, Constants.Constants.discordBotConnStr);
+            audit.InsertAudit("repeat", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             if (!_lavaNode.TryGetPlayer(Context.Guild, out var player))
             {
                 string msg = Context.Message.Author.Mention + ", you must be connected to a voice channel!";
@@ -832,7 +832,7 @@ namespace DiscordBot.Modules
         [Discord.Commands.Summary("Loops the current track X number of times")]
         public async Task LoopTrack([Remainder] int times)
         {
-            audit.InsertAudit("loop", Context.User.Username, Constants.Constants.discordBotConnStr);
+            audit.InsertAudit("loop", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             if (!_lavaNode.TryGetPlayer(Context.Guild, out var player))
             {
                 string msg = Context.Message.Author.Mention + ", you must be connected to a voice channel!";
@@ -958,7 +958,7 @@ namespace DiscordBot.Modules
         [Command("swap", RunMode = RunMode.Async)]
         public async Task SwapTrack([Remainder] string swap)
         {
-            audit.InsertAudit("swap", Context.User.Username, Constants.Constants.discordBotConnStr);
+            audit.InsertAudit("swap", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             if (!_lavaNode.TryGetPlayer(Context.Guild, out var player))
             {
                 var embed = BuildMusicEmbed("Queue", "I'm not connected to a voice channel.");
@@ -1021,7 +1021,7 @@ namespace DiscordBot.Modules
         [Command("shuffle", RunMode = RunMode.Async)]
         public async Task ShuffleVueue()
         {
-            audit.InsertAudit("shuffle", Context.User.Username, Constants.Constants.discordBotConnStr);
+            audit.InsertAudit("shuffle", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             if (!_lavaNode.TryGetPlayer(Context.Guild, out var player))
             {
                 var embed = BuildMusicEmbed("Queue", "I'm not connected to a voice channel.");
@@ -1047,7 +1047,7 @@ namespace DiscordBot.Modules
         [Command("clear", RunMode = RunMode.Async)]
         public async Task ClearQueue()
         {
-            audit.InsertAudit("clear", Context.User.Username, Constants.Constants.discordBotConnStr);
+            audit.InsertAudit("clear", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             if (!_lavaNode.TryGetPlayer(Context.Guild, out var player))
             {
                 var embed = BuildMusicEmbed("Queue", "I'm not connected to a voice channel.");
@@ -1073,7 +1073,7 @@ namespace DiscordBot.Modules
         [Command("remove", RunMode = RunMode.Async)]
         public async Task RemoveItem([Remainder] int element)
         {
-            audit.InsertAudit("remove", Context.User.Username, Constants.Constants.discordBotConnStr);
+            audit.InsertAudit("remove", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             if (!_lavaNode.TryGetPlayer(Context.Guild, out var player))
             {
                 var embed = BuildMusicEmbed("Queue", "I'm not connected to a voice channel.");
@@ -1101,7 +1101,7 @@ namespace DiscordBot.Modules
         [Alias("pn")]
         public async Task PlayNext([Optional] string searchQuery)
         {
-            audit.InsertAudit("playnext", Context.User.Username, Constants.Constants.discordBotConnStr);
+            audit.InsertAudit("playnext", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             if (string.IsNullOrWhiteSpace(searchQuery))
             {
                 if (Context.Message.Attachments.Count > 0)

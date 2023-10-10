@@ -6,11 +6,8 @@ using Discord.Commands;
 using DiscordBot.Services;
 using DiscordBot.Constants;
 using Microsoft.Extensions.DependencyInjection;
-using DiscordBot.Anime;
-using DiscordBot.Currency;
 using System.Data.SqlClient;
 using System.Data;
-using Google.Apis.Customsearch.v1;
 using System.Net;
 using Victoria.Node;
 using Victoria;
@@ -19,7 +16,8 @@ using DiscordBot.Helper;
 using KillersLibrary.Services;
 using OpenAI_API.Models;
 using Fergun.Interactive;
-using SpotifyAPI.Web;
+using DiscordBot.Json;
+using System;
 
 class Program
 {
@@ -150,21 +148,31 @@ class Program
                                 await msg.Channel.SendMessageAsync(embed: embed.Build());
                             }
                         }
-                        else if (message.Contains("https://twitter.com"))
+                        else if ((message.Contains("https://twitter.com") || message.Contains("https://x.com")) && !message.Contains("-"))
                         {
-                            DataTable dtTwitter = stored.Select(connStr, "GetTwitterBroken", new List<SqlParameter>());
+                            DataTable dtTwitter = stored.Select(connStr, "GetTwitterBroken", new List<SqlParameter> { new SqlParameter("@ServerID", Int64.Parse(serverId)) });
                             bool isTwitterBroken = false;
                             foreach (DataRow dr in dtTwitter.Rows)
-                            {
                                 isTwitterBroken = bool.Parse(dr["TwitterBroken"].ToString());
-                            }
+                            
                             if (isTwitterBroken)
                             {
-                                await msg.Channel.SendMessageAsync(message.Replace("twitter", "fxtwitter"));
+                                if (message.Contains("https://twitter.com"))
+                                    message = message.Replace("twitter", "fxtwitter");
+                                if (message.Contains("https://x.com"))
+                                    message = message.Replace("x.com", "fxtwitter.com");
+
+                                message = message.Split("https://")[1];
+
+                                if (message.Split(' ').Count() > 1)
+                                    message = message.Split(' ')[0];
+
+                                message = "https://" + message;
+                                await msg.Channel.SendMessageAsync(message);
                             }
                             else
                             {
-                                var urlStuff = message.Split(new string[] { "https://twitter.com/" }, StringSplitOptions.None);
+                                var urlStuff = message.Split(new string[] { "https://twitter.com/", "https://x.com" }, StringSplitOptions.None);
                                 try
                                 {
                                     if (urlStuff.Length > 0)
@@ -284,6 +292,81 @@ class Program
                         }
                         else
                         {
+                            if (message.StartsWith("-"))
+                            {
+                                string keyword = "";
+                                if (message.Split(' ').Count() == 1)
+                                    keyword = message.Replace("-", "");
+                                if (message.Split(' ').Count() > 1)
+                                    keyword = message.Split(' ')[0].Replace("-", "");
+
+                                // Check if it's in the ThirstMap and run the add command
+                                List<SqlParameter> parameters = new List<SqlParameter>();
+                                parameters.Add(new SqlParameter("@AddKeyword", keyword));
+
+                                DataTable dt = stored.Select(connStr, "GetThirstTableByMap", parameters);
+                                if (dt.Rows.Count > 0)
+                                {
+                                    if (msg.Attachments.Count > 0)
+                                    {
+                                        foreach (DataRow dr in dt.Rows)
+                                        {
+                                            var attachments = msg.Attachments;
+                                            foreach (var attachment in attachments)
+                                            {
+                                                string path = @"C:\Users\Unmolded\Desktop\DiscordBot\" + dr["TableName"].ToString() + @"\" + attachment.Filename;
+                                                using (WebClient client = new WebClient())
+                                                {
+                                                    client.DownloadFileAsync(new Uri(attachment.Url), path);
+                                                }
+
+                                                stored.UpdateCreate(connStr, "AddThirstByMap", new List<System.Data.SqlClient.SqlParameter>
+                                                {
+                                                    new SqlParameter("@FilePath", path),
+                                                    new SqlParameter("@TableName", dr["TableName"].ToString())
+                                                });
+                                            }
+
+                                            var embed = new EmbedBuilder
+                                            {
+                                                Title = "BigBirdBot - Added Image",
+                                                Color = Color.Blue,
+                                                Description = "Added attachment(s) successfully."
+                                            };
+
+                                            await msg.Channel.SendMessageAsync(embed: embed.Build());
+                                        }
+                                    }
+                                    if (message.Split(' ').Count() > 1)
+                                    {
+                                        string content = message.Split(' ')[1].Trim();
+
+                                        if (message.Contains("https://twitter.com") || message.Contains("https://fxtwitter.com") || message.Contains("https://vxtwitter.com"))
+                                            content = content.Replace("twitter.com", "dl.fxtwitter.com");
+                                        if (message.Contains("https://x.com"))
+                                            content = content.Replace("x.com", "dl.fxtwitter.com");
+
+                                        foreach (DataRow dr in dt.Rows)
+                                        {
+                                            stored.UpdateCreate(connStr, "AddThirstByMap", new List<System.Data.SqlClient.SqlParameter>
+                                            {
+                                                new SqlParameter("@FilePath", content),
+                                                new SqlParameter("@TableName", dr["TableName"].ToString())
+                                            });
+
+                                            var embed = new EmbedBuilder
+                                            {
+                                                Title = "BigBirdBot - Added Image",
+                                                Color = Color.Blue,
+                                                Description = "Added attachment(s) successfully."
+                                            };
+
+                                            await msg.Channel.SendMessageAsync(embed: embed.Build());
+                                        }
+                                    }
+                                }
+                            }
+
                             // Todo, check all the commands eventually but for now let's stop the accidently double triggering.
                             if (!message.StartsWith("-") && !message.StartsWith("$"))
                             {
@@ -309,6 +392,12 @@ class Program
                                                 await msg.Channel.SendFileAsync(dr["ChatAction"].ToString());
                                             else
                                                 await sender.SendMessageAsync(dr["ChatAction"].ToString());
+
+                                            parameters.Clear();
+                                            parameters.Add(new SqlParameter("@ChatKeywordID", int.Parse(dr["ChatKeywordID"].ToString())));
+                                            parameters.Add(new SqlParameter("@MessageText", message));
+                                            parameters.Add(new SqlParameter("@CreatedBy", msg.Author.Username));
+                                            storedProcedure.UpdateCreate(connStr, "AddAuditKeyword", parameters);
                                         }
                                     }
                                 }
@@ -376,8 +465,35 @@ class Program
         {
             await channel.SendMessageAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Color.Gold, imageUrl).Build());
         }
-    }
 
+        StoredProcedure stored = new StoredProcedure();
+        stored.UpdateCreate(Constants.discordBotConnStr, "AddUser", new List<SqlParameter>
+        {
+            new SqlParameter("@UserID", arg.Id.ToString()),
+            new SqlParameter("@Username", arg.Username),
+            new SqlParameter("@JoinDate", arg.JoinedAt),
+            new SqlParameter("@GuildName", arg.Guild.Name),
+            new SqlParameter("@Nickname", arg.Nickname)
+        });
+
+        string userId = arg.Id.ToString();
+        var getUser = await _client.GetUserAsync(ulong.Parse(userId));
+        var dmChannel = await getUser.CreateDMChannelAsync();
+
+        EmbedHelper helper = new EmbedHelper();
+        DataTable dt = stored.Select(Constants.discordBotConnStr, "GetCommandList", new List<System.Data.SqlClient.SqlParameter>());
+        string output = "Welcome to the server, I'm BigBirdBot!\nLet me introduce what I can do!\n\n__Commands__";
+
+        if (dt.Rows.Count > 0)
+        {
+            foreach (DataRow dr in dt.Rows)
+            {
+                output += $"**{dr["CommandName"].ToString()}** - Alias: {dr["CommandAliases"]}\nDescription: {dr["CommandDescription"].ToString()}\n";
+            }
+        }
+
+        await dmChannel.SendMessageAsync(embed: helper.BuildMessageEmbed("BigBirdBot - Help Commands", output, "", "BigBirdBot", Discord.Color.Red, null, null).Build());
+    }
     private Task JoinedGuild(SocketGuild arg)
     {
         StoredProcedure stored = new StoredProcedure();
@@ -397,19 +513,62 @@ class Program
                 new SqlParameter("@ServerName", arg.Name)
             });
         }
+
+        using (SqlConnection conn = new SqlConnection(Constants.discordBotConnStr))
+        {
+            arg.DownloadUsersAsync();
+            foreach (var user in arg.Users.ToList())
+            {
+                if (!user.IsBot)
+                {
+                    conn.Open();
+
+                    // 1.  create a command object identifying the stored procedure
+                    SqlCommand cmd = new SqlCommand("AddUser", conn);
+
+                    // 2. set the command object so it knows to execute a stored procedure
+                    cmd.CommandType = CommandType.StoredProcedure;
+
+                    // 3. add parameter to command, which will be passed to the stored procedure
+                    cmd.Parameters.Add(new SqlParameter("@UserID", user.Id.ToString()));
+                    cmd.Parameters.Add(new SqlParameter("@Username", user.Username));
+                    cmd.Parameters.Add(new SqlParameter("@JoinDate", user.JoinedAt));
+                    cmd.Parameters.Add(new SqlParameter("@GuildName", user.Guild.Name));
+                    cmd.Parameters.Add(new SqlParameter("@Nickname", user.Nickname));
+                    // execute the command
+                    cmd.ExecuteNonQuery();
+
+                    conn.Close();
+                    cmd.Dispose();
+                }
+            }
+        }
         return Task.CompletedTask;
     }
 
-    private Task LogAsync(LogMessage log)
+    private async Task LogAsync(LogMessage log)
     {
         StoredProcedure stored = new StoredProcedure();
         string connStr = Constants.discordBotConnStr;
         List<SqlParameter> parameters = new List<SqlParameter>();
         string exception = "";
+        EmbedHelper embedHelper = new EmbedHelper();
+
+        // Send an error to the specific server and channel
+        ulong guildId = ulong.Parse("880569055856185354");
+        ulong textChannelId = ulong.Parse("1156625507840954369");
 
         if (log.Exception != null)
         {
             exception = log.Exception.Message;
+
+            if (_client.GetGuild(guildId) != null)
+            {
+                if (_client.GetGuild(guildId).GetTextChannel(textChannelId) != null && log.Message.Length > 0)
+                {
+                    await _client.GetGuild(guildId).GetTextChannel(textChannelId).SendMessageAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Exception Thrown", $"Exception: {exception}\nMessage: {log.Message}", "", "BigBirdBot", Discord.Color.Red, null, null).Build());
+                }
+            }
         }
 
         parameters.Add(new SqlParameter("@Severity", log.Severity));
@@ -420,8 +579,6 @@ class Program
         stored.UpdateCreate(connStr, "AddLog", parameters);
 
         Console.WriteLine("Log written successfully to the database.");
-
-        return Task.CompletedTask;
     }
 
     private ServiceProvider ConfigureServices()
@@ -429,7 +586,8 @@ class Program
         return new ServiceCollection()
             .AddSingleton(new DiscordSocketConfig
             {
-                GatewayIntents = GatewayIntents.AllUnprivileged | GatewayIntents.MessageContent | GatewayIntents.GuildMembers
+                GatewayIntents = GatewayIntents.AllUnprivileged | GatewayIntents.MessageContent | GatewayIntents.GuildMembers,
+                AlwaysDownloadUsers = true
             })
             .AddSingleton<DiscordSocketClient>()
             .AddSingleton<CommandService>()
@@ -452,10 +610,6 @@ class Program
 
     private async Task HandleReactionAsync(Cacheable<IUserMessage, ulong> message, Cacheable<IMessageChannel, ulong> channel, SocketReaction reaction)
     {
-        Emoji emoji = new Emoji("\uD83E\uDD0D");
-        Emoji questionEmoji = new Emoji("\u2754");
-        Emoji deactivateEmoji = new Emoji("❌");
-
         Emoji triviaA = new Emoji("🇦");
         Emoji triviaB = new Emoji("🇧");
         Emoji triviaC = new Emoji("🇨");
@@ -465,137 +619,6 @@ class Program
         StoredProcedure stored = new StoredProcedure();
         if (_client.GetUser(reaction.UserId).IsBot) return;
 
-        if (reaction.Emote.Name == deactivateEmoji.Name)
-        {
-            string connStr = Constants.discordBotConnStr;
-            try
-            {
-                if (embed.Count > 0)
-                {
-                    //Marriage marriage = new Marriage();
-                    //List<Marriage> marriages = marriage.GetMarriages(connStr);
-                    //MarriageCharacter marriageCharacter = new MarriageCharacter();
-                    //List<MarriageCharacter> marriageCharacters = marriageCharacter.GetMarriageCharacters(connStr);
-                    foreach (var e in embed)
-                    {
-                        //var marriageCount = marriages.Where(s => s.ImageURL.Equals(e.Image.Value.Url)).Count();
-                        // SP: GetMarriageCharactersByURL
-                        stored.UpdateCreate(connStr, "UpdateMarriageCharacters", new List<SqlParameter>
-                        {
-                            new SqlParameter("@CharacterImageURL", e.Image.Value.Url),
-                            new SqlParameter("@DeactivatedBy", _client.GetUser(reaction.UserId).Username)
-                        });
-                        
-                        await channel.Value.SendMessageAsync(e.Title + " was deactivated by " + _client.GetUser(reaction.UserId).Username + " and won't pop up again, thanks for cleaning up the database! You are the best :smile:");
-                        await reaction.Channel.DeleteMessageAsync(reaction.MessageId);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                EmbedHelper errorEmbed = new EmbedHelper();
-                await channel.Value.SendMessageAsync(embed: errorEmbed.BuildMessageEmbed("BigBirdBot - Error", ex.Message, Constants.errorImageUrl, "", Color.Red, "").Build());
-            }
-        }
-        if (reaction.Emote.Name == questionEmoji.Name)
-        {
-            string connStr = Constants.discordBotConnStr;
-            try
-            {
-                if (embed.Count > 0)
-                {
-                    foreach (var e in embed)
-                    {
-                        CustomsearchService customSearchService = new CustomsearchService(new Google.Apis.Services.BaseClientService.Initializer() { ApiKey = Constants.googleSearchApiKey });
-                        CseResource.ListRequest listRequest = customSearchService.Cse.List();
-                        listRequest.Cx = Constants.googleSearchId;
-                        listRequest.ExactTerms = e.Title;
-                        listRequest.Start = 1;
-                        listRequest.Num = 1;
-                        var results = listRequest.Execute();
-                        if (results.Items != null)
-                        {
-                            if (results.Items.Count > 0)
-                            {
-                                await channel.Value.SendMessageAsync("Here is more information on " + e.Title + ": " + results.Items.Select(s => s.Link).FirstOrDefault());
-                            }
-                            else
-                            {
-                                await channel.Value.SendMessageAsync("No results found for " + e.Title);
-                            }
-                        }
-                        else
-                        {
-                            await channel.Value.SendMessageAsync("No results found for " + e.Title);
-                        }
-                    }
-                }
-            }
-            catch (Exception e)
-            {
-                EmbedHelper errorEmbed = new EmbedHelper();
-                await channel.Value.SendMessageAsync(embed: errorEmbed.BuildMessageEmbed("BigBirdBot - Error", e.Message, Constants.errorImageUrl, "", Color.Red, "").Build());
-            }
-        }
-        if (reaction.Emote.Name == emoji.Name)
-        {
-            string connStr = Constants.discordBotConnStr;
-            try
-            {
-                if (embed.Count > 0)
-                {
-                    Marriage marriage = new Marriage();
-                    List<Marriage> marriages = marriage.GetMarriages(connStr);
-                    MarriageCharacter marriageCharacter = new MarriageCharacter();
-                    List<MarriageCharacter> marriageCharacters = marriageCharacter.GetMarriageCharacters(connStr);
-
-                    foreach (var e in embed)
-                    {
-                        var marriageCount = marriages.Where(s => s.ImageURL.Equals(e.Image.Value.Url)).Count();
-                        if (marriageCount > 0)
-                        {
-                            foreach (var m in marriages)
-                            {
-                                if (m.CharacterName.Equals(e.Title))
-                                {
-                                    await channel.Value.SendMessageAsync(":frowning: Sorry " + reaction.User.Value.Username + ", " + m.CharacterName + " is already married to " + m.CreatedBy + ":frowning:");
-                                }
-                            }
-
-                        }
-                        else
-                        {
-                            Currency currency = new Currency();
-                            var userId = Convert.ToInt64(reaction.User.Value.Id);
-                            var animeId = marriageCharacters.Where(s => s.CharacterURL.Equals(e.Image.Value.Url)).Select(s => s.AnimeID).FirstOrDefault();
-                            stored.UpdateCreate(Constants.discordBotConnStr, "AddAnimeMarriage", new List<SqlParameter>
-                            {
-                                new SqlParameter("@AnimeID", animeId),
-                                new SqlParameter("@CharacterName", e.Title),
-                                new SqlParameter("@ImageURL", e.Image.Value.Url),
-                                new SqlParameter("@CreatedBy", reaction.User.Value.Username)
-                            });
-
-                            var currencyVal = marriageCharacters.Where(s => s.CharacterURL.Equals(e.Image.Value.Url)).Select(s => s.CurrencyValue).FirstOrDefault();
-                            var currentUser = currency.GetCurrencyUser(Constants.discordBotConnStr, userId);
-                            foreach (var c in currentUser)
-                            {
-                                currency.UpdateCurrencyUser(Constants.discordBotConnStr, userId, (c.CurrencyValue + currencyVal));
-                            }
-
-                            await channel.Value.SendMessageAsync(":two_hearts: Congratulations!  **" + reaction.User.Value.Username + "** and **" + e.Title + "** are now married :two_hearts:");
-                            await reaction.Channel.DeleteMessageAsync(reaction.MessageId);
-                        }
-                    }
-
-                }
-            }
-            catch (Exception e)
-            {
-                EmbedHelper errorEmbed = new EmbedHelper();
-                await channel.Value.SendMessageAsync(embed: errorEmbed.BuildMessageEmbed("BigBirdBot - Error", e.Message, Constants.errorImageUrl, "", Color.Red, "").Build());
-            }
-        }
         if (reaction.Emote.Name == triviaA.Name || reaction.Emote.Name == triviaB.Name || reaction.Emote.Name == triviaC.Name || reaction.Emote.Name == triviaD.Name)
         {
             string connStr = Constants.discordBotConnStr;

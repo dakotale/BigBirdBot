@@ -12,7 +12,7 @@ namespace DiscordBot.Constants
     {
         public Audit() { }
 
-        public void InsertAudit(string command, string createdBy, string connStr)
+        public void InsertAudit(string command, string createdBy, string connStr, string serverId)
         {
             using (SqlConnection conn = new SqlConnection(connStr))
             {
@@ -27,6 +27,7 @@ namespace DiscordBot.Constants
                 // 3. add parameter to command, which will be passed to the stored procedure
                 cmd.Parameters.Add(new SqlParameter("@Command", command));
                 cmd.Parameters.Add(new SqlParameter("@CreatedBy", createdBy));
+                cmd.Parameters.Add(new SqlParameter("@ServerID", Int64.Parse(serverId)));
 
                 // execute the command
                 cmd.ExecuteNonQuery();

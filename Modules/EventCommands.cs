@@ -22,7 +22,7 @@ namespace DiscordBot.Modules
         [Discord.Commands.Summary("Plan an event and get a notification when it's ready.  In 'Date/Time, Event Name' format.")]
         public async Task HandleEventCommand([Remainder] string eventMsg)
         {
-            audit.InsertAudit("event", Context.User.Username, Constants.Constants.discordBotConnStr);
+            audit.InsertAudit("event", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
 
             /*
              * Objects
