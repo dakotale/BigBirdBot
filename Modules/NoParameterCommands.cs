@@ -6,6 +6,7 @@ using System.Data;
 using DiscordBot.Helper;
 using Discord.Interactions;
 using System.Runtime.CompilerServices;
+using Discord.WebSocket;
 
 namespace DiscordBot.Modules
 {
@@ -13,39 +14,38 @@ namespace DiscordBot.Modules
     {
         Audit audit = new Audit();
 
-        [Command("avatar")]
-        [Discord.Commands.Summary("See you or someone else's avatar in high quality.")]
-        public async Task HandleAvatarCommand(IUser user = null)
+        [Command("info")]
+        [Alias("serverinfo", "server")]
+        [Discord.Commands.RequireBotPermission(GuildPermission.EmbedLinks)]
+        public async Task HandleServerInformation()
         {
-            try
-            {
-                audit.InsertAudit("avatar", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
+            audit.InsertAudit("serverinfo", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
 
-                string title = "BigBirdBot - Avatar";
-                string desc = $"";
-                string thumbnailUrl = "";
-                string createdBy = "Command from: " + Context.User.Username;
-                string imageUrl = "";
+            double botPercentage = Math.Round(Context.Guild.Users.Count(x => x.IsBot) / Context.Guild.MemberCount * 100d, 2);
 
-                if (user != null && !user.IsBot && user.Mention.Length > 0)
-                {
-                    imageUrl = user.GetAvatarUrl(ImageFormat.Png, 256);
-                }
-                else
-                {
-                    imageUrl = Context.Message.Author.GetAvatarUrl(ImageFormat.Png, 256);
-                }
+            string bannerUrl = Context.Guild.BannerUrl ?? "";
 
+            EmbedBuilder embed = new EmbedBuilder()
+                .WithColor(Color.Blue)
+                .WithThumbnailUrl(Context.Guild.IconUrl)
+                .WithTitle($"Server Information for {Context.Guild.Name}")
+                .WithDescription(
+                    $"**Guild name:** {Context.Guild.Name}\n" +
+                    $"**Guild ID:** {Context.Guild.Id}\n" +
+                    $"**Created On:** {Context.Guild.CreatedAt:MM/dd/yyyy}\n" +
+                    $"**Owner:** {Context.Guild.Owner}\n\n" +
+                    $"**Users:** {Context.Guild.MemberCount - Context.Guild.Users.Count(x => x.IsBot)}\n" +
+                    $"**Bots:** {Context.Guild.Users.Count(x => x.IsBot)} [ {botPercentage}% ]\n" +
+                    $"**Text Channels:** {Context.Guild.TextChannels.Count}\n" +
+                    $"**Voice Channels:** {Context.Guild.VoiceChannels.Count }\n" +
+                    $"**Roles:** {Context.Guild.Roles.Count}\n" +
+                    $"**Emotes:** {Context.Guild.Emotes.Count}\n" +
+                    $"**Stickers:** {Context.Guild.Stickers.Count}\n\n" +
+                    $"**Security level:** {Context.Guild.VerificationLevel}")
+                 .WithImageUrl(bannerUrl)
+                 .WithCurrentTimestamp();
 
-                EmbedHelper embed = new EmbedHelper();
-                await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Color.Gold, imageUrl).Build());
-            }
-            catch (Exception e)
-            {
-                EmbedHelper embedHelper = new EmbedHelper();
-                var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", e.Message, Constants.Constants.errorImageUrl, "", Color.Red, "");
-                await ReplyAsync(embed: embed.Build());
-            }
+            await ReplyAsync(embed: embed.Build());
         }
 
         [Command("populateallusers")]

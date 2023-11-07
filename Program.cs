@@ -315,53 +315,118 @@ class Program
                                             foreach (var attachment in attachments)
                                             {
                                                 string path = @"C:\Users\Unmolded\Desktop\DiscordBot\" + dr["TableName"].ToString() + @"\" + attachment.Filename;
-                                                using (WebClient client = new WebClient())
-                                                {
-                                                    client.DownloadFileAsync(new Uri(attachment.Url), path);
-                                                }
 
-                                                stored.UpdateCreate(connStr, "AddThirstByMap", new List<System.Data.SqlClient.SqlParameter>
+                                                // Check if link exists for thirst table
+                                                DataTable dtExists = stored.Select(connStr, "CheckIfThirstURLExists", new List<SqlParameter>
                                                 {
                                                     new SqlParameter("@FilePath", path),
-                                                    new SqlParameter("@TableName", dr["TableName"].ToString())
+                                                    new SqlParameter("@TableName", dt.Rows[0]["TableName"].ToString())
                                                 });
+
+                                                if (dtExists.Rows.Count > 0)
+                                                {
+                                                    var embedError = new EmbedBuilder
+                                                    {
+                                                        Title = "BigBirdBot - Error",
+                                                        Color = Color.Red,
+                                                        Description = $"The image provided was already added for this Thirst Command."
+                                                    }.WithCurrentTimestamp();
+
+                                                    await msg.Channel.SendMessageAsync(embed: embedError.Build());
+                                                }
+                                                else
+                                                {
+                                                    using (WebClient client = new WebClient())
+                                                    {
+                                                        client.DownloadFileAsync(new Uri(attachment.Url), path);
+                                                    }
+
+                                                    stored.UpdateCreate(connStr, "AddThirstByMap", new List<System.Data.SqlClient.SqlParameter>
+                                                    {
+                                                        new SqlParameter("@FilePath", path),
+                                                        new SqlParameter("@TableName", dr["TableName"].ToString())
+                                                    });
+
+                                                    var embed = new EmbedBuilder
+                                                    {
+                                                        Title = "BigBirdBot - Added Image",
+                                                        Color = Color.Blue,
+                                                        Description = "Added attachment(s) successfully."
+                                                    };
+
+                                                    await msg.Channel.SendMessageAsync(embed: embed.Build());
+                                                }
                                             }
-
-                                            var embed = new EmbedBuilder
-                                            {
-                                                Title = "BigBirdBot - Added Image",
-                                                Color = Color.Blue,
-                                                Description = "Added attachment(s) successfully."
-                                            };
-
-                                            await msg.Channel.SendMessageAsync(embed: embed.Build());
                                         }
                                     }
                                     if (message.Split(' ').Count() > 1)
                                     {
                                         string content = message.Split(' ')[1].Trim();
 
-                                        if (message.Contains("https://twitter.com") || message.Contains("https://fxtwitter.com") || message.Contains("https://vxtwitter.com"))
-                                            content = content.Replace("twitter.com", "dl.fxtwitter.com");
-                                        if (message.Contains("https://x.com"))
-                                            content = content.Replace("x.com", "dl.fxtwitter.com");
+                                        Uri uriResult;
+                                        bool result = Uri.TryCreate(content, UriKind.Absolute, out uriResult)
+                                            && (uriResult.Scheme == Uri.UriSchemeHttp || uriResult.Scheme == Uri.UriSchemeHttps);
 
-                                        foreach (DataRow dr in dt.Rows)
+                                        if (!result)
                                         {
-                                            stored.UpdateCreate(connStr, "AddThirstByMap", new List<System.Data.SqlClient.SqlParameter>
-                                            {
-                                                new SqlParameter("@FilePath", content),
-                                                new SqlParameter("@TableName", dr["TableName"].ToString())
-                                            });
-
                                             var embed = new EmbedBuilder
                                             {
-                                                Title = "BigBirdBot - Added Image",
-                                                Color = Color.Blue,
-                                                Description = "Added attachment(s) successfully."
-                                            };
+                                                Title = "BigBirdBot - Error",
+                                                Color = Color.Red,
+                                                Description = $"The URL provided for this command is invalid."
+                                            }.WithCurrentTimestamp();
 
                                             await msg.Channel.SendMessageAsync(embed: embed.Build());
+                                        }
+                                        else
+                                        {
+                                            if (message.Contains("https://fxtwitter.com"))
+                                                content = content.Replace("fxtwitter", "dl.fxtwitter.com");
+                                            if (message.Contains("https://vxtwitter.com"))
+                                                content = content.Replace("vxtwitter", "dl.vxtwitter.com");
+                                            if (message.Contains("https://twitter.com"))
+                                                content = content.Replace("twitter.com", "dl.fxtwitter.com");
+                                            if (message.Contains("https://x.com"))
+                                                content = content.Replace("x.com", "dl.fxtwitter.com");
+
+                                            // Check if link exists for thirst table
+                                            DataTable dtExists = stored.Select(connStr, "CheckIfThirstURLExists", new List<SqlParameter>
+                                            {
+                                                new SqlParameter("@FilePath", content),
+                                                new SqlParameter("@TableName", dt.Rows[0]["TableName"].ToString())
+                                            });
+
+                                            if (dtExists.Rows.Count > 0)
+                                            {
+                                                var embed = new EmbedBuilder
+                                                {
+                                                    Title = "BigBirdBot - Error",
+                                                    Color = Color.Red,
+                                                    Description = $"The URL provided was already added for this Thirst Command."
+                                                }.WithCurrentTimestamp();
+
+                                                await msg.Channel.SendMessageAsync(embed: embed.Build());
+                                            }
+                                            else
+                                            {
+                                                foreach (DataRow dr in dt.Rows)
+                                                {
+                                                    stored.UpdateCreate(connStr, "AddThirstByMap", new List<System.Data.SqlClient.SqlParameter>
+                                                    {
+                                                        new SqlParameter("@FilePath", content),
+                                                        new SqlParameter("@TableName", dr["TableName"].ToString())
+                                                    });
+
+                                                    var embed = new EmbedBuilder
+                                                    {
+                                                        Title = "BigBirdBot - Added Image",
+                                                        Color = Color.Blue,
+                                                        Description = "Added attachment(s) successfully."
+                                                    };
+
+                                                    await msg.Channel.SendMessageAsync(embed: embed.Build());
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -447,23 +512,35 @@ class Program
         string imageUrl = "";
 
         // Let's pull the first channel and hope for the best.....
-        var textChannels = arg.Guild.TextChannels.Where(s => s.Name.Contains("general") || s.Name.Contains("no-mic")).ToList();
+        List<SocketTextChannel> textChannels = new List<SocketTextChannel>();
+        textChannels = arg.Guild.TextChannels.Where(s => s.Name.Contains("general") || s.Name.Contains("no-mic")).ToList();
         SocketTextChannel? firstTextChannel;
-        if (textChannels.Count > 1)
+
+        if (textChannels.Count > 0)
         {
-            firstTextChannel = arg.Guild.GetTextChannel(textChannels[1].Id);
+            if (textChannels.Count > 1)
+            {
+                firstTextChannel = arg.Guild.GetTextChannel(textChannels[1].Id);
+            }
+            else
+            {
+                firstTextChannel = arg.Guild.GetTextChannel(textChannels[0].Id);
+            }
         }
         else
         {
-            firstTextChannel = arg.Guild.GetTextChannel(textChannels[0].Id);
+            firstTextChannel = arg.Guild.DefaultChannel;
         }
         
-        var channel = _client.GetChannel(firstTextChannel.Id) as SocketTextChannel;
-
-        EmbedHelper embed = new EmbedHelper();
-        if (channel != null && !arg.IsBot)
+        if (firstTextChannel != null)
         {
-            await channel.SendMessageAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Color.Gold, imageUrl).Build());
+            var channel = _client.GetChannel(firstTextChannel.Id) as SocketTextChannel;
+
+            EmbedHelper embed = new EmbedHelper();
+            if (channel != null && !arg.IsBot)
+            {
+                await channel.SendMessageAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Color.Gold, imageUrl).Build());
+            }
         }
 
         StoredProcedure stored = new StoredProcedure();
@@ -488,11 +565,11 @@ class Program
         {
             foreach (DataRow dr in dt.Rows)
             {
-                output += $"**{dr["CommandName"].ToString()}** - Alias: {dr["CommandAliases"]}\nDescription: {dr["CommandDescription"].ToString()}\n";
+                output += $"**{dr["CommandName"].ToString()} ({dr["CommandAliases"]})\nDescription:** {dr["CommandDescription"].ToString()}\n\n";
             }
         }
 
-        await dmChannel.SendMessageAsync(embed: helper.BuildMessageEmbed("BigBirdBot - Help Commands", output, "", "BigBirdBot", Discord.Color.Red, null, null).Build());
+        await dmChannel.SendMessageAsync(embed: helper.BuildMessageEmbed("BigBirdBot - Help Commands", output, "", "BigBirdBot", Discord.Color.Gold, null, null).Build());
     }
     private Task JoinedGuild(SocketGuild arg)
     {

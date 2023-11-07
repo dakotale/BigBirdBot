@@ -27,5 +27,6 @@ namespace DiscordBot.Constants
         public const string minecraftModsLocation = @"C:\Users\Unmolded\Desktop\ForgeCreate_1182Server\Server\mods\";
         public static Int32 ToUnixTimestamp(this DateTime dateTime) => (int)dateTime.Subtract(new DateTime(1970, 1, 1)).TotalSeconds;
         public static string ToDiscordUnixTimeestampFormat(this DateTime dateTime) => $"<t:{dateTime.ToUnixTimestamp()}:R>";
+        public const string testServerGuildId = "880569055856185354";
     }
 }

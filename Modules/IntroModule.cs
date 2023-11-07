@@ -46,11 +46,11 @@ namespace DiscordBot.Modules
             {
                 foreach (DataRow dr in dt.Rows)
                 {
-                    output += $"**{dr["CommandName"].ToString()}** - Alias: {dr["CommandAliases"]}\nDescription: {dr["CommandDescription"].ToString()}\n";
+                    output += $"**{dr["CommandName"].ToString()} ({dr["CommandAliases"]})\nDescription:** {dr["CommandDescription"].ToString()}\n\n";
                 }
             }
 
-            await ReplyAsync(embed: helper.BuildMessageEmbed("BigBirdBot - Help Commands", output, "", "BigBirdBot", Discord.Color.Red, null, null).Build());
+            await ReplyAsync(embed: helper.BuildMessageEmbed("BigBirdBot - Help Commands", output, "", "BigBirdBot", Discord.Color.Gold, null, null).Build());
         }
     }
 }
