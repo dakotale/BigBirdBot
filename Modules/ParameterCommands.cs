@@ -11,6 +11,7 @@ using System.Data.SqlClient;
 using Discord.WebSocket;
 using Discord.Interactions;
 using System.Threading.Channels;
+using System;
 
 namespace DiscordBot.Modules
 {
@@ -74,50 +75,109 @@ namespace DiscordBot.Modules
         public async Task HandleKeywordAdd([Remainder] string keyword)
         {
             audit.InsertAudit("ka", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
-            if (keyword.Trim().Length> 0 && keyword.Contains(","))
+            try
             {
-                var chatKeywordAction = keyword.Split(",");
-
-                if (chatKeywordAction[1].Trim().Length > 0)
+                if (keyword.Trim().Length > 0 && keyword.Contains(","))
                 {
-                    if (chatKeywordAction[0].Length <= 50 && chatKeywordAction[1].Length <= 2000)
+                    if (Context.Message.Attachments.Count == 1)
                     {
-                        string word = chatKeywordAction[0].Trim();
-                        string action = chatKeywordAction[1].Trim();
-                        string createdBy = Context.User.Username;
-                        var serverId = Int64.Parse(Context.Guild.Id.ToString());
-
-                        StoredProcedure procedure = new StoredProcedure();
-
-                        procedure.UpdateCreate(Constants.Constants.discordBotConnStr, "AddChatKeywordAction", new List<System.Data.SqlClient.SqlParameter>
+                        var attachments = Context.Message.Attachments;
+                        foreach (var attachment in attachments)
                         {
-                            new System.Data.SqlClient.SqlParameter("@ServerID", serverId),
-                            new System.Data.SqlClient.SqlParameter("@Keyword", word),
-                            new System.Data.SqlClient.SqlParameter("@CreatedBy", createdBy),
-                            new System.Data.SqlClient.SqlParameter("@Action", action)
-                        });
+                            if (attachment.Size > 52428800)
+                            {
+                                throw new Exception("The attachment provided is too large, please create the keyword using an attachment that is 50mb or less.");
+                            }
+                            else
+                            {
+                                string path = @"C:\Users\Unmolded\Desktop\DiscordBot\KeywordAttachment\" + attachment.Filename;
+                                using (WebClient client = new WebClient())
+                                {
+                                    client.DownloadFileAsync(new Uri(attachment.Url), path);
+                                }
 
-                        string title = "BigBirdBot - Keyword Added";
-                        string desc = $"Successfully added Keyword -> **{word}** \nAction -> {action}";
-                        string thumbnailUrl = "";
-                        string imageUrl = "";
-                        string embedCreatedBy = "Command from: " + Context.User.Username;
+                                string word = keyword.Split(',')[0].Trim();
+                                string createdBy = Context.User.Username;
+                                var serverId = Int64.Parse(Context.Guild.Id.ToString());
 
-                        EmbedHelper embed = new EmbedHelper();
-                        await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Green, imageUrl).Build());
+                                StoredProcedure procedure = new StoredProcedure();
+
+                                procedure.UpdateCreate(Constants.Constants.discordBotConnStr, "AddChatKeywordAction", new List<System.Data.SqlClient.SqlParameter>
+                                {
+                                    new System.Data.SqlClient.SqlParameter("@ServerID", serverId),
+                                    new System.Data.SqlClient.SqlParameter("@Keyword", word),
+                                    new System.Data.SqlClient.SqlParameter("@CreatedBy", createdBy),
+                                    new System.Data.SqlClient.SqlParameter("@Action", path)
+                                });
+
+                                string title = "BigBirdBot - Keyword Added";
+                                string desc = $"Successfully added Keyword -> **{word}** \nAction -> Attachment added";
+                                string thumbnailUrl = "";
+                                string imageUrl = "";
+                                string embedCreatedBy = "Command from: " + Context.User.Username;
+
+                                EmbedHelper embed = new EmbedHelper();
+                                await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Green, imageUrl).Build());
+                            }
+                        }
                     }
                     else
                     {
-                        string title = "BigBirdBot - Error";
-                        string desc = $"Maximum number of characters for the action is 50 characters and the action is 2000 characters.";
-                        string thumbnailUrl = Constants.Constants.errorImageUrl;
-                        string imageUrl = "";
-                        string createdBy = "Command from: " + Context.User.Username;
+                        var chatKeywordAction = keyword.Split(",");
 
-                        EmbedHelper embed = new EmbedHelper();
-                        await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Discord.Color.Red, imageUrl).Build());
+                        if (chatKeywordAction[1].Trim().Length > 0)
+                        {
+                            if (chatKeywordAction[0].Length <= 50 && chatKeywordAction[1].Length <= 2000)
+                            {
+                                string word = chatKeywordAction[0].Trim();
+                                string action = chatKeywordAction[1].Trim();
+                                string createdBy = Context.User.Username;
+                                var serverId = Int64.Parse(Context.Guild.Id.ToString());
+
+                                StoredProcedure procedure = new StoredProcedure();
+
+                                procedure.UpdateCreate(Constants.Constants.discordBotConnStr, "AddChatKeywordAction", new List<System.Data.SqlClient.SqlParameter>
+                            {
+                                new System.Data.SqlClient.SqlParameter("@ServerID", serverId),
+                                new System.Data.SqlClient.SqlParameter("@Keyword", word),
+                                new System.Data.SqlClient.SqlParameter("@CreatedBy", createdBy),
+                                new System.Data.SqlClient.SqlParameter("@Action", action)
+                            });
+
+                                string title = "BigBirdBot - Keyword Added";
+                                string desc = $"Successfully added Keyword -> **{word}** \nAction -> {action}";
+                                string thumbnailUrl = "";
+                                string imageUrl = "";
+                                string embedCreatedBy = "Command from: " + Context.User.Username;
+
+                                EmbedHelper embed = new EmbedHelper();
+                                await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Green, imageUrl).Build());
+                            }
+                            else
+                            {
+                                string title = "BigBirdBot - Error";
+                                string desc = $"Maximum number of characters for the action is 50 characters and the action is 2000 characters.";
+                                string thumbnailUrl = Constants.Constants.errorImageUrl;
+                                string imageUrl = "";
+                                string createdBy = "Command from: " + Context.User.Username;
+
+                                EmbedHelper embed = new EmbedHelper();
+                                await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Discord.Color.Red, imageUrl).Build());
+                            }
+                        }
+                        else
+                        {
+                            string title = "BigBirdBot - Error";
+                            string desc = $"To add a chat keyword action, enter a word and action.  Ex: -ka laugh, LOL";
+                            string thumbnailUrl = Constants.Constants.errorImageUrl;
+                            string imageUrl = "";
+                            string createdBy = "Command from: " + Context.User.Username;
+
+                            EmbedHelper embed = new EmbedHelper();
+                            await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Discord.Color.Red, imageUrl).Build());
+                        }
                     }
-                }   
+                }
                 else
                 {
                     string title = "BigBirdBot - Error";
@@ -130,10 +190,10 @@ namespace DiscordBot.Modules
                     await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Discord.Color.Red, imageUrl).Build());
                 }
             }
-            else
+            catch (Exception e)
             {
                 string title = "BigBirdBot - Error";
-                string desc = $"To add a chat keyword action, enter a word and action.  Ex: -ka laugh, LOL";
+                string desc = $"Keyword added resulted in an error.\n" + e.Message;
                 string thumbnailUrl = Constants.Constants.errorImageUrl;
                 string imageUrl = "";
                 string createdBy = "Command from: " + Context.User.Username;
@@ -148,44 +208,61 @@ namespace DiscordBot.Modules
         public async Task HandleKeywordUpdate([Remainder] string keyword)
         {
             audit.InsertAudit("kae", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
-            if (keyword.Trim().Length > 0 && keyword.Contains(","))
+            try
             {
-                var chatKeywordAction = keyword.Split(",");
-
-                if (chatKeywordAction[1].Trim().Length > 0)
+                if (keyword.Trim().Length > 0 && keyword.Contains(","))
                 {
-                    if (chatKeywordAction[0].Length <= 50 && chatKeywordAction[1].Length <= 2000)
+                    var chatKeywordAction = keyword.Split(",");
+
+                    if (Context.Message.Attachments.Count == 1)
                     {
                         string word = chatKeywordAction[0].Trim();
-                        string action = chatKeywordAction[1].Trim();
                         string createdBy = Context.User.Username;
                         var serverId = Int64.Parse(Context.Guild.Id.ToString());
 
                         StoredProcedure procedure = new StoredProcedure();
 
                         DataTable dt = procedure.Select(Constants.Constants.discordBotConnStr, "GetChatActionActiveAndInActive", new List<System.Data.SqlClient.SqlParameter>
-                        {
-                            new System.Data.SqlClient.SqlParameter("@ServerID", serverId),
-                            new System.Data.SqlClient.SqlParameter("@Message", word)
-                        });
+                    {
+                        new System.Data.SqlClient.SqlParameter("@ServerID", serverId),
+                        new System.Data.SqlClient.SqlParameter("@Message", word)
+                    });
 
                         if (dt.Rows.Count > 0)
                         {
-                            procedure.UpdateCreate(Constants.Constants.discordBotConnStr, "UpdateChatAction", new List<System.Data.SqlClient.SqlParameter>
+                            var attachments = Context.Message.Attachments;
+
+                            foreach (var attachment in attachments)
                             {
-                                new System.Data.SqlClient.SqlParameter("@ServerID", serverId),
-                                new System.Data.SqlClient.SqlParameter("@Keyword", word),
-                                new System.Data.SqlClient.SqlParameter("@Action", action)
-                            });
+                                if (attachment.Size > 52428800)
+                                {
+                                    throw new Exception("The attachment provided is too large, please create the keyword using an attachment that is 50mb or less.");
+                                }
+                                else
+                                {
+                                    string path = @"C:\Users\Unmolded\Desktop\DiscordBot\KeywordAttachment\" + attachment.Filename;
+                                    using (WebClient client = new WebClient())
+                                    {
+                                        client.DownloadFileAsync(new Uri(attachment.Url), path);
+                                    }
 
-                            string title = "BigBirdBot - Keyword Updated";
-                            string desc = $"Successfully updated Keyword -> **{word}**\n Action -> {action}";
-                            string thumbnailUrl = "";
-                            string imageUrl = "";
-                            string embedCreatedBy = "Command from: " + Context.User.Username;
+                                    procedure.UpdateCreate(Constants.Constants.discordBotConnStr, "UpdateChatAction", new List<System.Data.SqlClient.SqlParameter>
+                                {
+                                    new System.Data.SqlClient.SqlParameter("@ServerID", serverId),
+                                    new System.Data.SqlClient.SqlParameter("@Keyword", word),
+                                    new System.Data.SqlClient.SqlParameter("@Action", path)
+                                });
 
-                            EmbedHelper embed = new EmbedHelper();
-                            await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Green, imageUrl).Build());
+                                    string title = "BigBirdBot - Keyword Updated";
+                                    string desc = $"Successfully updated Keyword -> **{word}**\n Action -> Attachment added.";
+                                    string thumbnailUrl = "";
+                                    string imageUrl = "";
+                                    string embedCreatedBy = "Command from: " + Context.User.Username;
+
+                                    EmbedHelper embed = new EmbedHelper();
+                                    await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Green, imageUrl).Build());
+                                }
+                            }
                         }
                         else
                         {
@@ -201,14 +278,120 @@ namespace DiscordBot.Modules
                     }
                     else
                     {
-                        string title = "BigBirdBot - Error";
-                        string desc = $"Maximum number of characters for the action is 50 characters and the action is 2000 characters.";
-                        string thumbnailUrl = Constants.Constants.errorImageUrl;
+                        if (chatKeywordAction[1].Trim().Length > 0)
+                        {
+                            if (chatKeywordAction[0].Length <= 50 && chatKeywordAction[1].Length <= 2000)
+                            {
+                                string word = chatKeywordAction[0].Trim();
+                                string action = chatKeywordAction[1].Trim();
+                                string createdBy = Context.User.Username;
+                                var serverId = Int64.Parse(Context.Guild.Id.ToString());
+
+                                StoredProcedure procedure = new StoredProcedure();
+
+                                DataTable dt = procedure.Select(Constants.Constants.discordBotConnStr, "GetChatActionActiveAndInActive", new List<System.Data.SqlClient.SqlParameter>
+                            {
+                                new System.Data.SqlClient.SqlParameter("@ServerID", serverId),
+                                new System.Data.SqlClient.SqlParameter("@Message", word)
+                            });
+
+                                if (dt.Rows.Count > 0)
+                                {
+                                    procedure.UpdateCreate(Constants.Constants.discordBotConnStr, "UpdateChatAction", new List<System.Data.SqlClient.SqlParameter>
+                                {
+                                    new System.Data.SqlClient.SqlParameter("@ServerID", serverId),
+                                    new System.Data.SqlClient.SqlParameter("@Keyword", word),
+                                    new System.Data.SqlClient.SqlParameter("@Action", action)
+                                });
+
+                                    string title = "BigBirdBot - Keyword Updated";
+                                    string desc = $"Successfully updated Keyword -> **{word}**\n Action -> {action}";
+                                    string thumbnailUrl = "";
+                                    string imageUrl = "";
+                                    string embedCreatedBy = "Command from: " + Context.User.Username;
+
+                                    EmbedHelper embed = new EmbedHelper();
+                                    await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Green, imageUrl).Build());
+                                }
+                                else
+                                {
+                                    string title = "BigBirdBot - Error";
+                                    string desc = $"This keyword does not exist for this server.";
+                                    string thumbnailUrl = Constants.Constants.errorImageUrl;
+                                    string imageUrl = "";
+                                    string createdByMsg = "Command from: " + Context.User.Username;
+
+                                    EmbedHelper embed = new EmbedHelper();
+                                    await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdByMsg, Discord.Color.Red, imageUrl).Build());
+                                }
+                            }
+                            else
+                            {
+                                string title = "BigBirdBot - Error";
+                                string desc = $"Maximum number of characters for the action is 50 characters and the action is 2000 characters.";
+                                string thumbnailUrl = Constants.Constants.errorImageUrl;
+                                string imageUrl = "";
+                                string createdBy = "Command from: " + Context.User.Username;
+
+                                EmbedHelper embed = new EmbedHelper();
+                                await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Discord.Color.Red, imageUrl).Build());
+                            }
+                        }
+                        else
+                        {
+                            string title = "BigBirdBot - Error";
+                            string desc = $"To add a chat keyword action, enter a word and action.  Ex: -ka laugh, LOL";
+                            string thumbnailUrl = Constants.Constants.errorImageUrl;
+                            string imageUrl = "";
+                            string createdBy = "Command from: " + Context.User.Username;
+
+                            EmbedHelper embed = new EmbedHelper();
+                            await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Discord.Color.Red, imageUrl).Build());
+                        }
+                    }
+                }
+                else if (keyword.Trim().Length > 0)
+                {
+                    string word = keyword.Trim();
+                    string createdBy = Context.User.Username;
+                    var serverId = Int64.Parse(Context.Guild.Id.ToString());
+
+                    StoredProcedure procedure = new StoredProcedure();
+
+                    DataTable dt = procedure.Select(Constants.Constants.discordBotConnStr, "GetChatActionActiveAndInActive", new List<System.Data.SqlClient.SqlParameter>
+                    {
+                        new System.Data.SqlClient.SqlParameter("@ServerID", serverId),
+                        new System.Data.SqlClient.SqlParameter("@Message", word)
+                    });
+
+                    if (dt.Rows.Count > 0)
+                    {
+                        procedure.UpdateCreate(Constants.Constants.discordBotConnStr, "UpdateChatAction", new List<System.Data.SqlClient.SqlParameter>
+                        {
+                            new System.Data.SqlClient.SqlParameter("@ServerID", serverId),
+                            new System.Data.SqlClient.SqlParameter("@Keyword", word),
+                            new System.Data.SqlClient.SqlParameter("@Action", "")
+                        });
+
+                        string title = "BigBirdBot - Keyword Updated";
+                        string desc = $"Successfully enabled Keyword -> **{word}**\n";
+                        string thumbnailUrl = "";
                         string imageUrl = "";
-                        string createdBy = "Command from: " + Context.User.Username;
+                        string embedCreatedBy = "Command from: " + Context.User.Username;
 
                         EmbedHelper embed = new EmbedHelper();
-                        await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Discord.Color.Red, imageUrl).Build());
+                        await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Green, imageUrl).Build());
+                    }
+                    else
+                    {
+                        string title = "BigBirdBot - Error";
+                        string desc = $"This keyword does not exist for this server.";
+                        string thumbnailUrl = Constants.Constants.errorImageUrl;
+                        string imageUrl = "";
+                        string createdByMsg = "Command from: " + Context.User.Username;
+
+                        EmbedHelper embed = new EmbedHelper();
+                        await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdByMsg, Discord.Color.Red, imageUrl).Build());
                     }
                 }
                 else
@@ -223,54 +406,10 @@ namespace DiscordBot.Modules
                     await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Discord.Color.Red, imageUrl).Build());
                 }
             }
-            else if (keyword.Trim().Length > 0)
-            {
-                string word = keyword.Trim();
-                string createdBy = Context.User.Username;
-                var serverId = Int64.Parse(Context.Guild.Id.ToString());
-
-                StoredProcedure procedure = new StoredProcedure();
-
-                DataTable dt = procedure.Select(Constants.Constants.discordBotConnStr, "GetChatActionActiveAndInActive", new List<System.Data.SqlClient.SqlParameter>
-                        {
-                            new System.Data.SqlClient.SqlParameter("@ServerID", serverId),
-                            new System.Data.SqlClient.SqlParameter("@Message", word)
-                        });
-
-                if (dt.Rows.Count > 0)
-                {
-                    procedure.UpdateCreate(Constants.Constants.discordBotConnStr, "UpdateChatAction", new List<System.Data.SqlClient.SqlParameter>
-                            {
-                                new System.Data.SqlClient.SqlParameter("@ServerID", serverId),
-                                new System.Data.SqlClient.SqlParameter("@Keyword", word),
-                                new System.Data.SqlClient.SqlParameter("@Action", "")
-                            });
-
-                    string title = "BigBirdBot - Keyword Updated";
-                    string desc = $"Successfully enabled Keyword -> **{word}**\n";
-                    string thumbnailUrl = "";
-                    string imageUrl = "";
-                    string embedCreatedBy = "Command from: " + Context.User.Username;
-
-                    EmbedHelper embed = new EmbedHelper();
-                    await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Green, imageUrl).Build());
-                }
-                else
-                {
-                    string title = "BigBirdBot - Error";
-                    string desc = $"This keyword does not exist for this server.";
-                    string thumbnailUrl = Constants.Constants.errorImageUrl;
-                    string imageUrl = "";
-                    string createdByMsg = "Command from: " + Context.User.Username;
-
-                    EmbedHelper embed = new EmbedHelper();
-                    await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdByMsg, Discord.Color.Red, imageUrl).Build());
-                }
-            }
-            else
+            catch (Exception e)
             {
                 string title = "BigBirdBot - Error";
-                string desc = $"To add a chat keyword action, enter a word and action.  Ex: -ka laugh, LOL";
+                string desc = $"Keyword added resulted in an error.\n" + e.Message;
                 string thumbnailUrl = Constants.Constants.errorImageUrl;
                 string imageUrl = "";
                 string createdBy = "Command from: " + Context.User.Username;
@@ -455,6 +594,8 @@ namespace DiscordBot.Modules
         [Alias("del")]
         public async Task HandleDelete([Remainder] int numToDelete)
         {
+            audit.InsertAudit("delete", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
+
             if (numToDelete < 1 || numToDelete > 20) 
             {
                 string title = "BigBirdBot - Error";
@@ -468,12 +609,9 @@ namespace DiscordBot.Modules
             }
             else
             {
-                var messages = await Context.Channel.GetMessagesAsync(numToDelete, Discord.CacheMode.AllowDownload, null).FlattenAsync();
-
-                foreach (var message in messages)
-                {
-                    await message.DeleteAsync();
-                }
+                var channel = Context.Channel as SocketTextChannel;
+                var messages = await channel.GetMessagesAsync(numToDelete + 1).FlattenAsync();
+                await channel.DeleteMessagesAsync(messages);
             }
         }
 
@@ -584,6 +722,13 @@ namespace DiscordBot.Modules
                     var guild = Context.Client.GetGuild(ulong.Parse(serverId.ToString()));
                     var categoryId = guild.CategoryChannels.First(c => c.Name == "thirsting").Id; // prod: thirsting
 
+                    if (categoryId == default(ulong))
+                    {
+                        title = "BigBirdBot - Thirst Command Error";
+                        desc = "Please create a server category called thirsting (all lower case) before adding a new thirst command.";
+                        throw new Exception("Please create a server category called thirsting (all lower case) before adding a new thirst command.");
+                    }
+
                     DataTable dtCheck = stored.Select(Constants.Constants.discordBotConnStr, "CheckKeywordExistsThirstMap", new List<SqlParameter>
                     {
                         new SqlParameter("@Keyword", keyword)
@@ -598,7 +743,7 @@ namespace DiscordBot.Modules
                             {
                                 title = "BigBirdBot - Thirst Command Exists";
                                 desc = "Keyword Exists for this Server.";
-                                await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, "", createdByMsg, Color.Blue).Build());
+                                throw new Exception("Keyword exists for this server");
                             }
                         }
 
@@ -610,7 +755,7 @@ namespace DiscordBot.Modules
                             new SqlParameter("@Keyword", keyword),
                             new SqlParameter("@AddKeyword", dr["AddKeyword"].ToString()),
                             new SqlParameter("@CreatedBy", createdBy),
-                            new SqlParameter("@TableName", dr["TAbleName"].ToString())
+                            new SqlParameter("@TableName", dr["TableName"].ToString())
                         });
                     }
                     else
@@ -697,6 +842,24 @@ namespace DiscordBot.Modules
                 string desc = e.Message;
                 string createdByMsg = "Command from: " + Context.User.Username;
                 await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, "", createdByMsg, Color.Red).Build());
+            }
+        }
+
+        [Command("avatar")]
+        [Discord.Commands.Summary("See you or someone else's avatar in high quality.")]
+        public async Task HandleAvatarCommand([Remainder] SocketGuildUser user = null)
+        {
+            try
+            {
+                audit.InsertAudit("avatar", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
+
+                await ReplyAsync($"**{(user ?? Context.User as SocketGuildUser).Username}**'s avatar\n{user.GetAvatarUrl(size: 1024) ?? user.GetDefaultAvatarUrl()}");
+            }
+            catch (Exception e)
+            {
+                EmbedHelper embedHelper = new EmbedHelper();
+                var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", e.Message, Constants.Constants.errorImageUrl, "", Color.Red, "");
+                await ReplyAsync(embed: embed.Build());
             }
         }
     }
