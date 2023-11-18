@@ -43,7 +43,7 @@ namespace DiscordBot.Modules
                         string createdBy = "Command from: " + Context.User.Username;
 
                         EmbedHelper embed = new EmbedHelper();
-                        await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Color.Magenta).Build());
+                        await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Discord.Color.Blue).Build());
                     }
                 }
             }

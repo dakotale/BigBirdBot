@@ -65,26 +65,7 @@ namespace DiscordBot.Services
 
             // the command was successful, we don't care about this result, unless we want to log that a command succeeded.
             if (result.IsSuccess)
-            {
-                //foreach (var c in _commands.Commands)
-                //{
-                //    using (var con = new SqlConnection(Constants.Constants.discordBotConnStr))
-                //    using (var cmd = new SqlCommand("AddCommandList", con))
-                //    {
-                //        cmd.CommandType = CommandType.StoredProcedure;
-
-                //        cmd.Parameters.Add("@CommandName", SqlDbType.VarChar).Value = c.Name;
-                //        cmd.Parameters.Add("@CommandDescription", SqlDbType.VarChar).Value = c.Summary ?? "";
-                //        cmd.Parameters.Add("@CommandAliases", SqlDbType.VarChar).Value = string.Join(",", c.Aliases.ToArray()) ?? "";
-
-                //        con.Open();
-                //        cmd.ExecuteNonQuery();
-                //    }
-                //}
-
                 return;
-            }
-
             
             if (result.ErrorReason.Contains("The input text has too few parameters"))
             {

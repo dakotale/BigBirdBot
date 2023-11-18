@@ -9,9 +9,6 @@ using System.Net;
 using Discord;
 using System.Data.SqlClient;
 using Discord.WebSocket;
-using Discord.Interactions;
-using System.Threading.Channels;
-using System;
 
 namespace DiscordBot.Modules
 {
@@ -464,36 +461,36 @@ namespace DiscordBot.Modules
             }
         }
 
-        [Command("mcmod")]
-        public async Task MCAddJar()
-        {
-            audit.InsertAudit("mcmod", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
-            WebClient wc = new WebClient();
-            var attachments = Context.Message.Attachments;
-            if (attachments != null)
-            {
-                foreach (var attachment in attachments)
-                {
-                    try
-                    {
-                        wc.DownloadFile(attachment.Url, Constants.Constants.minecraftModsLocation + attachment.Filename);
+        //[Command("mcmod")]
+        //public async Task MCAddJar()
+        //{
+        //    audit.InsertAudit("mcmod", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
+        //    WebClient wc = new WebClient();
+        //    var attachments = Context.Message.Attachments;
+        //    if (attachments != null)
+        //    {
+        //        foreach (var attachment in attachments)
+        //        {
+        //            try
+        //            {
+        //                wc.DownloadFile(attachment.Url, Constants.Constants.minecraftModsLocation + attachment.Filename);
 
-                        string title = "BigBirdBot - Minecraft Mod";
-                        string desc = $"Added {attachment.Filename} to the mods directory of the server, this will be enabled on next server restart.";
-                        string thumbnailUrl = "";
-                        string createdBy = "Command from: " + Context.User.Username;
+        //                string title = "BigBirdBot - Minecraft Mod";
+        //                string desc = $"Added {attachment.Filename} to the mods directory of the server, this will be enabled on next server restart.";
+        //                string thumbnailUrl = "";
+        //                string createdBy = "Command from: " + Context.User.Username;
 
-                        EmbedHelper embed = new EmbedHelper();
-                        await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Discord.Color.Green).Build());
-                    }
-                    catch (Exception e)
-                    {
-                        EmbedHelper embed = new EmbedHelper();
-                        await ReplyAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Error", e.Message, Constants.Constants.errorImageUrl, "", Discord.Color.Red, "").Build());
-                    }
-                }
-            }
-        }
+        //                EmbedHelper embed = new EmbedHelper();
+        //                await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Discord.Color.Green).Build());
+        //            }
+        //            catch (Exception e)
+        //            {
+        //                EmbedHelper embed = new EmbedHelper();
+        //                await ReplyAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Error", e.Message, Constants.Constants.errorImageUrl, "", Discord.Color.Red, "").Build());
+        //            }
+        //        }
+        //    }
+        //}
 
         [Command("math")]
         public async Task HandleMath([Remainder] int number)
@@ -536,51 +533,6 @@ namespace DiscordBot.Modules
             {
                 string title = "BigBirdBot - Error";
                 string desc = $"There must be more than one choice specified.";
-                string thumbnailUrl = Constants.Constants.errorImageUrl;
-                string imageUrl = "";
-                string createdByMsg = "Command from: " + Context.User.Username;
-
-                EmbedHelper embed = new EmbedHelper();
-                await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdByMsg, Discord.Color.Red, imageUrl).Build());
-            }
-        }
-
-        [Command("animal")]
-        [Alias("a")]
-        public async Task HandleChat([Remainder] string message)
-        {
-            audit.InsertAudit("animal", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
-            if (message.Contains(","))
-            {
-                var resultSplit = message.Split(",");
-                string prompt = "Provide a response like a " + resultSplit[0].Trim() + " to the following: \"" + resultSplit[1].Trim() + "\"";
-                var api = new OpenAI_API.OpenAIAPI(Constants.Constants.openAiSecret);
-                var result = await api.Completions.CreateCompletionAsync(new OpenAI_API.Completions.CompletionRequest(message, model: Model.DavinciText, max_tokens: 1000, temperature: 0.9, null, null, 1, null, null));
-                var response = result.ToString();
-
-                int length = response.Length;
-
-                if (response.Length > 2000)
-                {
-                    await ReplyAsync(response.Substring(0, 2000));
-                    await ReplyAsync(response.Substring(2000, length - 2000));
-                }
-                else
-                    await ReplyAsync(response);
-
-                await ReplyAsync("---END RESPONSE---");
-                // Starting point for conversation of ChatGPT, need to research this more when more invested.
-                //var responseRequest = await Interactive.NextMessageAsync(x => x.Channel.Id == Context.Channel.Id, timeout: TimeSpan.FromMinutes(1));
-
-                //if (responseRequest != null && responseRequest.IsSuccess)
-                //{
-
-                //}
-            }
-            else
-            {
-                string title = "BigBirdBot - Error";
-                string desc = $"There must be more than one choose specified.";
                 string thumbnailUrl = Constants.Constants.errorImageUrl;
                 string imageUrl = "";
                 string createdByMsg = "Command from: " + Context.User.Username;
@@ -679,7 +631,8 @@ namespace DiscordBot.Modules
             }
         }
 
-        [Command("addthirst")]
+        [Command("addkeymulti")]
+        [Alias("addthirst")]
         public async Task HandleAddThirst([Remainder] string args = "")
         {
             /*
@@ -694,7 +647,7 @@ namespace DiscordBot.Modules
              * 7. Check if the -command portion of the string is in the thirst map, if it is then perform the insert logic with a returned value
              * 8. Assuming bot has permission, create the text channel using the name of the table and append the first message in it
              * 
-             * Command Ex: -addthirst <addtest>, <test>, <testKeyword>
+             * Command Ex: -addthirst <addtest>, <test>, <testKeyword>, <if channel is created - optional>
              * TODO: Handle if the keyword exists to create channel in another server or return the keyword and textchannel already exists
              */
             audit.InsertAudit("addthirst", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
@@ -722,11 +675,12 @@ namespace DiscordBot.Modules
                     var guild = Context.Client.GetGuild(ulong.Parse(serverId.ToString()));
                     var categoryId = guild.CategoryChannels.First(c => c.Name == "thirsting").Id; // prod: thirsting
 
-                    if (categoryId == default(ulong))
+                    if (categoryId == default(ulong) && (thirstParams.Length == 4 || thirstParams[3].Equals("no", StringComparison.OrdinalIgnoreCase)))
                     {
-                        title = "BigBirdBot - Thirst Command Error";
-                        desc = "Please create a server category called thirsting (all lower case) before adding a new thirst command.";
-                        throw new Exception("Please create a server category called thirsting (all lower case) before adding a new thirst command.");
+                        await guild.CreateCategoryChannelAsync("thirsting");
+                        title = "BigBirdBot - Keyword Multi Information";
+                        desc = "The channel category does not exist, creating one for you to store the thirsting channels.\n**NOTE**: For a channel to not be created, pass 'no' into the command arguments.\n**Example: -addkeymulti addword, word, work, no**";
+                        await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, "", createdByMsg, Color.Blue).Build());
                     }
 
                     DataTable dtCheck = stored.Select(Constants.Constants.discordBotConnStr, "CheckKeywordExistsThirstMap", new List<SqlParameter>
@@ -741,8 +695,6 @@ namespace DiscordBot.Modules
                         {
                             if (drCheck["ServerID"].ToString().Equals(serverId.ToString()))
                             {
-                                title = "BigBirdBot - Thirst Command Exists";
-                                desc = "Keyword Exists for this Server.";
                                 throw new Exception("Keyword exists for this server");
                             }
                         }
@@ -774,20 +726,30 @@ namespace DiscordBot.Modules
                         Directory.CreateDirectory(@"C:\Users\Unmolded\Desktop\DiscordBot\" + tableName + "_Thirst");
                     }
                     
+                    // Have it not create a channel
+                    if (thirstParams.Length == 4 && thirstParams[3].Equals("no", StringComparison.InvariantCultureIgnoreCase))
+                    {
+                        // Output when we are all good
+                        title = "BigBirdBot - " + tableName + " Information";
+                        desc = $"Keyword Added: **{keyword}**\nAdd Command: **-{addKeyword}**";
+                        await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, "", createdByMsg, Color.Blue).Build());
+                    }
+                    else
+                    {
+                        title = "BigBirdBot - " + tableName + " Information";
+                        desc = $"Keyword Added: **{keyword}**\nAdd Command: **-{addKeyword}**";
+                        await guild.CreateTextChannelAsync(textChannelName, tcp => tcp.CategoryId = categoryId).Result.SendMessageAsync(embed: embed.BuildMessageEmbed(title, desc, "", createdByMsg, Color.Blue).Build()).Result.PinAsync();
 
-                    title = "BigBirdBot - " + tableName + " Information";
-                    desc = $"Keyword Added: **{keyword}**\nAdd Command: **-{addKeyword}**";
-                    await guild.CreateTextChannelAsync(textChannelName, tcp => tcp.CategoryId = categoryId).Result.SendMessageAsync(embed: embed.BuildMessageEmbed(title, desc, "", createdByMsg, Color.Blue).Build()).Result.PinAsync();
-
-                    // Output when we are all good
-                    title = "BigBirdBot - Added Thirst Command";
-                    desc = "Added command successfully, please check the **" + tableName + "** channel created.";
-                    await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, "", createdByMsg, Color.Blue).Build());
+                        // Output when we are all good
+                        title = "BigBirdBot - Added Keyword Multi Command";
+                        desc = "Added command successfully, please check the **" + tableName + "** channel created.";
+                        await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, "", createdByMsg, Color.Blue).Build());
+                    }
                 }
                 catch (Exception ex)
                 {
                     EmbedHelper embed = new EmbedHelper();
-                    string title = "BigBirdBot - Thirst Command Error";
+                    string title = "BigBirdBot - Keyword Multi Error";
                     string desc = ex.Message;
                     string createdByMsg = "Command from: " + Context.User.Username;
                     await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, "", createdByMsg, Color.Red).Build());
@@ -809,6 +771,21 @@ namespace DiscordBot.Modules
                 {
                     var serverId = Int64.Parse(Context.Guild.Id.ToString());
                     var guild = Context.Client.GetGuild(ulong.Parse(serverId.ToString()));
+
+                    if (guild.Roles.Where(s => s.Name.Contains("birthday")).Count() == 0)
+                    {
+                        // Create the birthday role and add all the users in the server
+                        await guild.CreateRoleAsync("birthday", null, Discord.Color.Purple, false, true, null);
+
+                        var embed = new EmbedBuilder
+                        {
+                            Title = "BigBirdBot - Birthday",
+                            Color = Color.Gold,
+                            Description = "A **birthday** role was created, please have an administrator add the users to this role before running this command again."
+                        };
+
+                        await Task.CompletedTask;
+                    }
 
                     DataTable dtNewEvent = storedProcedure.Select(Constants.Constants.discordBotConnStr, "AddEvent", new List<SqlParameter>
                     {
@@ -853,7 +830,19 @@ namespace DiscordBot.Modules
             {
                 audit.InsertAudit("avatar", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
 
-                await ReplyAsync($"**{(user ?? Context.User as SocketGuildUser).Username}**'s avatar\n{user.GetAvatarUrl(size: 1024) ?? user.GetDefaultAvatarUrl()}");
+                if (user == null)
+                    user = Context.User as SocketGuildUser;
+
+                var embed = new EmbedBuilder
+                {
+                    Title = $"BigBirdBot - {user.Username}'s Avatar",
+                    Color = Color.Blue,
+                    ImageUrl = user.GetDisplayAvatarUrl(size: 1024) ?? user.GetDefaultAvatarUrl()
+                };
+                embed
+                    .WithFooter(footer => footer.Text = "Created by " + Context.User.Username)
+                    .WithCurrentTimestamp();
+                await ReplyAsync(embed: embed.Build());
             }
             catch (Exception e)
             {

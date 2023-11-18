@@ -26,7 +26,6 @@ namespace DiscordBot.Services
 
             VoteQueue = new HashSet<ulong>();
             _lavaNode.OnStatsReceived += OnStatsReceivedAsync;
-            //_lavaNode.OnUpdateReceived += OnUpdateReceivedAsync;
             _lavaNode.OnWebSocketClosed += OnWebSocketClosedAsync;
             _lavaNode.OnTrackStart += OnTrackStartAsync;
             _lavaNode.OnTrackEnd += OnTrackEndAsync;
@@ -34,19 +33,21 @@ namespace DiscordBot.Services
             _lavaNode.OnTrackException += OnTrackExceptionAsync;
         }
 
-        private static Task OnTrackExceptionAsync(TrackExceptionEventArg<LavaPlayer<LavaTrack>, LavaTrack> arg)
+        private async Task OnTrackExceptionAsync(TrackExceptionEventArg<LavaPlayer<LavaTrack>, LavaTrack> arg)
         {
             arg.Player.Vueue.Enqueue(arg.Track);
-            return arg.Player.TextChannel.SendMessageAsync($"{arg.Track} has been requeued because it threw an exception.");
+            await arg.Player.TextChannel.SendMessageAsync($"{arg.Track} has been requeued because it threw an exception.");
+            await Task.CompletedTask;
         }
 
-        private static Task OnTrackStuckAsync(TrackStuckEventArg<LavaPlayer<LavaTrack>, LavaTrack> arg)
+        private async Task OnTrackStuckAsync(TrackStuckEventArg<LavaPlayer<LavaTrack>, LavaTrack> arg)
         {
             arg.Player.Vueue.Enqueue(arg.Track);
-            return arg.Player.TextChannel.SendMessageAsync($"{arg.Track} has been requeued because it got stuck.");
+            await arg.Player.TextChannel.SendMessageAsync($"{arg.Track} has been requeued because it got stuck.");
+            await Task.CompletedTask;
         }
 
-        private Task OnWebSocketClosedAsync(WebSocketClosedEventArg arg)
+        private async Task OnWebSocketClosedAsync(WebSocketClosedEventArg arg)
         {
             StoredProcedure storedProcedure = new StoredProcedure();
             List<SqlParameter> parameters = new List<SqlParameter>
@@ -57,7 +58,7 @@ namespace DiscordBot.Services
             };
 
             storedProcedure.UpdateCreate(Constants.Constants.discordBotConnStr, "AddMusicLog", parameters);
-            return Task.CompletedTask;
+            await Task.CompletedTask;
         }
 
         private Task OnStatsReceivedAsync(StatsEventArg arg)
@@ -65,24 +66,6 @@ namespace DiscordBot.Services
             _logger.LogInformation(JsonSerializer.Serialize(arg));
             return Task.CompletedTask;
         }
-
-        // This is called when something is playing only
-        //private async Task OnUpdateReceivedAsync(UpdateEventArg<LavaPlayer<LavaTrack>, LavaTrack> arg)
-        //{
-        //    // TODO: Is there anyway we can check inactivity here and disconnect the bot from VC?
-        //    // We have the timer and we should be able to disconnect with people in VC == 0 for connected Guilds
-        //    var voiceChannelId = arg.Player.VoiceChannel.Id;
-
-        //    var voiceChannel = arg.Player.VoiceChannel as SocketVoiceChannel;
-        //    var connectedUsers = voiceChannel.ConnectedUsers.Where(s => !s.IsBot).ToList();
-
-        //    if (connectedUsers.Count == 0)
-        //    {
-        //        arg.Player.Vueue.Clear();
-        //        await arg.Player.StopAsync();
-        //        await _lavaNode.LeaveAsync(voiceChannel);
-        //    }
-        //}
 
         private async Task OnTrackStartAsync(TrackStartEventArg<LavaPlayer<LavaTrack>, LavaTrack> arg)
         {
@@ -113,6 +96,7 @@ namespace DiscordBot.Services
                 }
 
                 await arg.Player.SetVolumeAsync(volume);
+                await Task.CompletedTask;
             }
             catch (Exception ex)
             {
@@ -167,59 +151,12 @@ namespace DiscordBot.Services
                         ThumbnailUrl = Constants.Constants.errorImageUrl,
                         Description = $"{ex.Message}"
                     };
+
+                    await arg.Player.TextChannel.SendMessageAsync(embed: embed.Build());
                 }
             }
-            //else
-            //{
-            //    StoredProcedure stored = new StoredProcedure();
-            //    DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "GetStayFlag", new List<SqlParameter> { new SqlParameter("@ServerUID", Int64.Parse(arg.Player.VoiceChannel.GuildId.ToString())) });
-            //    bool stayFlag = false;
-            //    foreach (DataRow dr in dt.Rows)
-            //    {
-            //        stayFlag = Convert.ToBoolean(dr["StayInVC"]);
-            //    }
 
-            //    if (!stayFlag)
-            //    {
-            //        await arg.Player.TextChannel.SendMessageAsync(embed: embed.Build());
-            //        await InitiateDisconnectAsync(arg.Player, TimeSpan.FromSeconds(5));
-            //    }
-            //}
-
-            return;
+            await Task.CompletedTask;
         }
-
-        //private async Task InitiateDisconnectAsync(LavaPlayer<LavaTrack> player, TimeSpan timeSpan)
-        //{
-        //    if (!_disconnectTokens.TryGetValue(player.VoiceChannel.Id, out var value))
-        //    {
-        //        value = new CancellationTokenSource();
-        //        _disconnectTokens.TryAdd(player.VoiceChannel.Id, value);
-        //    }
-        //    else if (value.IsCancellationRequested)
-        //    {
-        //        _disconnectTokens.TryUpdate(player.VoiceChannel.Id, new CancellationTokenSource(), value);
-        //        value = _disconnectTokens[player.VoiceChannel.Id];
-        //    }
-
-        //    var isCancelled = SpinWait.SpinUntil(() => value.IsCancellationRequested, timeSpan);
-        //    if (isCancelled)
-        //    {
-        //        return;
-        //    }
-
-        //    await _lavaNode.LeaveAsync(player.VoiceChannel);
-
-        //    var embed = new EmbedBuilder
-        //    {
-        //        Title = $"BigBirdBot Music - Leave",
-        //        Color = Color.Blue,
-        //        Description = $"Bye, have a beautiful time",
-        //        ThumbnailUrl = "https://static.wikia.nocookie.net/americandad/images/d/d0/Officer_Pena.jpg/revision/latest?cb=20100228182532",
-        //    };
-
-        //    embed.WithCurrentTimestamp();
-        //    await player.TextChannel.SendMessageAsync(embed: embed.Build());
-        //}
     }
 }

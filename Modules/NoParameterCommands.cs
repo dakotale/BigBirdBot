@@ -94,49 +94,6 @@ namespace DiscordBot.Modules
             }
         }
 
-        [Command("errmusiclog")]
-        [Alias("eml")]
-        public async Task HandleMusicLog()
-        {
-            try
-            {
-                string connStr = Constants.Constants.discordBotConnStr;
-
-                audit.InsertAudit("errmusiclog", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
-
-                MusicLog musicLog = new MusicLog();
-                List<MusicLog> musicLogs = musicLog.GetMusicLog(connStr);
-                
-                if (musicLogs.Count == 0)
-                {
-                    await ReplyAsync("No errors reported.");
-                }
-                else
-                {
-                    foreach (var m in musicLogs)
-                    {
-                        string error = "Code: " + m.Code.ToString() + "\nReason: " + m.Reason + "\nServer Name: " + m.ServerName + "\nDate Logged: " + m.CreatedOn.ToString();
-                        var embed = new EmbedBuilder
-                        {
-                            Title = $"BigBirdBot Music - Latest Error",
-                            Color = Color.Red,
-                            Description = error,
-                            //ThumbnailUrl = "https://toppng.com/uploads/preview/clip-art-free-music-ministry-transparent-background-music-notes-11562855021eg6xmxzw2u.png",
-                        };
-
-                        embed.WithCurrentTimestamp();
-                        await ReplyAsync(embed: embed.Build());
-                    }
-                }
-            }
-            catch (Exception e)
-            {
-                EmbedHelper embedHelper = new EmbedHelper();
-                var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", e.Message, Constants.Constants.errorImageUrl, "", Color.Red, "");
-                await ReplyAsync(embed: embed.Build());
-            }
-        }
-
         [Command("kaonoff")]
         public async Task HandleKeywordOnOff()
         {
