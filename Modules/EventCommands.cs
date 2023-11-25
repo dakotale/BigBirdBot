@@ -45,5 +45,47 @@ namespace DiscordBot.Modules
                 await ReplyAsync(embed: embed.Build());
             }
         }
+
+        [Command("deleteevent")]
+        [Alias("delevent", "deleve")]
+        public async Task HandleDeleteEvent([Remainder] string eventName)
+        {
+            audit.InsertAudit("deleteevent", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
+
+            StoredProcedure storedProcedure = new StoredProcedure();
+            EmbedHelper embedHelper = new EmbedHelper();
+
+            if (eventName.Trim().Length > 0)
+            {
+                try
+                {
+                    DataTable dt = storedProcedure.Select(Constants.Constants.discordBotConnStr, "DeleteEventByName", new List<SqlParameter>
+                    {
+                        new SqlParameter("@EventName", eventName.Trim())
+                    });
+
+                    if (dt.Rows.Count > 0)
+                    {
+                        var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Event Deleted Successfully.", "", "", "", Discord.Color.Blue, null, null);
+                        await ReplyAsync(embed: embed.Build());
+                    }
+                    else
+                    {
+                        var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "Event does not exist by the name entered.", Constants.Constants.errorImageUrl, "", Color.Red, "");
+                        await ReplyAsync(embed: embed.Build());
+                    }
+                }
+                catch (Exception e)
+                {
+                    var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", e.Message, Constants.Constants.errorImageUrl, "", Color.Red, "");
+                    await ReplyAsync(embed: embed.Build());
+                }
+            }
+            else
+            {
+                var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "Please enter a valid event name", Constants.Constants.errorImageUrl, "", Color.Red, "");
+                await ReplyAsync(embed: embed.Build());
+            }
+        }
     }
 }

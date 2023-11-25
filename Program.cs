@@ -22,12 +22,12 @@ class Program
     static DiscordSocketClient _client = new DiscordSocketClient();
     static void Main(string[] args)
     {
-        System.Timers.Timer myTimer;
-        myTimer = new System.Timers.Timer(50000); // Check every 50 seconds
-        myTimer.Elapsed += OnTimedEvent;
-        myTimer.AutoReset = true;
-        myTimer.Enabled = true;
-        myTimer.Start();
+        System.Timers.Timer eventTimer;
+        eventTimer = new System.Timers.Timer(55000); // Check every 55 seconds
+        eventTimer.Elapsed += OnTimedEvent;
+        eventTimer.AutoReset = true;
+        eventTimer.Enabled = true;
+        eventTimer.Start();
         new Program().MainAsync().GetAwaiter().GetResult();
     }
     public async Task MainAsync()
@@ -46,6 +46,7 @@ class Program
 
             // Tokens should be considered secret data and never hard-coded.
             // We can read from the environment variable to avoid hard coding.
+            // When DevTest change this token
             await _client.LoginAsync(TokenType.Bot, Constants.botToken);
             await _client.StartAsync();
 
@@ -513,12 +514,7 @@ class Program
         SocketTextChannel? firstTextChannel;
 
         if (textChannels.Count > 0)
-        {
-            if (textChannels.Count > 1)
-                firstTextChannel = arg.Guild.GetTextChannel(textChannels[1].Id);
-            else
-                firstTextChannel = arg.Guild.GetTextChannel(textChannels[0].Id);
-        }
+            firstTextChannel = arg.Guild.GetTextChannel(textChannels[0].Id) ?? arg.Guild.GetTextChannel(textChannels[1].Id);
         else
             firstTextChannel = arg.Guild.DefaultChannel;
         

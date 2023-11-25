@@ -17,6 +17,7 @@ namespace DiscordBot.Constants
         public const string weatherGeoCodeReverseApiUrl = "http://api.openweathermap.org/geo/1.0/reverse?lat=";
         public const string uselessSiteUrl = "https://www.theuselesswebindex.com/website/";
         public const string botToken = "NTMyMzY3MDU4OTE1Mjk1MjMy.XJ_ypA.wgayR8pkXlju6Zwvv3YZus5n-xE";
+        public const string botTokenDevTest = "MTE3NjI4NDg4NjYwOTQzMjU4Ng.GSfM97.mTGUtFvKNbQbWh8k9EM8Pbq2Q52kfXLo-Jygl0";
         public const char msgPrefix = '-';
         public const string wikipediaUrl = "https://en.wikipedia.org/wiki/Special:Random";
         public const string lavaLinkPwd = "This 1s @ Sup3r S3cr3t P@ssword!";
