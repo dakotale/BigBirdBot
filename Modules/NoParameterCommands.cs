@@ -54,37 +54,36 @@ namespace DiscordBot.Modules
             try
             {
                 audit.InsertAudit("populateallusers", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
+                StoredProcedure stored = new StoredProcedure();
 
-                using (SqlConnection conn = new SqlConnection(Constants.Constants.discordBotConnStr))
+                // GetServer ulong IDs
+                // var test = Context.Client.GetGuild(id).Users.Where(s => s.IsBot == false).ToList();
+                DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "GetServers", new List<SqlParameter>());
+
+                foreach (DataRow dr in dt.Rows)
                 {
-                    await Context.Guild.DownloadUsersAsync();
-                    foreach (var user in Context.Guild.Users.ToList())
+                    // Need to check if Guild exists
+                    if (Context.Client.GetGuild(ulong.Parse(dr["ServerUID"].ToString())) != null)
                     {
-                        if (!user.IsBot)
+                        var users = Context.Client.GetGuild(ulong.Parse(dr["ServerUID"].ToString())).Users.Where(s => s.IsBot == false).ToList() ?? new List<SocketGuildUser>();
+                        if (users.Count > 0)
                         {
-                            conn.Open();
-
-                            // 1.  create a command object identifying the stored procedure
-                            SqlCommand cmd = new SqlCommand("AddUser", conn);
-
-                            // 2. set the command object so it knows to execute a stored procedure
-                            cmd.CommandType = CommandType.StoredProcedure;
-
-                            // 3. add parameter to command, which will be passed to the stored procedure
-                            cmd.Parameters.Add(new SqlParameter("@UserID", user.Id.ToString()));
-                            cmd.Parameters.Add(new SqlParameter("@Username", user.Username));
-                            cmd.Parameters.Add(new SqlParameter("@JoinDate", user.JoinedAt));
-                            cmd.Parameters.Add(new SqlParameter("@GuildName", user.Guild.Name));
-                            cmd.Parameters.Add(new SqlParameter("@Nickname", user.Nickname));
-                            // execute the command
-                            cmd.ExecuteNonQuery();
-
-                            conn.Close();
-                            cmd.Dispose();
+                            foreach (var u in users)
+                            {
+                                stored.UpdateCreate(Constants.Constants.discordBotConnStr, "AddUser", new List<SqlParameter>
+                            {
+                                new SqlParameter("@UserID", u.Id.ToString()),
+                                new SqlParameter("@Username", u.Username),
+                                new SqlParameter("@JoinDate", u.JoinedAt),
+                                new SqlParameter("@GuildName", u.Guild.Name),
+                                new SqlParameter("@Nickname", u.Nickname)
+                            });
+                            }
                         }
                     }
                 }
-                await ReplyAsync("All users of the server were added to the database.");
+
+                await ReplyAsync("User table updated.");
             }
             catch (Exception e)
             {

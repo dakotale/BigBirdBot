@@ -489,6 +489,7 @@ class Program
         string thumbnailUrl = arg2.GetAvatarUrl(ImageFormat.Png, 256);
         string createdBy = "BigBirdBot";
         string imageUrl = "";
+        StoredProcedure stored = new StoredProcedure();
 
         // Let's pull the first channel and hope for the best.....
         var textChannels = arg1.TextChannels.ToList();
@@ -498,6 +499,11 @@ class Program
         EmbedHelper embed = new EmbedHelper();
         if (channel != null && !arg2.IsBot)
             await channel.SendMessageAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Color.Gold, imageUrl).Build());
+
+        stored.UpdateCreate(Constants.discordBotConnStr, "DeleteUser", new List<SqlParameter>
+        {
+            new SqlParameter("@UserID", arg2.Id.ToString())
+        });
     }
 
     private async Task UserJoined(SocketGuildUser arg)
@@ -640,6 +646,7 @@ class Program
             .AddSingleton(new DiscordSocketConfig
             {
                 GatewayIntents = GatewayIntents.AllUnprivileged | GatewayIntents.MessageContent | GatewayIntents.GuildMembers,
+                LogGatewayIntentWarnings = false,
                 AlwaysDownloadUsers = true,
                 DefaultRetryMode = RetryMode.AlwaysRetry,
                 LogLevel = LogSeverity.Warning
