@@ -28,5 +28,6 @@ namespace DiscordBot.Constants
         public static Int32 ToUnixTimestamp(this DateTime dateTime) => (int)dateTime.Subtract(new DateTime(1970, 1, 1)).TotalSeconds;
         public static string ToDiscordUnixTimeestampFormat(this DateTime dateTime) => $"<t:{dateTime.ToUnixTimestamp()}:R>";
         public const string testServerGuildId = "880569055856185354";
+        public const string hltbApiUrl = "https://hltb-api.vercel.app/api?name=";
     }
 }

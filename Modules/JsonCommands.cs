@@ -6,6 +6,8 @@ using System.Data.SqlClient;
 using System.Data;
 using System.Net;
 using DiscordBot.Helper;
+using SpotifyAPI.Web.Http;
+using System.Text.Json;
 
 namespace DiscordBot.Modules
 {
@@ -43,7 +45,7 @@ namespace DiscordBot.Modules
                         string createdBy = "Command from: " + Context.User.Username;
 
                         EmbedHelper embed = new EmbedHelper();
-                        await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Color.Magenta).Build());
+                        await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Discord.Color.Blue).Build());
                     }
                 }
             }
@@ -144,6 +146,82 @@ namespace DiscordBot.Modules
             catch (Exception e)
             {
                 EmbedHelper embedHelper = new EmbedHelper();
+                var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", e.Message, Constants.Constants.errorImageUrl, "", Color.Red, "");
+                await ReplyAsync(embed: embed.Build());
+            }
+        }
+
+        [Command("hltb")]
+        [Summary("Using HowLongToBeat API, pull the information on a game for how it will take to beat.")]
+        public async Task HandleHowLongToBeat([Remainder] string game)
+        {
+            EmbedHelper embedHelper = new EmbedHelper();
+            try
+            {
+                audit.InsertAudit("hltb", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
+
+                string results = string.Empty;
+                string url = Constants.Constants.hltbApiUrl + game.Trim();
+
+                HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
+                var response = (HttpWebResponse)request.GetResponse();
+
+                if (response.StatusCode == HttpStatusCode.OK)
+                {
+                    Stream stream = response.GetResponseStream();
+                    StreamReader streamReader = new StreamReader(stream);
+
+                    results = streamReader.ReadToEnd();
+
+                    if (results != string.Empty)
+                    {
+                        var howToBeatDetails = JsonSerializer.Deserialize<HowLongToBeat[]>(results);
+
+                        if (howToBeatDetails.Length > 0)
+                        {
+                            if (howToBeatDetails.Length > 1)
+                            {
+                                // Pulling only the first 1
+                                foreach (var item in howToBeatDetails)
+                                {
+                                    string desc = $"Top Search Details for **{item.name}**\n**- Main Story: {item.gameplayMain} hours \n- Main + Extra: {item.gameplayMainExtra} hours \n- Completionist: {item.gameplayCompletionist} hours**";
+
+                                    var embed = embedHelper.BuildMessageEmbed("BigBirdBot - How Long to Beat", desc, "", "", Color.Blue, item.imageUrl);
+                                    await ReplyAsync(embed: embed.Build());
+                                    break;
+                                }
+                            }
+                            else
+                            {
+                                foreach (var item in howToBeatDetails)
+                                {
+                                    string desc = $"Details for **{item.name}**\n**- Main Story: {item.gameplayMain} hours \n- Main + Extra: {item.gameplayMainExtra} hours \n- Completionist: {item.gameplayCompletionist} hours**";
+
+                                    var embed = embedHelper.BuildMessageEmbed("BigBirdBot - How Long to Beat", desc, "", "", Color.Blue, item.imageUrl);
+                                    await ReplyAsync(embed: embed.Build());
+                                }
+                            }
+                        }
+                        else
+                        {
+                            var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "The game entered was not a valid title.", Constants.Constants.errorImageUrl, "", Color.Red, "");
+                            await ReplyAsync(embed: embed.Build());
+                        }
+                    }
+                    else
+                    {
+                        var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "The game entered was not a valid title or data was not found.", Constants.Constants.errorImageUrl, "", Color.Red, "");
+                        await ReplyAsync(embed: embed.Build());
+                    }
+                }
+                else
+                {
+                    var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error","The game entered was not a valid title or data was not found.", Constants.Constants.errorImageUrl, "", Color.Red, "");
+                    await ReplyAsync(embed: embed.Build());
+                }
+            }
+            catch (Exception e)
+            {
                 var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", e.Message, Constants.Constants.errorImageUrl, "", Color.Red, "");
                 await ReplyAsync(embed: embed.Build());
             }

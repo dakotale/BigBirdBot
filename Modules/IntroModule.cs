@@ -13,9 +13,6 @@ namespace DiscordBot.Modules
     public class IntroModule : ModuleBase<SocketCommandContext>
     {
         Audit audit = new Audit();
-        public EmbedPagesService EmbedPagesService { get; set; }
-        public MultiButtonsService MultiButtonsService { get; set; }
-
         // Ban a user
         [Command("ban")]
         [RequireContext(ContextType.Guild)]

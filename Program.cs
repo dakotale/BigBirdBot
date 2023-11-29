@@ -16,20 +16,18 @@ using DiscordBot.Helper;
 using KillersLibrary.Services;
 using OpenAI_API.Models;
 using Fergun.Interactive;
-using DiscordBot.Json;
-using System;
 
 class Program
 {
     static DiscordSocketClient _client = new DiscordSocketClient();
     static void Main(string[] args)
     {
-        System.Timers.Timer myTimer;
-        myTimer = new System.Timers.Timer(50000); // Check every 50 seconds
-        myTimer.Elapsed += OnTimedEvent;
-        myTimer.AutoReset = true;
-        myTimer.Enabled = true;
-        myTimer.Start();
+        System.Timers.Timer eventTimer;
+        eventTimer = new System.Timers.Timer(55000); // Check every 55 seconds
+        eventTimer.Elapsed += OnTimedEvent;
+        eventTimer.AutoReset = true;
+        eventTimer.Enabled = true;
+        eventTimer.Start();
         new Program().MainAsync().GetAwaiter().GetResult();
     }
     public async Task MainAsync()
@@ -48,6 +46,7 @@ class Program
 
             // Tokens should be considered secret data and never hard-coded.
             // We can read from the environment variable to avoid hard coding.
+            // When DevTest change this token
             await _client.LoginAsync(TokenType.Bot, Constants.botToken);
             await _client.StartAsync();
 
@@ -333,6 +332,7 @@ class Program
                                                     }.WithCurrentTimestamp();
 
                                                     await msg.Channel.SendMessageAsync(embed: embedError.Build());
+                                                    await Task.CompletedTask;
                                                 }
                                                 else
                                                 {
@@ -346,17 +346,16 @@ class Program
                                                         new SqlParameter("@FilePath", path),
                                                         new SqlParameter("@TableName", dr["TableName"].ToString())
                                                     });
-
-                                                    var embed = new EmbedBuilder
-                                                    {
-                                                        Title = "BigBirdBot - Added Image",
-                                                        Color = Color.Blue,
-                                                        Description = "Added attachment(s) successfully."
-                                                    };
-
-                                                    await msg.Channel.SendMessageAsync(embed: embed.Build());
                                                 }
                                             }
+                                            var embed = new EmbedBuilder
+                                            {
+                                                Title = "BigBirdBot - Added Image",
+                                                Color = Color.Blue,
+                                                Description = "Added attachment(s) successfully."
+                                            };
+
+                                            await msg.Channel.SendMessageAsync(embed: embed.Build());
                                         }
                                     }
                                     if (message.Split(' ').Count() > 1)
@@ -490,6 +489,7 @@ class Program
         string thumbnailUrl = arg2.GetAvatarUrl(ImageFormat.Png, 256);
         string createdBy = "BigBirdBot";
         string imageUrl = "";
+        StoredProcedure stored = new StoredProcedure();
 
         // Let's pull the first channel and hope for the best.....
         var textChannels = arg1.TextChannels.ToList();
@@ -498,9 +498,12 @@ class Program
 
         EmbedHelper embed = new EmbedHelper();
         if (channel != null && !arg2.IsBot)
-        {
             await channel.SendMessageAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Color.Gold, imageUrl).Build());
-        }
+
+        stored.UpdateCreate(Constants.discordBotConnStr, "DeleteUser", new List<SqlParameter>
+        {
+            new SqlParameter("@UserID", arg2.Id.ToString())
+        });
     }
 
     private async Task UserJoined(SocketGuildUser arg)
@@ -517,20 +520,9 @@ class Program
         SocketTextChannel? firstTextChannel;
 
         if (textChannels.Count > 0)
-        {
-            if (textChannels.Count > 1)
-            {
-                firstTextChannel = arg.Guild.GetTextChannel(textChannels[1].Id);
-            }
-            else
-            {
-                firstTextChannel = arg.Guild.GetTextChannel(textChannels[0].Id);
-            }
-        }
+            firstTextChannel = arg.Guild.GetTextChannel(textChannels[0].Id) ?? arg.Guild.GetTextChannel(textChannels[1].Id);
         else
-        {
             firstTextChannel = arg.Guild.DefaultChannel;
-        }
         
         if (firstTextChannel != null)
         {
@@ -538,9 +530,7 @@ class Program
 
             EmbedHelper embed = new EmbedHelper();
             if (channel != null && !arg.IsBot)
-            {
                 await channel.SendMessageAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Color.Gold, imageUrl).Build());
-            }
         }
 
         StoredProcedure stored = new StoredProcedure();
@@ -558,18 +548,10 @@ class Program
         var dmChannel = await getUser.CreateDMChannelAsync();
 
         EmbedHelper helper = new EmbedHelper();
-        DataTable dt = stored.Select(Constants.discordBotConnStr, "GetCommandList", new List<System.Data.SqlClient.SqlParameter>());
-        string output = "Welcome to the server, I'm BigBirdBot!\nLet me introduce what I can do!\n\n__Commands__";
+        string output = "Welcome to the server, I'm BigBirdBot!\nI wanted to give you a proper welcome and hope you have a great time!\nFeel free to type -help in the server to get more information on what I can offer!";
 
-        if (dt.Rows.Count > 0)
-        {
-            foreach (DataRow dr in dt.Rows)
-            {
-                output += $"**{dr["CommandName"].ToString()} ({dr["CommandAliases"]})\nDescription:** {dr["CommandDescription"].ToString()}\n\n";
-            }
-        }
-
-        await dmChannel.SendMessageAsync(embed: helper.BuildMessageEmbed("BigBirdBot - Help Commands", output, "", "BigBirdBot", Discord.Color.Gold, null, null).Build());
+        if (dmChannel != null)
+            await dmChannel.SendMessageAsync(embed: helper.BuildMessageEmbed("BigBirdBot - Help Commands", output, "", "BigBirdBot", Discord.Color.Gold, null, null).Build());
     }
     private Task JoinedGuild(SocketGuild arg)
     {
@@ -664,7 +646,10 @@ class Program
             .AddSingleton(new DiscordSocketConfig
             {
                 GatewayIntents = GatewayIntents.AllUnprivileged | GatewayIntents.MessageContent | GatewayIntents.GuildMembers,
-                AlwaysDownloadUsers = true
+                LogGatewayIntentWarnings = false,
+                AlwaysDownloadUsers = true,
+                DefaultRetryMode = RetryMode.AlwaysRetry,
+                LogLevel = LogSeverity.Warning
             })
             .AddSingleton<DiscordSocketClient>()
             .AddSingleton<CommandService>()
@@ -680,6 +665,7 @@ class Program
             .AddSingleton<SpotifyHelper>()
             .AddSingleton<EmbedPagesService>()
             .AddSingleton<MultiButtonsService>()
+            .AddSingleton(new InteractiveConfig { DefaultTimeout = TimeSpan.FromMinutes(15) })
             .AddSingleton<InteractiveService>()
             .AddLogging(builder => builder.AddConsole())
             .BuildServiceProvider();
@@ -779,7 +765,6 @@ class Program
         {
             foreach (DataRow dr in dt.Rows)
             {
-                // 940432494291988571 - Bot Commands in Garuda Fan Club
                 IMessageChannel channel = (IMessageChannel)_client.GetChannel(ulong.Parse(dr["EventChannelSource"].ToString()));
                 storedProcedure.UpdateCreate(Constants.discordBotConnStr, "DeleteEvent", new List<SqlParameter> { new SqlParameter("@EventID", dr["EventID"].ToString()) });
 
@@ -793,7 +778,6 @@ class Program
             {
                 foreach (DataRow dr in dt.Rows)
                 {
-                    // 940432494291988571 - Bot Commands in Garuda Fan Club
                     IMessageChannel channel = (IMessageChannel)_client.GetChannel(ulong.Parse(dr["EventChannelSource"].ToString()));
                     await channel.SendMessageAsync(dr["EventReminderText"].ToString());
                 }
