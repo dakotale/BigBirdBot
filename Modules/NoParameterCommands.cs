@@ -241,5 +241,30 @@ namespace DiscordBot.Modules
                 await ReplyAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Error Log", "No recent exceptions found.", "", Context.Message.Author.Username, Discord.Color.Green).Build());
             }
         }
+
+        [Command("welcomemsg")]
+        public async Task HandleWecomeMessage()
+        {
+            audit.InsertAudit("welcomemsg", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
+            StoredProcedure procedure = new StoredProcedure();
+            string result = "";
+
+            DataTable dt = procedure.Select(Constants.Constants.discordBotConnStr, "UpdateShowWelcomeMessage", new List<SqlParameter> { new SqlParameter("@ServerUID", Int64.Parse(Context.Guild.Id.ToString())) });
+
+            if (dt.Rows.Count > 0)
+            {
+                foreach (DataRow dr in dt.Rows)
+                    result = dr["Result"].ToString();
+            }
+
+            string title = "BigBirdBot - Welcome Message Configuration";
+            string desc = result;
+            string thumbnailUrl = "";
+            string imageUrl = "";
+            string embedCreatedBy = "Command from: " + Context.User.Username;
+
+            EmbedHelper embed = new EmbedHelper();
+            await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Green, imageUrl).Build());
+        }
     }
 }

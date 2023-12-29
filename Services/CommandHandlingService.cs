@@ -70,19 +70,25 @@ namespace DiscordBot.Services
             if (result.ErrorReason.Contains("The input text has too few parameters"))
             {
                 EmbedHelper embedHelper = new EmbedHelper();
-                var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "An additional parameter is required in order to run this command!", Constants.Constants.errorImageUrl, "", Color.Red, "");
+                var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "An additional parameter is required in order to run this command.", Constants.Constants.errorImageUrl, "", Color.Red, "");
                 await context.Channel.SendMessageAsync(embed: embed.Build());
             }
             else if (result.ErrorReason.Contains("Failed to parse"))
             {
                 EmbedHelper embedHelper = new EmbedHelper();
-                var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "Please enter a whole number for this command!", Constants.Constants.errorImageUrl, "", Color.Red, "");
+                var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "Please enter a whole number for this command.", Constants.Constants.errorImageUrl, "", Color.Red, "");
                 await context.Channel.SendMessageAsync(embed: embed.Build());
             }
             else if (result.ErrorReason.Contains("Argument cannot be blank"))
             {
                 EmbedHelper embedHelper = new EmbedHelper();
-                var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "The parameter(s) entered are not valid, please run the command with the correct parameters!", Constants.Constants.errorImageUrl, "", Color.Red, "");
+                var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "The parameter(s) entered are not valid, please run the command with the correct parameters.", Constants.Constants.errorImageUrl, "", Color.Red, "");
+                await context.Channel.SendMessageAsync(embed: embed.Build());
+            }
+            else if (result.ErrorReason.Contains("The input text has too many parameters") && command.Value.Name.Equals("Play"))
+            {
+                EmbedHelper embedHelper = new EmbedHelper();
+                var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "Your text search must be contained in quotes.\nExample: -play \"Video Search\"", Constants.Constants.errorImageUrl, "", Color.Red, "");
                 await context.Channel.SendMessageAsync(embed: embed.Build());
             }
             else

@@ -330,7 +330,7 @@ namespace DiscordBot.Modules
                 {
                     var embed = BuildMusicEmbed("Queue", "Item was added to the queue because something is currently playing.");
                     await ReplyAsync(embed: embed.Build());
-                    await Task.CompletedTask;
+                    return;
                 }
                 player.Vueue.TryDequeue(out var lavaTrack);
                 await player.SetVolumeAsync(0);
@@ -796,7 +796,7 @@ namespace DiscordBot.Modules
                 player.Vueue.Enqueue(track);
                 if (player.PlayerState == PlayerState.Playing || player.PlayerState == PlayerState.Stopped || player.PlayerState == PlayerState.Paused)
                 {
-                    await Task.CompletedTask;
+                    return;
                 }
                 player.Vueue.TryDequeue(out var lavaTrack);
                 await player.PlayAsync(lavaTrack);
@@ -1097,7 +1097,7 @@ namespace DiscordBot.Modules
                                     {
                                         var queueEmbed = BuildMusicEmbed("Queue", "Item was added to the top of the queue because something is currently playing.");
                                         await ReplyAsync(embed: queueEmbed.Build());
-                                        await Task.CompletedTask;
+                                        return;
                                     }
                                     player.Vueue.TryDequeue(out var lavaTrack);
                                     await player.PlayAsync(lavaTrack);
@@ -1140,7 +1140,7 @@ namespace DiscordBot.Modules
                     {
                         var embedMusic = BuildMusicEmbed("Queue", "Item was added to the top of the queue because something is currently playing.");
                         await ReplyAsync(embed: embedMusic.Build());
-                        await Task.CompletedTask;
+                        return;
                     }
                     player.Vueue.TryDequeue(out var lavaTrack);
                     await player.PlayAsync(lavaTrack);
@@ -1189,7 +1189,7 @@ namespace DiscordBot.Modules
 
                                     if (player.PlayerState == PlayerState.Playing || player.PlayerState == PlayerState.Paused)
                                     {
-                                        await Task.CompletedTask;
+                                        return;
                                     }
 
                                     player.Vueue.TryDequeue(out var lavaTrack);
@@ -1236,7 +1236,7 @@ namespace DiscordBot.Modules
                                         {
                                             var queueEmbed = BuildMusicEmbed("Queue", "Item was added to the queue because something is currently playing.");
                                             await ReplyAsync(embed: queueEmbed.Build());
-                                            await Task.CompletedTask;
+                                            return;
                                         }
                                         player.Vueue.TryDequeue(out var lavaTrack);
                                         await player.PlayAsync(lavaTrack);
@@ -1287,7 +1287,7 @@ namespace DiscordBot.Modules
                     {
                         var embed = BuildMusicEmbed("Queue", "Item was added to the queue because something is currently playing.");
                         await ReplyAsync(embed: embed.Build());
-                        await Task.CompletedTask;
+                        return;
                     }
                     player.Vueue.TryDequeue(out var lavaTrack);
                     await player.PlayAsync(lavaTrack);

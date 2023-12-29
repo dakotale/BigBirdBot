@@ -16,6 +16,7 @@ using DiscordBot.Helper;
 using KillersLibrary.Services;
 using OpenAI_API.Models;
 using Fergun.Interactive;
+using System;
 
 class Program
 {
@@ -119,7 +120,7 @@ class Program
                                 message = message.Replace("$", "");
                                 await msg.Channel.TriggerTypingAsync(new RequestOptions { Timeout = 30 });
                                 var api = new OpenAI_API.OpenAIAPI(Constants.openAiSecret);
-                                var result = await api.Completions.CreateCompletionAsync(new OpenAI_API.Completions.CompletionRequest(message, model: Model.DavinciText, max_tokens: 1000, temperature: 0.9, null, null, 1, null, null));
+                                var result = await api.Completions.CreateCompletionAsync(new OpenAI_API.Completions.CompletionRequest(message, model: Model.ChatGPTTurboInstruct, max_tokens: 600, temperature: 0.9, null, null, 1, null, null));
                                 var response = result.ToString();
 
                                 int length = response.Length;
@@ -127,7 +128,11 @@ class Program
                                 if (response.Length > 2000)
                                 {
                                     await msg.Channel.SendMessageAsync(response.Substring(0, 2000));
-                                    await msg.Channel.SendMessageAsync(response.Substring(2000, length - 2000));
+
+                                    if (response.Length > 4000)
+                                        await msg.Channel.SendMessageAsync(response.Substring(2000, 4000));
+                                    else
+                                        await msg.Channel.SendMessageAsync(response.Substring(2000, length - 2000));
                                 }
                                 else
                                     await msg.Channel.SendMessageAsync(response);
@@ -461,6 +466,7 @@ class Program
                                             parameters.Add(new SqlParameter("@ChatKeywordID", int.Parse(dr["ChatKeywordID"].ToString())));
                                             parameters.Add(new SqlParameter("@MessageText", message));
                                             parameters.Add(new SqlParameter("@CreatedBy", msg.Author.Username));
+                                            parameters.Add(new SqlParameter("@ServerID", Int64.Parse(serverId)));
                                             storedProcedure.UpdateCreate(connStr, "AddAuditKeyword", parameters);
                                         }
                                     }
@@ -508,32 +514,8 @@ class Program
 
     private async Task UserJoined(SocketGuildUser arg)
     {
-        string title = "BigBirdBot - Introductions";
-        string desc = $"Everyone welcome {arg.Mention} to the server!";
-        string thumbnailUrl = arg.GetAvatarUrl(ImageFormat.Png, 256);
-        string createdBy = "BigBirdBot";
-        string imageUrl = "";
-
-        // Let's pull the first channel and hope for the best.....
-        List<SocketTextChannel> textChannels = new List<SocketTextChannel>();
-        textChannels = arg.Guild.TextChannels.Where(s => s.Name.Contains("general") || s.Name.Contains("no-mic")).ToList();
-        SocketTextChannel? firstTextChannel;
-
-        if (textChannels.Count > 0)
-            firstTextChannel = arg.Guild.GetTextChannel(textChannels[0].Id) ?? arg.Guild.GetTextChannel(textChannels[1].Id);
-        else
-            firstTextChannel = arg.Guild.DefaultChannel;
-        
-        if (firstTextChannel != null)
-        {
-            var channel = _client.GetChannel(firstTextChannel.Id) as SocketTextChannel;
-
-            EmbedHelper embed = new EmbedHelper();
-            if (channel != null && !arg.IsBot)
-                await channel.SendMessageAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Color.Gold, imageUrl).Build());
-        }
-
         StoredProcedure stored = new StoredProcedure();
+
         stored.UpdateCreate(Constants.discordBotConnStr, "AddUser", new List<SqlParameter>
         {
             new SqlParameter("@UserID", arg.Id.ToString()),
@@ -543,19 +525,59 @@ class Program
             new SqlParameter("@Nickname", arg.Nickname)
         });
 
-        string userId = arg.Id.ToString();
-        var getUser = await _client.GetUserAsync(ulong.Parse(userId));
-        var dmChannel = await getUser.CreateDMChannelAsync();
+        DataTable dt = stored.Select(Constants.discordBotConnStr, "CheckIfShowWelcomeMessage", new List<SqlParameter>
+        {
+            new SqlParameter("@ServerUID", Int64.Parse(arg.Guild.Id.ToString()))
+        });
 
-        EmbedHelper helper = new EmbedHelper();
-        string output = "Welcome to the server, I'm BigBirdBot!\nI wanted to give you a proper welcome and hope you have a great time!\nFeel free to type -help in the server to get more information on what I can offer!";
+        if (dt.Rows.Count > 0)
+        {
+            foreach (DataRow dr in dt.Rows)
+            {
+                if (bool.Parse(dr["ShowWelcomeMessage"].ToString()) == true)
+                {
+                    string title = "BigBirdBot - Introductions";
+                    string desc = $"Everyone welcome {arg.Mention} to the server!";
+                    string thumbnailUrl = arg.GetAvatarUrl(ImageFormat.Png, 256);
+                    string createdBy = "BigBirdBot";
+                    string imageUrl = "";
 
-        if (dmChannel != null)
-            await dmChannel.SendMessageAsync(embed: helper.BuildMessageEmbed("BigBirdBot - Help Commands", output, "", "BigBirdBot", Discord.Color.Gold, null, null).Build());
+                    // Let's pull the first channel and hope for the best.....
+                    List<SocketTextChannel> textChannels = new List<SocketTextChannel>();
+                    textChannels = arg.Guild.TextChannels.Where(s => s.Name.Contains("general") || s.Name.Contains("no-mic")).ToList();
+                    SocketTextChannel? firstTextChannel;
+
+                    if (textChannels.Count > 0)
+                        firstTextChannel = arg.Guild.GetTextChannel(textChannels[0].Id) ?? arg.Guild.GetTextChannel(textChannels[1].Id);
+                    else
+                        firstTextChannel = arg.Guild.DefaultChannel;
+
+                    if (firstTextChannel != null)
+                    {
+                        var channel = _client.GetChannel(firstTextChannel.Id) as SocketTextChannel;
+
+                        EmbedHelper embed = new EmbedHelper();
+                        if (channel != null && !arg.IsBot)
+                            await channel.SendMessageAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Color.Gold, imageUrl).Build());
+                    }
+
+                    string userId = arg.Id.ToString();
+                    var getUser = await _client.GetUserAsync(ulong.Parse(userId));
+                    var dmChannel = await getUser.CreateDMChannelAsync();
+
+                    EmbedHelper helper = new EmbedHelper();
+                    string output = "Welcome to the server, I'm BigBirdBot!\nI wanted to give you a proper welcome and hope you have a great time!\nFeel free to type -help in the server to get more information on what I can offer!";
+
+                    if (dmChannel != null)
+                        await dmChannel.SendMessageAsync(embed: helper.BuildMessageEmbed("BigBirdBot - Help Commands", output, "", "BigBirdBot", Discord.Color.Gold, null, null).Build());
+                }
+            }
+        }    
     }
-    private Task JoinedGuild(SocketGuild arg)
+    private async Task JoinedGuild(SocketGuild arg)
     {
         StoredProcedure stored = new StoredProcedure();
+        EmbedHelper embedHelper = new EmbedHelper();
 
         DataTable dt = stored.Select(Constants.discordBotConnStr, "GetServers", new List<SqlParameter>());
         List<string> serverIds = new List<string>();
@@ -575,34 +597,32 @@ class Program
 
         using (SqlConnection conn = new SqlConnection(Constants.discordBotConnStr))
         {
-            arg.DownloadUsersAsync();
-            foreach (var user in arg.Users.ToList())
+            await arg.DownloadUsersAsync();
+            if (arg.Users.Count > 0)
             {
-                if (!user.IsBot)
+                foreach (var user in arg.Users)
                 {
-                    conn.Open();
-
-                    // 1.  create a command object identifying the stored procedure
-                    SqlCommand cmd = new SqlCommand("AddUser", conn);
-
-                    // 2. set the command object so it knows to execute a stored procedure
-                    cmd.CommandType = CommandType.StoredProcedure;
-
-                    // 3. add parameter to command, which will be passed to the stored procedure
-                    cmd.Parameters.Add(new SqlParameter("@UserID", user.Id.ToString()));
-                    cmd.Parameters.Add(new SqlParameter("@Username", user.Username));
-                    cmd.Parameters.Add(new SqlParameter("@JoinDate", user.JoinedAt));
-                    cmd.Parameters.Add(new SqlParameter("@GuildName", user.Guild.Name));
-                    cmd.Parameters.Add(new SqlParameter("@Nickname", user.Nickname));
-                    // execute the command
-                    cmd.ExecuteNonQuery();
-
-                    conn.Close();
-                    cmd.Dispose();
+                    if (!user.IsBot)
+                    {
+                        stored.UpdateCreate(Constants.discordBotConnStr, "AddUser", new List<SqlParameter>
+                        {
+                            new SqlParameter("@UserID", user.Id.ToString()),
+                            new SqlParameter("@Username", user.Username),
+                            new SqlParameter("@JoinDate", user.JoinedAt),
+                            new SqlParameter("@GuildName", user.Guild.Name),
+                            new SqlParameter("@Nickname", user.Nickname)
+                        });
+                    }
                 }
+                Console.WriteLine($"{arg.Users.Count} users were added successfully for {arg.Name}");
+            }
+            else
+            {
+                ulong guildId = ulong.Parse("880569055856185354");
+                ulong textChannelId = ulong.Parse("1156625507840954369");
+                await _client.GetGuild(guildId).GetTextChannel(textChannelId).SendMessageAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - New Server Added", $"Bot was added to {arg.Name} and no users were found on DownloadUsersAsync call.\nThe owner is {arg.Owner}", "", "BigBirdBot", Discord.Color.Red, null, null).Build());
             }
         }
-        return Task.CompletedTask;
     }
 
     private async Task LogAsync(LogMessage log)
@@ -783,6 +803,32 @@ class Program
                 }
             }
         }
+
+        dt = storedProcedure.Select(connStr, "GetEventScheduledTime", new List<SqlParameter>());
+        if (dt.Rows.Count > 0)
+        {
+            foreach (DataRow dr in dt.Rows)
+            {
+                string userId = dr["UserID"].ToString();
+                string filePath = dr["FilePath"].ToString();
+
+                // Send the DM :)
+                var user = await _client.GetUserAsync(ulong.Parse(userId));
+
+                if (dr["FilePath"].ToString().Contains("C:\\"))
+                    await user.SendFileAsync(dr["FilePath"].ToString());
+                else
+                    await user.SendMessageAsync(dr["FilePath"].ToString());
+
+                storedProcedure.UpdateCreate(connStr, "UpdateEventScheduleTimeFilePath", new List<SqlParameter>
+                {
+                    new SqlParameter("@UserID", userId),
+                    new SqlParameter("@FilePath", filePath),
+                    new SqlParameter("@CurrentTime", DateTime.Parse(dr["CurrentTime"].ToString()))
+                });
+            }
+        }
+
     }
 }
 
