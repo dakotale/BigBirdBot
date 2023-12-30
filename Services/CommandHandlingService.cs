@@ -4,6 +4,7 @@ using Discord;
 using Microsoft.Extensions.DependencyInjection;
 using System.Reflection;
 using DiscordBot.Helper;
+using DiscordBot.Constants;
 
 namespace DiscordBot.Services
 {
@@ -65,7 +66,12 @@ namespace DiscordBot.Services
 
             // the command was successful, we don't care about this result, unless we want to log that a command succeeded.
             if (result.IsSuccess)
+            {
+                Audit audit = new Audit();
+                audit.InsertAudit(command.Value.Name, context.User.Id.ToString(), Constants.Constants.discordBotConnStr, context.Guild.Id.ToString());
                 return;
+            }
+                
             
             if (result.ErrorReason.Contains("The input text has too few parameters"))
             {

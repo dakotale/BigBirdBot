@@ -521,7 +521,7 @@ class Program
             new SqlParameter("@UserID", arg.Id.ToString()),
             new SqlParameter("@Username", arg.Username),
             new SqlParameter("@JoinDate", arg.JoinedAt),
-            new SqlParameter("@GuildName", arg.Guild.Name),
+            new SqlParameter("@ServerUID", Int64.Parse(arg.Id.ToString())),
             new SqlParameter("@Nickname", arg.Nickname)
         });
 
@@ -609,7 +609,7 @@ class Program
                             new SqlParameter("@UserID", user.Id.ToString()),
                             new SqlParameter("@Username", user.Username),
                             new SqlParameter("@JoinDate", user.JoinedAt),
-                            new SqlParameter("@GuildName", user.Guild.Name),
+                            new SqlParameter("@ServerUID", Int64.Parse(arg.Id.ToString())),
                             new SqlParameter("@Nickname", user.Nickname)
                         });
                     }

@@ -13,15 +13,12 @@ namespace DiscordBot.Modules
 {
     public class JsonCommands : ModuleBase<SocketCommandContext>
     {
-        Audit audit = new Audit();
-
         [Command("wikip")]
         [Discord.Commands.Summary("Get a random Wikipedia article.")]
         public async Task HandleWikipediaCommand()
         {
             try
             {
-                audit.InsertAudit("wikip", Context.User.Id.ToString(), Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
                 // https://en.wikipedia.org/wiki/Special:Random
                 // https://en.wikipedia.org/api/rest_v1/page/random/summary
                 string apiUrl = "https://en.wikipedia.org/api/rest_v1/page/random/summary";
@@ -61,8 +58,6 @@ namespace DiscordBot.Modules
         [Discord.Commands.Summary("Look up the weather for a location in 'City, State/Province, Country' format.")]
         public async Task HandleWeatherCommand([Remainder] string weatherLocation)
         {
-            audit.InsertAudit("weather", Context.User.Id.ToString(), Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
-
             try
             {
                 string[] weatherBreakdown = weatherLocation.Split(',');
@@ -158,8 +153,6 @@ namespace DiscordBot.Modules
             EmbedHelper embedHelper = new EmbedHelper();
             try
             {
-                audit.InsertAudit("hltb", Context.User.Id.ToString(), Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
-
                 string results = string.Empty;
                 string url = Constants.Constants.hltbApiUrl + game.Trim();
 

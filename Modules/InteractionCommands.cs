@@ -14,12 +14,9 @@ namespace DiscordBot.Modules
 {
     public class InteractionCommands : ModuleBase<SocketCommandContext>
     {
-        Audit audit = new Audit();
-
         [Command("trivia")]
         public async Task HandleTrivia()
         {
-            audit.InsertAudit("trivia", Context.User.Id.ToString(), Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             StoredProcedure stored = new StoredProcedure();
             string token = "";
 

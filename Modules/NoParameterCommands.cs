@@ -12,15 +12,11 @@ namespace DiscordBot.Modules
 {
     public class NoParameterCommands : ModuleBase<SocketCommandContext>
     {
-        Audit audit = new Audit();
-
         [Command("info")]
         [Alias("serverinfo", "server")]
         [Discord.Commands.RequireBotPermission(GuildPermission.EmbedLinks)]
         public async Task HandleServerInformation()
         {
-            audit.InsertAudit("serverinfo", Context.User.Id.ToString(), Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
-
             double botPercentage = Math.Round(Context.Guild.Users.Count(x => x.IsBot) / Context.Guild.MemberCount * 100d, 2);
 
             string bannerUrl = Context.Guild.BannerUrl ?? "";
@@ -53,7 +49,6 @@ namespace DiscordBot.Modules
         {
             try
             {
-                audit.InsertAudit("populateallusers", Context.User.Id.ToString(), Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
                 StoredProcedure stored = new StoredProcedure();
 
                 // GetServer ulong IDs
@@ -75,7 +70,7 @@ namespace DiscordBot.Modules
                                 new SqlParameter("@UserID", u.Id.ToString()),
                                 new SqlParameter("@Username", u.Username),
                                 new SqlParameter("@JoinDate", u.JoinedAt),
-                                new SqlParameter("@GuildName", u.Guild.Name),
+                                new SqlParameter("@ServerUID", Int64.Parse(u.Guild.Id.ToString())),
                                 new SqlParameter("@Nickname", u.Nickname)
                             });
                             }
@@ -96,7 +91,6 @@ namespace DiscordBot.Modules
         [Command("kaonoff")]
         public async Task HandleKeywordOnOff()
         {
-            audit.InsertAudit("kaonoff", Context.User.Id.ToString(), Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             StoredProcedure procedure = new StoredProcedure();
             var serverId = Int64.Parse(Context.Guild.Id.ToString());
             string result = "";
@@ -125,7 +119,6 @@ namespace DiscordBot.Modules
         [Command("raffle")]
         public async Task HandleRaffle()
         {
-            audit.InsertAudit("raffle", Context.User.Id.ToString(), Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             var userList = Context.Guild.GetUsersAsync().ToListAsync().Result;
             foreach (var user in userList)
             {
@@ -167,7 +160,6 @@ namespace DiscordBot.Modules
         [Command("twitter")]
         public async Task HandleTwitterEmbeds()
         {
-            audit.InsertAudit("twitter", Context.User.Id.ToString(), Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             StoredProcedure procedure = new StoredProcedure();
             string result = "";
 
@@ -245,7 +237,6 @@ namespace DiscordBot.Modules
         [Command("welcomemsg")]
         public async Task HandleWecomeMessage()
         {
-            audit.InsertAudit("welcomemsg", Context.User.Id.ToString(), Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             StoredProcedure procedure = new StoredProcedure();
             string result = "";
 
