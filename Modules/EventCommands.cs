@@ -15,7 +15,7 @@ namespace DiscordBot.Modules
         [Discord.Commands.Summary("Plan an event and get a notification when it's ready.  In 'Date/Time, Event Name, Event Description' format.")]
         public async Task HandleEventCommand([Remainder] string eventMsg)
         {
-            audit.InsertAudit("event", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
+            audit.InsertAudit("event", Context.User.Id.ToString(), Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             
             try
             {
@@ -58,7 +58,7 @@ namespace DiscordBot.Modules
         [Alias("delevent", "deleve")]
         public async Task HandleDeleteEvent([Remainder] string eventName)
         {
-            audit.InsertAudit("deleteevent", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
+            audit.InsertAudit("deleteevent", Context.User.Id.ToString(), Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
 
             StoredProcedure storedProcedure = new StoredProcedure();
             EmbedHelper embedHelper = new EmbedHelper();

@@ -23,7 +23,7 @@ namespace DiscordBot.Modules
         [Discord.Commands.Summary("Bans a user but the bot must have the permission in order to do it.")]
         public async Task BanUserAsync(IGuildUser user, [Remainder] string reason = null)
         {
-            audit.InsertAudit("ban", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
+            audit.InsertAudit("ban", Context.User.Id.ToString(), Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             await user.Guild.AddBanAsync(user, reason: reason);
             await ReplyAsync("ok!");
         }
@@ -32,7 +32,7 @@ namespace DiscordBot.Modules
         [Discord.Commands.Summary("Get a list of commands and descriptions available to the bot.")]
         public async Task TaskHelpCommand()
         {
-            audit.InsertAudit("help", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
+            audit.InsertAudit("help", Context.User.Id.ToString(), Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
 
             StoredProcedure storedProcedure = new StoredProcedure();
             EmbedHelper helper = new EmbedHelper();

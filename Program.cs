@@ -465,7 +465,7 @@ class Program
                                             parameters.Clear();
                                             parameters.Add(new SqlParameter("@ChatKeywordID", int.Parse(dr["ChatKeywordID"].ToString())));
                                             parameters.Add(new SqlParameter("@MessageText", message));
-                                            parameters.Add(new SqlParameter("@CreatedBy", msg.Author.Username));
+                                            parameters.Add(new SqlParameter("@CreatedBy", msg.Author.Id.ToString()));
                                             parameters.Add(new SqlParameter("@ServerID", Int64.Parse(serverId)));
                                             storedProcedure.UpdateCreate(connStr, "AddAuditKeyword", parameters);
                                         }
@@ -820,11 +820,10 @@ class Program
                 else
                     await user.SendMessageAsync(dr["FilePath"].ToString());
 
-                storedProcedure.UpdateCreate(connStr, "UpdateEventScheduleTimeFilePath", new List<SqlParameter>
+                storedProcedure.UpdateCreate(connStr, "AddUsersThirstTableLog", new List<SqlParameter>
                 {
                     new SqlParameter("@UserID", userId),
-                    new SqlParameter("@FilePath", filePath),
-                    new SqlParameter("@CurrentTime", DateTime.Parse(dr["CurrentTime"].ToString()))
+                    new SqlParameter("@FilePath", filePath)
                 });
             }
         }

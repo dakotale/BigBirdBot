@@ -21,7 +21,7 @@ namespace DiscordBot.Modules
         [Discord.Commands.Summary("Random number out of a certain range.")]
         public async Task GenerateRandomNumber([Remainder] int number)
         {
-            audit.InsertAudit("random", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
+            audit.InsertAudit("random", Context.User.Id.ToString(), Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
 
             Random r = new Random();
             int i = r.Next(1, number + 1);
@@ -40,7 +40,7 @@ namespace DiscordBot.Modules
         [Discord.Commands.Summary("Turn your message into emojis.")]
         public async Task HandleEmojiTextCommand([Remainder] string message)
         {
-            audit.InsertAudit("etext", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
+            audit.InsertAudit("etext", Context.User.Id.ToString(), Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
 
             EmojiText emoji= new EmojiText();
             await ReplyAsync(emoji.GetEmojiString(message));
@@ -51,7 +51,7 @@ namespace DiscordBot.Modules
         [Discord.Commands.Summary("Shake the figurative Eight Ball.")]
         public async Task HandleEightBallCommand([Remainder] string message)
         {
-            audit.InsertAudit("8ball", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
+            audit.InsertAudit("8ball", Context.User.Id.ToString(), Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
 
             Random r = new Random();
             EightBall eight = new EightBall();
@@ -71,7 +71,7 @@ namespace DiscordBot.Modules
         [Command("ka")]
         public async Task HandleKeywordAdd([Remainder] string keyword)
         {
-            audit.InsertAudit("ka", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
+            audit.InsertAudit("ka", Context.User.Id.ToString(), Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             try
             {
                 if (keyword.Trim().Length > 0 && keyword.Contains(","))
@@ -204,7 +204,7 @@ namespace DiscordBot.Modules
         [Alias("kae")]
         public async Task HandleKeywordUpdate([Remainder] string keyword)
         {
-            audit.InsertAudit("kae", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
+            audit.InsertAudit("kae", Context.User.Id.ToString(), Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             try
             {
                 if (keyword.Trim().Length > 0 && keyword.Contains(","))
@@ -420,7 +420,7 @@ namespace DiscordBot.Modules
         [Alias("kad")]
         public async Task HandleKeywordDelete([Remainder] string keyword)
         {
-            audit.InsertAudit("kad", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
+            audit.InsertAudit("kad", Context.User.Id.ToString(), Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             var serverId = Int64.Parse(Context.Guild.Id.ToString());
 
             StoredProcedure procedure = new StoredProcedure();
@@ -495,7 +495,7 @@ namespace DiscordBot.Modules
         [Command("math")]
         public async Task HandleMath([Remainder] int number)
         {
-            audit.InsertAudit("math", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
+            audit.InsertAudit("math", Context.User.Id.ToString(), Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             var royalroad = number * 1.25;
             var normal = number * 1.5;
             var whoknows = number * 1.75;
@@ -507,14 +507,14 @@ namespace DiscordBot.Modules
         [Command("ascii")]
         public async Task HandleAscii([Remainder] string message)
         {
-            audit.InsertAudit("ascii", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
+            audit.InsertAudit("ascii", Context.User.Id.ToString(), Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             await ReplyAsync($"```{FiggleFonts.Standard.Render(message.Trim())}```");
         }
 
         [Command("choose")]
         public async Task HandleChoose([Remainder] string message)
         {
-            audit.InsertAudit("choose", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
+            audit.InsertAudit("choose", Context.User.Id.ToString(), Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             if (message.Contains(","))
             {
                 var resultSplit = message.Split(",");
@@ -546,7 +546,7 @@ namespace DiscordBot.Modules
         [Alias("del")]
         public async Task HandleDelete([Remainder] int numToDelete)
         {
-            audit.InsertAudit("delete", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
+            audit.InsertAudit("delete", Context.User.Id.ToString(), Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
 
             if (numToDelete < 1 || numToDelete > 20) 
             {
@@ -571,7 +571,7 @@ namespace DiscordBot.Modules
         [Alias("p")]
         public async Task HandlePoll([Remainder] string args = "")
         {
-            audit.InsertAudit("poll", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
+            audit.InsertAudit("poll", Context.User.Id.ToString(), Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             List<Emoji> emojis = new List<Emoji>
             {
                 new Emoji("1️⃣"),
@@ -650,7 +650,7 @@ namespace DiscordBot.Modules
              * Command Ex: -addthirst <addtest>, <test>, <testKeyword>, <if channel is created - optional>
              * TODO: Handle if the keyword exists to create channel in another server or return the keyword and textchannel already exists
              */
-            audit.InsertAudit("addthirst", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
+            audit.InsertAudit("addthirst", Context.User.Id.ToString(), Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             if (args.Length > 0)
             {
                 try
@@ -828,7 +828,7 @@ namespace DiscordBot.Modules
         {
             try
             {
-                audit.InsertAudit("avatar", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
+                audit.InsertAudit("avatar", Context.User.Id.ToString(), Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
 
                 if (user == null)
                     user = Context.User as SocketGuildUser;
