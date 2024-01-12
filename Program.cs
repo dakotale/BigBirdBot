@@ -17,6 +17,7 @@ using KillersLibrary.Services;
 using OpenAI_API.Models;
 using Fergun.Interactive;
 using System;
+using SpotifyAPI.Web;
 
 class Program
 {
@@ -65,7 +66,15 @@ class Program
                 if (user.IsBot && after.VoiceChannel == null)
                 {
                     if (lavaNode.TryGetPlayer(before.VoiceChannel.Guild, out var player))
+                    {
+                        StoredProcedure stored = new StoredProcedure();
+
                         lavaNode.LeaveAsync(before.VoiceChannel);
+                        stored.UpdateCreate(Constants.discordBotConnStr, "DeletePlayerConnected", new List<SqlParameter>
+                        {
+                            new SqlParameter("@ServerID", Int64.Parse(before.VoiceChannel.Guild.Id.ToString()))
+                        });
+                    }
                 }
                 
                 if (user.IsBot)
@@ -77,7 +86,15 @@ class Program
                 {
                     // If true, disconnect the bot
                     if (lavaNode.TryGetPlayer(before.VoiceChannel.Guild, out var player))
+                    {
+                        StoredProcedure stored = new StoredProcedure();
                         lavaNode.LeaveAsync(before.VoiceChannel);
+                        stored.UpdateCreate(Constants.discordBotConnStr, "DeletePlayerConnected", new List<SqlParameter>
+                        {
+                            new SqlParameter("@ServerID", Int64.Parse(before.VoiceChannel.Guild.Id.ToString()))
+                        });
+                    }
+                        
                 }
 
                 return Task.CompletedTask;
@@ -313,6 +330,7 @@ class Program
                                 {
                                     if (msg.Attachments.Count > 0)
                                     {
+                                        string userId = msg.Author.Id.ToString();
                                         foreach (DataRow dr in dt.Rows)
                                         {
                                             var attachments = msg.Attachments;
@@ -321,26 +339,26 @@ class Program
                                                 string path = @"C:\Users\Unmolded\Desktop\DiscordBot\" + dr["TableName"].ToString() + @"\" + attachment.Filename;
 
                                                 // Check if link exists for thirst table
-                                                DataTable dtExists = stored.Select(connStr, "CheckIfThirstURLExists", new List<SqlParameter>
-                                                {
-                                                    new SqlParameter("@FilePath", path),
-                                                    new SqlParameter("@TableName", dt.Rows[0]["TableName"].ToString())
-                                                });
+                                                //DataTable dtExists = stored.Select(connStr, "CheckIfThirstURLExists", new List<SqlParameter>
+                                                //{
+                                                //    new SqlParameter("@FilePath", path),
+                                                //    new SqlParameter("@TableName", dt.Rows[0]["TableName"].ToString())
+                                                //});
 
-                                                if (dtExists.Rows.Count > 0)
-                                                {
-                                                    var embedError = new EmbedBuilder
-                                                    {
-                                                        Title = "BigBirdBot - Error",
-                                                        Color = Color.Red,
-                                                        Description = $"The image provided was already added for this Thirst Command."
-                                                    }.WithCurrentTimestamp();
+                                                //if (dtExists.Rows.Count > 0)
+                                                //{
+                                                //    var embedError = new EmbedBuilder
+                                                //    {
+                                                //        Title = "BigBirdBot - Error",
+                                                //        Color = Color.Red,
+                                                //        Description = $"The image provided was already added for this Thirst Command."
+                                                //    }.WithCurrentTimestamp();
 
-                                                    await msg.Channel.SendMessageAsync(embed: embedError.Build());
-                                                    await Task.CompletedTask;
-                                                }
-                                                else
-                                                {
+                                                //    await msg.Channel.SendMessageAsync(embed: embedError.Build());
+                                                //    await Task.CompletedTask;
+                                                //}
+                                                //else
+                                                //{
                                                     using (WebClient client = new WebClient())
                                                     {
                                                         client.DownloadFileAsync(new Uri(attachment.Url), path);
@@ -349,9 +367,10 @@ class Program
                                                     stored.UpdateCreate(connStr, "AddThirstByMap", new List<System.Data.SqlClient.SqlParameter>
                                                     {
                                                         new SqlParameter("@FilePath", path),
-                                                        new SqlParameter("@TableName", dr["TableName"].ToString())
+                                                        new SqlParameter("@TableName", dr["TableName"].ToString()),
+                                                        new SqlParameter("@UserID", userId)
                                                     });
-                                                }
+                                                //}
                                             }
                                             var embed = new EmbedBuilder
                                             {
@@ -385,9 +404,9 @@ class Program
                                         else
                                         {
                                             if (message.Contains("https://fxtwitter.com"))
-                                                content = content.Replace("fxtwitter", "dl.fxtwitter.com");
+                                                content = content.Replace("fxtwitter.com", "dl.fxtwitter.com");
                                             if (message.Contains("https://vxtwitter.com"))
-                                                content = content.Replace("vxtwitter", "dl.vxtwitter.com");
+                                                content = content.Replace("vxtwitter.com", "dl.vxtwitter.com");
                                             if (message.Contains("https://twitter.com"))
                                                 content = content.Replace("twitter.com", "dl.fxtwitter.com");
                                             if (message.Contains("https://x.com"))
@@ -413,12 +432,14 @@ class Program
                                             }
                                             else
                                             {
+                                                string userId = msg.Author.Id.ToString();
                                                 foreach (DataRow dr in dt.Rows)
                                                 {
                                                     stored.UpdateCreate(connStr, "AddThirstByMap", new List<System.Data.SqlClient.SqlParameter>
                                                     {
                                                         new SqlParameter("@FilePath", content),
-                                                        new SqlParameter("@TableName", dr["TableName"].ToString())
+                                                        new SqlParameter("@TableName", dr["TableName"].ToString()),
+                                                        new SqlParameter("@UserID", userId)
                                                     });
 
                                                     var embed = new EmbedBuilder
@@ -481,7 +502,26 @@ class Program
             {
                 if (!lavaNode.IsConnected)
                     await lavaNode.ConnectAsync();
-                
+
+                StoredProcedure stored = new StoredProcedure();
+                DataTable dt = stored.Select(Constants.discordBotConnStr, "GetPlayerConnected", new List<SqlParameter>());
+
+                if (dt.Rows.Count > 0)
+                {
+                    foreach (DataRow dr in dt.Rows)
+                    {
+                        foreach (var guild in _client.Guilds)
+                        {
+                            var voiceChannel = guild.VoiceChannels.Where(s => s.Id.Equals(dr["VoiceChannelID"].ToString())).FirstOrDefault();
+                            var textChannel = guild.TextChannels.Where(s => s.Id.Equals(dr["TextChannelID"].ToString())).FirstOrDefault();
+                            if (voiceChannel != null && textChannel != null && voiceChannel.ConnectedUsers.Count > 0)
+                            {
+                                await lavaNode.JoinAsync(voiceChannel, textChannel);
+                            }
+                        }
+                    }
+                }
+
                 return;
             };
             await Task.Delay(Timeout.Infinite);
@@ -497,82 +537,101 @@ class Program
         string imageUrl = "";
         StoredProcedure stored = new StoredProcedure();
 
-        // Let's pull the first channel and hope for the best.....
-        var textChannels = arg1.TextChannels.ToList();
-        var firstTextChannel = arg1.GetTextChannel(textChannels[0].Id);
-        var channel = _client.GetChannel(firstTextChannel.Id) as SocketTextChannel;
-
-        EmbedHelper embed = new EmbedHelper();
-        if (channel != null && !arg2.IsBot)
-            await channel.SendMessageAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Color.Gold, imageUrl).Build());
-
-        stored.UpdateCreate(Constants.discordBotConnStr, "DeleteUser", new List<SqlParameter>
+        if (!arg2.IsBot && !arg2.IsWebhook)
         {
-            new SqlParameter("@UserID", arg2.Id.ToString())
-        });
+            stored.UpdateCreate(Constants.discordBotConnStr, "DeleteUser", new List<SqlParameter>
+            {
+                new SqlParameter("@UserID", arg2.Id.ToString())
+            });
+
+            // Let's pull the first channel and hope for the best.....
+            if (arg1.DefaultChannel != null)
+            {
+                var textChannels = arg1.DefaultChannel.Id;
+                var firstTextChannel = arg1.GetTextChannel(textChannels);
+                var channel = _client.GetChannel(firstTextChannel.Id) as SocketTextChannel;
+
+                EmbedHelper embed = new EmbedHelper();
+                if (channel != null && !arg2.IsBot)
+                    await channel.SendMessageAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Color.Gold, imageUrl).Build());
+            }
+            else
+            {
+                var textChannels = arg1.TextChannels.Where(s => s.Name.Contains("general") || s.Name.Contains("no-mic")).ToList();
+                var firstTextChannel = arg1.GetTextChannel(textChannels[0].Id);
+                var channel = _client.GetChannel(firstTextChannel.Id) as SocketTextChannel;
+
+                EmbedHelper embed = new EmbedHelper();
+                if (channel != null && !arg2.IsBot)
+                    await channel.SendMessageAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Color.Gold, imageUrl).Build());
+            }
+        }
     }
 
     private async Task UserJoined(SocketGuildUser arg)
     {
         StoredProcedure stored = new StoredProcedure();
 
-        stored.UpdateCreate(Constants.discordBotConnStr, "AddUser", new List<SqlParameter>
+        if (!arg.IsBot && !arg.IsWebhook)
         {
-            new SqlParameter("@UserID", arg.Id.ToString()),
-            new SqlParameter("@Username", arg.Username),
-            new SqlParameter("@JoinDate", arg.JoinedAt),
-            new SqlParameter("@ServerUID", Int64.Parse(arg.Id.ToString())),
-            new SqlParameter("@Nickname", arg.Nickname)
-        });
-
-        DataTable dt = stored.Select(Constants.discordBotConnStr, "CheckIfShowWelcomeMessage", new List<SqlParameter>
-        {
-            new SqlParameter("@ServerUID", Int64.Parse(arg.Guild.Id.ToString()))
-        });
-
-        if (dt.Rows.Count > 0)
-        {
-            foreach (DataRow dr in dt.Rows)
+            stored.UpdateCreate(Constants.discordBotConnStr, "AddUser", new List<SqlParameter>
             {
-                if (bool.Parse(dr["ShowWelcomeMessage"].ToString()) == true)
+                new SqlParameter("@UserID", arg.Id.ToString()),
+                new SqlParameter("@Username", arg.Username),
+                new SqlParameter("@JoinDate", arg.JoinedAt),
+                new SqlParameter("@ServerUID", Int64.Parse(arg.Guild.Id.ToString())),
+                new SqlParameter("@Nickname", arg.Nickname)
+            });
+
+            DataTable dt = stored.Select(Constants.discordBotConnStr, "CheckIfShowWelcomeMessage", new List<SqlParameter>
+            {
+                new SqlParameter("@ServerUID", Int64.Parse(arg.Guild.Id.ToString()))
+            });
+
+            if (dt.Rows.Count > 0)
+            {
+                foreach (DataRow dr in dt.Rows)
                 {
-                    string title = "BigBirdBot - Introductions";
-                    string desc = $"Everyone welcome {arg.Mention} to the server!";
-                    string thumbnailUrl = arg.GetAvatarUrl(ImageFormat.Png, 256);
-                    string createdBy = "BigBirdBot";
-                    string imageUrl = "";
-
-                    // Let's pull the first channel and hope for the best.....
-                    List<SocketTextChannel> textChannels = new List<SocketTextChannel>();
-                    textChannels = arg.Guild.TextChannels.Where(s => s.Name.Contains("general") || s.Name.Contains("no-mic")).ToList();
-                    SocketTextChannel? firstTextChannel;
-
-                    if (textChannels.Count > 0)
-                        firstTextChannel = arg.Guild.GetTextChannel(textChannels[0].Id) ?? arg.Guild.GetTextChannel(textChannels[1].Id);
-                    else
-                        firstTextChannel = arg.Guild.DefaultChannel;
-
-                    if (firstTextChannel != null)
+                    if (bool.Parse(dr["ShowWelcomeMessage"].ToString()) == true)
                     {
-                        var channel = _client.GetChannel(firstTextChannel.Id) as SocketTextChannel;
+                        string title = "BigBirdBot - Introductions";
+                        string desc = $"Everyone welcome {arg.Mention} to the server!";
+                        string thumbnailUrl = arg.GetAvatarUrl(ImageFormat.Png, 256);
+                        string createdBy = "BigBirdBot";
+                        string imageUrl = "";
 
-                        EmbedHelper embed = new EmbedHelper();
-                        if (channel != null && !arg.IsBot)
-                            await channel.SendMessageAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Color.Gold, imageUrl).Build());
+                        // Let's pull the first channel and hope for the best.....
+                        List<SocketTextChannel> textChannels = new List<SocketTextChannel>();
+                        textChannels = arg.Guild.TextChannels.Where(s => s.Name.Contains("general") || s.Name.Contains("no-mic")).ToList();
+                        SocketTextChannel? firstTextChannel;
+
+                        if (textChannels.Count > 0)
+                            firstTextChannel = arg.Guild.GetTextChannel(textChannels[0].Id) ?? arg.Guild.GetTextChannel(textChannels[1].Id);
+                        else
+                            firstTextChannel = arg.Guild.DefaultChannel;
+
+                        if (firstTextChannel != null)
+                        {
+                            var channel = _client.GetChannel(firstTextChannel.Id) as SocketTextChannel;
+
+                            EmbedHelper embed = new EmbedHelper();
+                            if (channel != null && !arg.IsBot)
+                                await channel.SendMessageAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Color.Gold, imageUrl).Build());
+                        }
+
+                        string userId = arg.Id.ToString();
+                        var getUser = await _client.GetUserAsync(ulong.Parse(userId));
+                        var dmChannel = await getUser.CreateDMChannelAsync();
+
+                        EmbedHelper helper = new EmbedHelper();
+                        string output = "Welcome to the server, I'm BigBirdBot!\nI wanted to give you a proper welcome and hope you have a great time!\nFeel free to type -help in the server to get more information on what I can offer!";
+
+                        if (dmChannel != null)
+                            await dmChannel.SendMessageAsync(embed: helper.BuildMessageEmbed("BigBirdBot - Help Commands", output, "", "BigBirdBot", Discord.Color.Gold, null, null).Build());
                     }
-
-                    string userId = arg.Id.ToString();
-                    var getUser = await _client.GetUserAsync(ulong.Parse(userId));
-                    var dmChannel = await getUser.CreateDMChannelAsync();
-
-                    EmbedHelper helper = new EmbedHelper();
-                    string output = "Welcome to the server, I'm BigBirdBot!\nI wanted to give you a proper welcome and hope you have a great time!\nFeel free to type -help in the server to get more information on what I can offer!";
-
-                    if (dmChannel != null)
-                        await dmChannel.SendMessageAsync(embed: helper.BuildMessageEmbed("BigBirdBot - Help Commands", output, "", "BigBirdBot", Discord.Color.Gold, null, null).Build());
                 }
             }
-        }    
+        }
     }
     private async Task JoinedGuild(SocketGuild arg)
     {
@@ -602,7 +661,7 @@ class Program
             {
                 foreach (var user in arg.Users)
                 {
-                    if (!user.IsBot)
+                    if (!user.IsBot && !user.IsWebhook)
                     {
                         stored.UpdateCreate(Constants.discordBotConnStr, "AddUser", new List<SqlParameter>
                         {

@@ -408,6 +408,7 @@ namespace DiscordBot.Modules
 
         [Command("kadelete")]
         [Alias("kad")]
+        [Discord.Commands.RequireUserPermission(ChannelPermission.ManageMessages)]
         public async Task HandleKeywordDelete([Remainder] string keyword)
         {
             var serverId = Int64.Parse(Context.Guild.Id.ToString());
@@ -530,6 +531,7 @@ namespace DiscordBot.Modules
 
         [Command("delete")]
         [Alias("del")]
+        [Discord.Commands.RequireUserPermission(ChannelPermission.ManageMessages)]
         public async Task HandleDelete([Remainder] int numToDelete)
         {
             if (numToDelete < 1 || numToDelete > 20) 
@@ -616,6 +618,7 @@ namespace DiscordBot.Modules
 
         [Command("addkeymulti")]
         [Alias("addthirst")]
+        [Discord.Commands.RequireUserPermission(ChannelPermission.ManageChannels)]
         public async Task HandleAddThirst([Remainder] string args = "")
         {
             /*
@@ -766,7 +769,7 @@ namespace DiscordBot.Modules
                             Description = "A **birthday** role was created, please have an administrator add the users to this role before running this command again."
                         };
 
-                        await Task.CompletedTask;
+                        return;
                     }
 
                     DataTable dtNewEvent = storedProcedure.Select(Constants.Constants.discordBotConnStr, "AddEvent", new List<SqlParameter>

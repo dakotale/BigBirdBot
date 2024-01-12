@@ -45,6 +45,7 @@ namespace DiscordBot.Modules
         }
 
         [Command("populateallusers")]
+        [Discord.Commands.RequireUserPermission(ChannelPermission.ManageMessages)]
         public async Task HandlePopulateAllUserCommand()
         {
             try
@@ -89,6 +90,7 @@ namespace DiscordBot.Modules
         }
 
         [Command("kaonoff")]
+        [Discord.Commands.RequireUserPermission(ChannelPermission.ManageMessages)]
         public async Task HandleKeywordOnOff()
         {
             StoredProcedure procedure = new StoredProcedure();
@@ -132,7 +134,7 @@ namespace DiscordBot.Modules
         }
 
         [Command("brendancounter")]
-        [RequireRole("actual degens")]
+        [Discord.Commands.RequireUserPermission(ChannelPermission.ManageMessages)]
         public async Task HandleLowLevel()
         {
             // AddLowLevel
@@ -235,7 +237,8 @@ namespace DiscordBot.Modules
         }
 
         [Command("welcomemsg")]
-        public async Task HandleWecomeMessage()
+        [Discord.Commands.RequireUserPermission(ChannelPermission.ManageMessages)]
+        public async Task HandleWelcomeMessage()
         {
             StoredProcedure procedure = new StoredProcedure();
             string result = "";
