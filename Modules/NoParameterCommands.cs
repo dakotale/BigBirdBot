@@ -12,15 +12,11 @@ namespace DiscordBot.Modules
 {
     public class NoParameterCommands : ModuleBase<SocketCommandContext>
     {
-        Audit audit = new Audit();
-
         [Command("info")]
         [Alias("serverinfo", "server")]
         [Discord.Commands.RequireBotPermission(GuildPermission.EmbedLinks)]
         public async Task HandleServerInformation()
         {
-            audit.InsertAudit("serverinfo", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
-
             double botPercentage = Math.Round(Context.Guild.Users.Count(x => x.IsBot) / Context.Guild.MemberCount * 100d, 2);
 
             string bannerUrl = Context.Guild.BannerUrl ?? "";
@@ -49,11 +45,11 @@ namespace DiscordBot.Modules
         }
 
         [Command("populateallusers")]
+        [Discord.Commands.RequireUserPermission(ChannelPermission.ManageMessages)]
         public async Task HandlePopulateAllUserCommand()
         {
             try
             {
-                audit.InsertAudit("populateallusers", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
                 StoredProcedure stored = new StoredProcedure();
 
                 // GetServer ulong IDs
@@ -75,7 +71,7 @@ namespace DiscordBot.Modules
                                 new SqlParameter("@UserID", u.Id.ToString()),
                                 new SqlParameter("@Username", u.Username),
                                 new SqlParameter("@JoinDate", u.JoinedAt),
-                                new SqlParameter("@GuildName", u.Guild.Name),
+                                new SqlParameter("@ServerUID", Int64.Parse(u.Guild.Id.ToString())),
                                 new SqlParameter("@Nickname", u.Nickname)
                             });
                             }
@@ -94,9 +90,9 @@ namespace DiscordBot.Modules
         }
 
         [Command("kaonoff")]
+        [Discord.Commands.RequireUserPermission(ChannelPermission.ManageMessages)]
         public async Task HandleKeywordOnOff()
         {
-            audit.InsertAudit("kaonoff", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             StoredProcedure procedure = new StoredProcedure();
             var serverId = Int64.Parse(Context.Guild.Id.ToString());
             string result = "";
@@ -125,7 +121,6 @@ namespace DiscordBot.Modules
         [Command("raffle")]
         public async Task HandleRaffle()
         {
-            audit.InsertAudit("raffle", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             var userList = Context.Guild.GetUsersAsync().ToListAsync().Result;
             foreach (var user in userList)
             {
@@ -139,7 +134,7 @@ namespace DiscordBot.Modules
         }
 
         [Command("brendancounter")]
-        [RequireRole("actual degens")]
+        [Discord.Commands.RequireUserPermission(ChannelPermission.ManageMessages)]
         public async Task HandleLowLevel()
         {
             // AddLowLevel
@@ -167,7 +162,6 @@ namespace DiscordBot.Modules
         [Command("twitter")]
         public async Task HandleTwitterEmbeds()
         {
-            audit.InsertAudit("twitter", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             StoredProcedure procedure = new StoredProcedure();
             string result = "";
 
@@ -240,6 +234,31 @@ namespace DiscordBot.Modules
             {
                 await ReplyAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Error Log", "No recent exceptions found.", "", Context.Message.Author.Username, Discord.Color.Green).Build());
             }
+        }
+
+        [Command("welcomemsg")]
+        [Discord.Commands.RequireUserPermission(ChannelPermission.ManageMessages)]
+        public async Task HandleWelcomeMessage()
+        {
+            StoredProcedure procedure = new StoredProcedure();
+            string result = "";
+
+            DataTable dt = procedure.Select(Constants.Constants.discordBotConnStr, "UpdateShowWelcomeMessage", new List<SqlParameter> { new SqlParameter("@ServerUID", Int64.Parse(Context.Guild.Id.ToString())) });
+
+            if (dt.Rows.Count > 0)
+            {
+                foreach (DataRow dr in dt.Rows)
+                    result = dr["Result"].ToString();
+            }
+
+            string title = "BigBirdBot - Welcome Message Configuration";
+            string desc = result;
+            string thumbnailUrl = "";
+            string imageUrl = "";
+            string embedCreatedBy = "Command from: " + Context.User.Username;
+
+            EmbedHelper embed = new EmbedHelper();
+            await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Green, imageUrl).Build());
         }
     }
 }

@@ -15,12 +15,10 @@ namespace DiscordBot.Modules
 {
     public class WebScraperCommands : ModuleBase<SocketCommandContext>
     {
-        Audit audit = new Audit();
         [Command("housing")]
         [Summary("List of open houses for the current bid period based on the world and size")]
         public async Task HandleHousing([Remainder] string msg)
         {
-            audit.InsertAudit("housing", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             EmbedHelper embedHelper = new EmbedHelper();
 
             if (msg.Split(",").Count() == 5)

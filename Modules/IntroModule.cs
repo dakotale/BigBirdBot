@@ -12,7 +12,6 @@ namespace DiscordBot.Modules
     // Modules must be public and inherit from an IModuleBase
     public class IntroModule : ModuleBase<SocketCommandContext>
     {
-        Audit audit = new Audit();
         // Ban a user
         [Command("ban")]
         [RequireContext(ContextType.Guild)]
@@ -23,7 +22,6 @@ namespace DiscordBot.Modules
         [Discord.Commands.Summary("Bans a user but the bot must have the permission in order to do it.")]
         public async Task BanUserAsync(IGuildUser user, [Remainder] string reason = null)
         {
-            audit.InsertAudit("ban", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
             await user.Guild.AddBanAsync(user, reason: reason);
             await ReplyAsync("ok!");
         }
@@ -32,8 +30,6 @@ namespace DiscordBot.Modules
         [Discord.Commands.Summary("Get a list of commands and descriptions available to the bot.")]
         public async Task TaskHelpCommand()
         {
-            audit.InsertAudit("help", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
-
             StoredProcedure storedProcedure = new StoredProcedure();
             EmbedHelper helper = new EmbedHelper();
             DataTable dt = storedProcedure.Select(Constants.Constants.discordBotConnStr, "GetCommandList", new List<System.Data.SqlClient.SqlParameter>());

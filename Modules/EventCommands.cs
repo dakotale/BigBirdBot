@@ -9,24 +9,29 @@ namespace DiscordBot.Modules
 {
     public class EventCommands : ModuleBase<SocketCommandContext>
     {
-        Audit audit = new Audit();
         [Command("event")]
         [Alias("eve", "plan", "remind")]
         [Discord.Commands.Summary("Plan an event and get a notification when it's ready.  In 'Date/Time, Event Name, Event Description' format.")]
         public async Task HandleEventCommand([Remainder] string eventMsg)
         {
-            audit.InsertAudit("event", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
-            
             try
             {
                 StoredProcedure storedProcedure = new StoredProcedure();
                 EmbedHelper embedHelper = new EmbedHelper();
 
+                string mention = "";
+                if (Context.Message.MentionedRoles.Count > 0)
+                    mention = Context.Message.MentionedRoles.Select(s => s.Mention).FirstOrDefault();
+                else if (Context.Message.MentionedUsers.Count > 0)
+                    mention = Context.Message.MentionedUsers.Select(s => s.Mention).FirstOrDefault();
+                else
+                    mention = Context.User.Mention;
+
                 DataTable dt = storedProcedure.Select(Constants.Constants.discordBotConnStr, "AddEvent", new List<SqlParameter>
                 {
                     new SqlParameter("@EventDetails", eventMsg),
                     new SqlParameter("@EventChannelSource", Context.Channel.Id.ToString()),
-                    new SqlParameter("@CreatedBy", Context.User.Mention)
+                    new SqlParameter("@CreatedBy", mention)
                 });
 
                 if (dt.Rows.Count > 0 )
@@ -50,8 +55,6 @@ namespace DiscordBot.Modules
         [Alias("delevent", "deleve")]
         public async Task HandleDeleteEvent([Remainder] string eventName)
         {
-            audit.InsertAudit("deleteevent", Context.User.Username, Constants.Constants.discordBotConnStr, Context.Guild.Id.ToString());
-
             StoredProcedure storedProcedure = new StoredProcedure();
             EmbedHelper embedHelper = new EmbedHelper();
 
