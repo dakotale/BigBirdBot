@@ -104,7 +104,7 @@ class Program
 
             _client.MessageReceived += async (msg) =>
             {
-                if (msg != null && !msg.Author.IsBot && msg.Channel as SocketGuildChannel != null)
+                if (msg != null && !msg.Author.IsBot && !msg.Author.IsWebhook && msg.Channel as SocketGuildChannel != null)
                 {
                     string message = msg.Content.Trim().ToLower();
                     string connStr = Constants.discordBotConnStr;
@@ -541,7 +541,8 @@ class Program
         {
             stored.UpdateCreate(Constants.discordBotConnStr, "DeleteUser", new List<SqlParameter>
             {
-                new SqlParameter("@UserID", arg2.Id.ToString())
+                new SqlParameter("@UserID", arg2.Id.ToString()),
+                new SqlParameter("@ServerID", arg1.Id.ToString())
             });
 
             // Let's pull the first channel and hope for the best.....
@@ -575,6 +576,15 @@ class Program
         if (!arg.IsBot && !arg.IsWebhook)
         {
             stored.UpdateCreate(Constants.discordBotConnStr, "AddUser", new List<SqlParameter>
+            {
+                new SqlParameter("@UserID", arg.Id.ToString()),
+                new SqlParameter("@Username", arg.Username),
+                new SqlParameter("@JoinDate", arg.JoinedAt),
+                new SqlParameter("@ServerUID", Int64.Parse(arg.Guild.Id.ToString())),
+                new SqlParameter("@Nickname", arg.Nickname)
+            });
+
+            stored.UpdateCreate(Constants.discordBotConnStr, "AddUserByServer", new List<SqlParameter>
             {
                 new SqlParameter("@UserID", arg.Id.ToString()),
                 new SqlParameter("@Username", arg.Username),

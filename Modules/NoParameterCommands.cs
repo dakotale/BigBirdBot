@@ -61,19 +61,28 @@ namespace DiscordBot.Modules
                     // Need to check if Guild exists
                     if (Context.Client.GetGuild(ulong.Parse(dr["ServerUID"].ToString())) != null)
                     {
-                        var users = Context.Client.GetGuild(ulong.Parse(dr["ServerUID"].ToString())).Users.Where(s => s.IsBot == false).ToList() ?? new List<SocketGuildUser>();
+                        var users = Context.Client.GetGuild(ulong.Parse(dr["ServerUID"].ToString())).Users.Where(s => s.IsBot == false && s.IsWebhook == false).ToList() ?? new List<SocketGuildUser>();
                         if (users.Count > 0)
                         {
                             foreach (var u in users)
                             {
                                 stored.UpdateCreate(Constants.Constants.discordBotConnStr, "AddUser", new List<SqlParameter>
-                            {
-                                new SqlParameter("@UserID", u.Id.ToString()),
-                                new SqlParameter("@Username", u.Username),
-                                new SqlParameter("@JoinDate", u.JoinedAt),
-                                new SqlParameter("@ServerUID", Int64.Parse(u.Guild.Id.ToString())),
-                                new SqlParameter("@Nickname", u.Nickname)
-                            });
+                                {
+                                    new SqlParameter("@UserID", u.Id.ToString()),
+                                    new SqlParameter("@Username", u.Username),
+                                    new SqlParameter("@JoinDate", u.JoinedAt),
+                                    new SqlParameter("@ServerUID", Int64.Parse(u.Guild.Id.ToString())),
+                                    new SqlParameter("@Nickname", u.Nickname)
+                                });
+
+                                stored.UpdateCreate(Constants.Constants.discordBotConnStr, "AddUserByServer", new List<SqlParameter>
+                                {
+                                    new SqlParameter("@UserID", u.Id.ToString()),
+                                    new SqlParameter("@Username", u.Username),
+                                    new SqlParameter("@JoinDate", u.JoinedAt),
+                                    new SqlParameter("@ServerUID", Int64.Parse(u.Guild.Id.ToString())),
+                                    new SqlParameter("@Nickname", u.Nickname)
+                                });
                             }
                         }
                     }
@@ -232,7 +241,7 @@ namespace DiscordBot.Modules
             }
             else
             {
-                await ReplyAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Error Log", "No recent exceptions found.", "", Context.Message.Author.Username, Discord.Color.Green).Build());
+                await ReplyAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Error Log", "No recent exceptions found.", "", Context.Message.Author.Username, Discord.Color.Blue).Build());
             }
         }
 
@@ -258,7 +267,36 @@ namespace DiscordBot.Modules
             string embedCreatedBy = "Command from: " + Context.User.Username;
 
             EmbedHelper embed = new EmbedHelper();
-            await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Green, imageUrl).Build());
+            await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Blue, imageUrl).Build());
+        }
+
+        [Command("connplayers")]
+        public async Task HandlePlayersConnected()
+        {
+            StoredProcedure stored = new StoredProcedure();
+            DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "GetPlayerConnected", new List<SqlParameter>());
+            EmbedHelper embed = new EmbedHelper();
+
+            string title = "BigBirdBot - Players Connected";
+            string desc = "";
+            string thumbnailUrl = "";
+            string imageUrl = "";
+            string embedCreatedBy = "Command from: " + Context.User.Username;
+
+            if (dt.Rows.Count > 0)
+            {
+                desc = $"Total Players Connected: {dt.Rows.Count}\n";
+                foreach (DataRow dr in dt.Rows)
+                {
+                    desc += "\n- " + dr["ServerName"];
+                }
+                await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Blue, imageUrl).Build());
+            }
+            else
+            {
+                desc = "No Players are connected at this time.";
+                await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Blue, imageUrl).Build());
+            }
         }
     }
 }

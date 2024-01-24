@@ -152,7 +152,8 @@ namespace DiscordBot.Modules
                             if (DateTime.TryParse(date, out DateTime dt))
                             {
                                 dt = dt.AddHours(-6);
-                                deadline = $"in the entry phase until: {dt} ET";
+                                string dtOutput = dt.ToString("F");
+                                deadline = $"Entry Phase Deadline: {dtOutput} ET";
                             }
                         }
                     }
