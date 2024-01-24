@@ -946,5 +946,30 @@ namespace DiscordBot.Modules
                 await ReplyAsync(embed: embed.Build());
             }
         }
+
+        [Command("setprefix")]
+        [Summary("Set the prefix for commands used in the bot.")]
+        public async Task HandleSetPrefix([Remainder] string prefix)
+        {
+            StoredProcedure stored = new StoredProcedure();
+            EmbedHelper embedHelper = new EmbedHelper();
+
+            if (prefix.Trim().Length > 10 || prefix.Trim().Length < 1) 
+            {
+                await ReplyAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Error", $"The prefix must be greater than 0 characters and less than 10 characters.", "", Context.User.Username, Discord.Color.Red, null, null).Build());
+            }
+            else
+            {
+                stored.UpdateCreate(Constants.Constants.discordBotConnStr, "UpdateServerPrefixByServerID", new List<SqlParameter>
+                {
+                    new SqlParameter("@ServerUID", Int64.Parse(Context.Guild.Id.ToString())),
+                    new SqlParameter("@Prefix", prefix)
+                });
+
+                await ReplyAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Prefix Set", $"Bot prefix now set to **'{prefix.Trim()}'**", "", Context.User.Username, Discord.Color.Blue, null, null).Build());
+            }
+
+            
+        }
     }
 }

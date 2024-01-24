@@ -5,6 +5,8 @@ using Microsoft.Extensions.DependencyInjection;
 using System.Reflection;
 using DiscordBot.Helper;
 using DiscordBot.Constants;
+using System.Data;
+using System.Data.SqlClient;
 
 namespace DiscordBot.Services
 {
@@ -46,7 +48,16 @@ namespace DiscordBot.Services
             // Perform prefix check. You may want to replace this with
             // (!message.HasCharPrefix('!', ref argPos))
             // for a more traditional command format like !help.
-            if (!message.HasCharPrefix(Constants.Constants.msgPrefix, ref argPos))
+            StoredProcedure stored = new StoredProcedure();
+            string prefix = "";
+            var channelId = message.Channel as SocketGuildChannel;
+            DataTable dtPrefix = stored.Select(Constants.Constants.discordBotConnStr, "GetServerPrefixByServerID", new List<SqlParameter> { new SqlParameter("@ServerUID", Int64.Parse(channelId.Guild.Id.ToString())) });
+            foreach (DataRow dr in dtPrefix.Rows)
+            {
+                prefix = dr["Prefix"].ToString();
+            }
+
+            if (!message.HasStringPrefix(prefix, ref argPos))
                 return;
 
             var context = new SocketCommandContext(_discord, message);

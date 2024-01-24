@@ -26,7 +26,7 @@
     <PackageReference Include="OpenAI" Version="1.10.0" />
     <PackageReference Include="SpotifyAPI.Web" Version="7.0.2" />
     <PackageReference Include="SpotifyAPI.Web.Auth" Version="7.0.2" />
-    <PackageReference Include="System.Data.SqlClient" Version="4.8.6" />
+    <PackageReference Include="System.Data.SqlClient" Version="4.8.5" />
     <PackageReference Include="Victoria" Version="6.0.23.324" />
   </ItemGroup>
 
