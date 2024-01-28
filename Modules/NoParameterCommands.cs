@@ -298,5 +298,6 @@ namespace DiscordBot.Modules
                 await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Blue, imageUrl).Build());
             }
         }
+
     }
 }

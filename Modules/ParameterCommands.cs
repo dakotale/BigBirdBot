@@ -949,6 +949,7 @@ namespace DiscordBot.Modules
 
         [Command("setprefix")]
         [Summary("Set the prefix for commands used in the bot.")]
+        [Discord.Commands.RequireUserPermission(ChannelPermission.ManageMessages)]
         public async Task HandleSetPrefix([Remainder] string prefix)
         {
             StoredProcedure stored = new StoredProcedure();
@@ -968,8 +969,35 @@ namespace DiscordBot.Modules
 
                 await ReplyAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Prefix Set", $"Bot prefix now set to **'{prefix.Trim()}'**", "", Context.User.Username, Discord.Color.Blue, null, null).Build());
             }
+        }
 
-            
+        [Command("announcement")]
+        [Discord.Commands.RequireOwner]
+        public async Task HandleAnnouncement([Remainder] string message)
+        {
+            try
+            {
+                StoredProcedure stored = new StoredProcedure();
+
+                // GetServer ulong IDs
+                // var test = Context.Client.GetGuild(id).Users.Where(s => s.IsBot == false).ToList();
+                DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "GetServersNonNullDefaultChannel", new List<SqlParameter>());
+                EmbedHelper embedHelper = new EmbedHelper();
+                foreach (DataRow dr in dt.Rows)
+                {
+                    // Need to check if Guild exists
+                    if (Context.Client.GetGuild(ulong.Parse(dr["ServerUID"].ToString())) != null)
+                    {
+                        await Context.Client.GetGuild(ulong.Parse(dr["ServerUID"].ToString())).DefaultChannel.SendMessageAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Announcement", message, "", "BigBirdBot", Discord.Color.Gold, null, null).Build());
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                EmbedHelper embedHelper = new EmbedHelper();
+                var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", e.Message, Constants.Constants.errorImageUrl, "", Color.Red, "");
+                await ReplyAsync(embed: embed.Build());
+            }
         }
     }
 }

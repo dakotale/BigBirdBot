@@ -665,7 +665,8 @@ class Program
             stored.UpdateCreate(Constants.discordBotConnStr, "AddServer", new List<SqlParameter>
             {
                 new SqlParameter("@ServerUID", Int64.Parse(arg.Id.ToString())),
-                new SqlParameter("@ServerName", arg.Name)
+                new SqlParameter("@ServerName", arg.Name),
+                new SqlParameter("@DefaultChannelID", Int64.Parse(arg.DefaultChannel.Id.ToString())),
             });
         }
 
