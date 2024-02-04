@@ -508,7 +508,7 @@ namespace DiscordBot.Modules
 
         [Command("Seek", RunMode = Discord.Commands.RunMode.Async)]
         [Discord.Commands.Summary("Go to a specific section of the current track playing.")]
-        public async Task SeekAsync(TimeSpan timeSpan)
+        public async Task SeekAsync(string timeSpan)
         {
             if (!_lavaNode.TryGetPlayer(Context.Guild, out var player))
             {
@@ -526,10 +526,19 @@ namespace DiscordBot.Modules
 
             try
             {
-                await player.SeekAsync(timeSpan);
-                string msg = $"I've seeked `{player.Track.Title}` to {timeSpan}.";
-                var embed = BuildMusicEmbed("Seek", msg);
-                await ReplyAsync(embed: embed.Build());
+                TimeSpan time;
+                if (TimeSpan.TryParse(timeSpan, out time))
+                {
+                    await player.SeekAsync(time);
+                    string msg = $"I've seeked `{player.Track.Title}` to {timeSpan}.";
+                    var embed = BuildMusicEmbed("Seek", msg);
+                    await ReplyAsync(embed: embed.Build());
+                }
+                else
+                {
+                    EmbedHelper embedHelper = new EmbedHelper();
+                    await ReplyAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Error", "Please enter a valid seek time.\n**Example: -seek 00:00:30**\nAbove example would seek 30 seconds into the video.", Constants.Constants.errorImageUrl, "", Color.Red, "").Build());
+                }
             }
             catch (Exception exception)
             {

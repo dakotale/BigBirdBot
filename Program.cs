@@ -16,8 +16,6 @@ using DiscordBot.Helper;
 using KillersLibrary.Services;
 using OpenAI_API.Models;
 using Fergun.Interactive;
-using System;
-using SpotifyAPI.Web;
 
 class Program
 {
@@ -104,7 +102,7 @@ class Program
 
             _client.MessageReceived += async (msg) =>
             {
-                if (msg != null && !msg.Author.IsBot && msg.Channel as SocketGuildChannel != null)
+                if (msg != null && !msg.Author.IsBot && !msg.Author.IsWebhook && msg.Channel as SocketGuildChannel != null)
                 {
                     string message = msg.Content.Trim().ToLower();
                     string connStr = Constants.discordBotConnStr;
@@ -130,6 +128,13 @@ class Program
 
                     if (isActive)
                     {
+                        string prefix = "";
+                        DataTable dtPrefix = stored.Select(Constants.discordBotConnStr, "GetServerPrefixByServerID", new List<SqlParameter> { new SqlParameter("@ServerUID", Int64.Parse(serverId)) });
+                        foreach (DataRow dr in dtPrefix.Rows)
+                        {
+                            prefix = dr["Prefix"].ToString();
+                        }
+
                         if (message.StartsWith("$") && message.Length > 1)
                         {
                             try
@@ -169,7 +174,7 @@ class Program
                                 await msg.Channel.SendMessageAsync(embed: embed.Build());
                             }
                         }
-                        else if ((message.Contains("https://twitter.com") || message.Contains("https://x.com")) && !message.Contains("-"))
+                        else if ((message.Contains("https://twitter.com") || message.Contains("https://x.com")) && !message.Contains(prefix))
                         {
                             DataTable dtTwitter = stored.Select(connStr, "GetTwitterBroken", new List<SqlParameter> { new SqlParameter("@ServerID", Int64.Parse(serverId)) });
                             bool isTwitterBroken = false;
@@ -313,13 +318,13 @@ class Program
                         }
                         else
                         {
-                            if (message.StartsWith("-"))
+                            if (message.StartsWith(prefix))
                             {
                                 string keyword = "";
                                 if (message.Split(' ').Count() == 1)
-                                    keyword = message.Replace("-", "");
+                                    keyword = message.Replace(prefix, "");
                                 if (message.Split(' ').Count() > 1)
-                                    keyword = message.Split(' ')[0].Replace("-", "");
+                                    keyword = message.Split(' ')[0].Replace(prefix, "");
 
                                 // Check if it's in the ThirstMap and run the add command
                                 List<SqlParameter> parameters = new List<SqlParameter>();
@@ -458,7 +463,7 @@ class Program
                             }
 
                             // Todo, check all the commands eventually but for now let's stop the accidently double triggering.
-                            if (!message.StartsWith("-") && !message.StartsWith("$"))
+                            if (!message.StartsWith(prefix) && !message.StartsWith("$"))
                             {
                                 var channel = msg.Channel as SocketGuildChannel;
                                 StoredProcedure storedProcedure = new StoredProcedure();
@@ -541,7 +546,8 @@ class Program
         {
             stored.UpdateCreate(Constants.discordBotConnStr, "DeleteUser", new List<SqlParameter>
             {
-                new SqlParameter("@UserID", arg2.Id.ToString())
+                new SqlParameter("@UserID", arg2.Id.ToString()),
+                new SqlParameter("@ServerID", arg1.Id.ToString())
             });
 
             // Let's pull the first channel and hope for the best.....
@@ -575,6 +581,15 @@ class Program
         if (!arg.IsBot && !arg.IsWebhook)
         {
             stored.UpdateCreate(Constants.discordBotConnStr, "AddUser", new List<SqlParameter>
+            {
+                new SqlParameter("@UserID", arg.Id.ToString()),
+                new SqlParameter("@Username", arg.Username),
+                new SqlParameter("@JoinDate", arg.JoinedAt),
+                new SqlParameter("@ServerUID", Int64.Parse(arg.Guild.Id.ToString())),
+                new SqlParameter("@Nickname", arg.Nickname)
+            });
+
+            stored.UpdateCreate(Constants.discordBotConnStr, "AddUserByServer", new List<SqlParameter>
             {
                 new SqlParameter("@UserID", arg.Id.ToString()),
                 new SqlParameter("@Username", arg.Username),
@@ -650,7 +665,8 @@ class Program
             stored.UpdateCreate(Constants.discordBotConnStr, "AddServer", new List<SqlParameter>
             {
                 new SqlParameter("@ServerUID", Int64.Parse(arg.Id.ToString())),
-                new SqlParameter("@ServerName", arg.Name)
+                new SqlParameter("@ServerName", arg.Name),
+                new SqlParameter("@DefaultChannelID", Int64.Parse(arg.DefaultChannel.Id.ToString())),
             });
         }
 

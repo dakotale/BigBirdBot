@@ -9,6 +9,8 @@ using System.Net;
 using Discord;
 using System.Data.SqlClient;
 using Discord.WebSocket;
+using System.Runtime.CompilerServices;
+using Flurl;
 
 namespace DiscordBot.Modules
 {
@@ -826,6 +828,169 @@ namespace DiscordBot.Modules
                     .WithFooter(footer => footer.Text = "Created by " + Context.User.Username)
                     .WithCurrentTimestamp();
                 await ReplyAsync(embed: embed.Build());
+            }
+            catch (Exception e)
+            {
+                EmbedHelper embedHelper = new EmbedHelper();
+                var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", e.Message, Constants.Constants.errorImageUrl, "", Color.Red, "");
+                await ReplyAsync(embed: embed.Build());
+            }
+        }
+
+        [Command("delthirsturl")]
+        [Summary("Delete a thirst/multi-keyword URL with a given table and link.")]
+        [Discord.Commands.RequireUserPermission(ChannelPermission.ManageMessages)]
+        public async Task HandleThirstURLDelete([Remainder] string args = "")
+        {
+            if (args.Trim().Length > 0 && args.Contains(","))
+            {
+                EmbedHelper embedHelper = new EmbedHelper();
+                var param = args.Split(",").Select(s => s.Trim()).ToArray();
+                string tableName = param[0];
+                string url = param[1];
+
+                StoredProcedure stored = new StoredProcedure();
+                DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "CheckIfThirstURLExists", new List<SqlParameter>
+                {
+                    new SqlParameter("@FilePath", url),
+                    new SqlParameter("TableName", tableName)
+                });
+
+                if (dt.Rows.Count > 0)
+                {
+                    stored.UpdateCreate(Constants.Constants.discordBotConnStr, "DeleteThirstURL", new List<SqlParameter>
+                    {
+                        new SqlParameter("@FilePath", url),
+                        new SqlParameter("TableName", tableName)
+                    });
+
+                    var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Delete Successful", $"URL {url} was successfully deleted from the {tableName} table.", "", Context.User.Username, Color.Blue, "");
+                    await ReplyAsync(embed: embed.Build());
+                }
+                else
+                {
+                    var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "The URL doesn't exist in the table provided or the table doesn't exist.", Constants.Constants.errorImageUrl, Context.User.Username, Color.Red, "");
+                    await ReplyAsync(embed: embed.Build());
+                }
+            }
+        }
+
+        [Command("addthirstevent")]
+        [Summary("Adds a scheduled job to send a photo from the thirst library for a user with a provided mention and table name.")]
+        [Discord.Commands.RequireUserPermission(ChannelPermission.ManageMessages)]
+        public async Task HandleThirstEventAdd(SocketGuildUser user, [Remainder] string args)        
+        {
+            try
+            {
+                if (args.Length > 0)
+                {
+                    StoredProcedure stored = new StoredProcedure();
+                    EmbedHelper embedHelper = new EmbedHelper();
+
+                    var tableName = args.Split(",")[1].Trim();
+
+                    DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "AddEventScheduledTime", new List<SqlParameter>
+                    {
+                        new SqlParameter("@UserID", Int64.Parse(user.Id.ToString())),
+                        new SqlParameter("@TableName", tableName.Trim())
+                    });
+
+                    if (dt.Rows.Count > 0)
+                    {
+                        foreach (DataRow dr in dt.Rows)
+                        {
+                            var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Thirst User Added", $"{tableName.Trim()} was successfully added and they will start receiving this on {DateTime.Parse(dr["ScheduleTime"].ToString()).ToString("MM/dd/yyyy hh:mm t")} ET.", "", Context.User.Username, Color.Blue, "");
+                            await ReplyAsync(embed: embed.Build());
+                        }
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                EmbedHelper embedHelper = new EmbedHelper();
+                var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", e.Message, Constants.Constants.errorImageUrl, "", Color.Red, "");
+                await ReplyAsync(embed: embed.Build());
+            }
+        }
+
+        [Command("delthirst")]
+        [Summary("Delete a thirst/multi-key word that was created.")]
+        [Discord.Commands.RequireUserPermission(ChannelPermission.ManageMessages)]
+        public async Task HandleThirstDelete([Remainder] string keyword)
+        {
+            StoredProcedure stored = new StoredProcedure();
+            EmbedHelper embedHelper = new EmbedHelper();
+            DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "CheckKeywordExistsThirstMapByServer", new List<SqlParameter>
+            {
+                new SqlParameter("@Keyword", keyword),
+                new SqlParameter("@ServerID", Int64.Parse(Context.Guild.Id.ToString()))
+            });
+
+            if (dt.Rows.Count > 0)
+            {
+                foreach (DataRow dr in dt.Rows)
+                {
+                    stored.UpdateCreate(Constants.Constants.discordBotConnStr, "DeleteThirstCommand", new List<SqlParameter>
+                    {
+                        new SqlParameter("@ChatKeywordID", int.Parse(dr["ChatKeywordID"].ToString())),
+                        new SqlParameter("@TableName", dr["TableName"].ToString())
+                    });
+
+                    var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Delete Successful", "The thirst/multi-keyword provided was removed successfully.", "", "", Color.Blue, "");
+                    await ReplyAsync(embed: embed.Build());
+                }
+            }
+            else
+            {
+                var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "The thirst/multi-keyword entered does not exist.", Constants.Constants.errorImageUrl, "", Color.Red, "");
+                await ReplyAsync(embed: embed.Build());
+            }
+        }
+
+        [Command("setprefix")]
+        [Summary("Set the prefix for commands used in the bot.")]
+        [Discord.Commands.RequireUserPermission(ChannelPermission.ManageMessages)]
+        public async Task HandleSetPrefix([Remainder] string prefix)
+        {
+            StoredProcedure stored = new StoredProcedure();
+            EmbedHelper embedHelper = new EmbedHelper();
+
+            if (prefix.Trim().Length > 10 || prefix.Trim().Length < 1) 
+            {
+                await ReplyAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Error", $"The prefix must be greater than 0 characters and less than 10 characters.", "", Context.User.Username, Discord.Color.Red, null, null).Build());
+            }
+            else
+            {
+                stored.UpdateCreate(Constants.Constants.discordBotConnStr, "UpdateServerPrefixByServerID", new List<SqlParameter>
+                {
+                    new SqlParameter("@ServerUID", Int64.Parse(Context.Guild.Id.ToString())),
+                    new SqlParameter("@Prefix", prefix)
+                });
+
+                await ReplyAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Prefix Set", $"Bot prefix now set to **'{prefix.Trim()}'**", "", Context.User.Username, Discord.Color.Blue, null, null).Build());
+            }
+        }
+
+        [Command("announcement")]
+        [Discord.Commands.RequireOwner]
+        public async Task HandleAnnouncement([Remainder] string message)
+        {
+            try
+            {
+                StoredProcedure stored = new StoredProcedure();
+
+                // GetServer ulong IDs
+                // var test = Context.Client.GetGuild(id).Users.Where(s => s.IsBot == false).ToList();
+                DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "GetServersNonNullDefaultChannel", new List<SqlParameter>());
+                EmbedHelper embedHelper = new EmbedHelper();
+                foreach (DataRow dr in dt.Rows)
+                {
+                    // Need to check if Guild exists
+                    if (Context.Client.GetGuild(ulong.Parse(dr["ServerUID"].ToString())) != null)
+                    {
+                        await Context.Client.GetGuild(ulong.Parse(dr["ServerUID"].ToString())).DefaultChannel.SendMessageAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Announcement", message, "", "BigBirdBot", Discord.Color.Gold, null, null).Build());
+                    }
+                }
             }
             catch (Exception e)
             {
