@@ -109,176 +109,190 @@ class Program
                     var msgChannel = msg.Channel as SocketGuildChannel;
                     var serverId = msgChannel.Guild.Id.ToString();
                     bool isActive = false;
+                    bool isServerActive = false;
                     int totalActive = 0;
                     StoredProcedure stored = new StoredProcedure();
-                    DataTable dtActive = stored.Select(connStr, "CheckIfKeywordsAreActivePerServer", new List<SqlParameter>
+
+                    DataTable serverActive = stored.Select(connStr, "GetServerPrefixByServerID", new List<SqlParameter>
                     {
                         new SqlParameter("ServerUID", Int64.Parse(serverId))
                     });
 
-                    if (dtActive.Rows.Count > 0)
+                    foreach (DataRow dr in serverActive.Rows)
                     {
-                        foreach (DataRow row in dtActive.Rows)
-                        {
-                            totalActive = int.Parse(row["TotalActive"].ToString());
-                            if (totalActive > 0)
-                                isActive = true;
-                        }
+                        isServerActive = bool.Parse(dr["IsActive"].ToString());
                     }
 
-                    if (isActive)
+                    if (isServerActive)
                     {
-                        string prefix = "";
-                        DataTable dtPrefix = stored.Select(Constants.discordBotConnStr, "GetServerPrefixByServerID", new List<SqlParameter> { new SqlParameter("@ServerUID", Int64.Parse(serverId)) });
-                        foreach (DataRow dr in dtPrefix.Rows)
+                        DataTable dtActive = stored.Select(connStr, "CheckIfKeywordsAreActivePerServer", new List<SqlParameter>
+                    {
+                        new SqlParameter("ServerUID", Int64.Parse(serverId))
+                    });
+
+                        if (dtActive.Rows.Count > 0)
                         {
-                            prefix = dr["Prefix"].ToString();
-                        }
-
-                        if (message.StartsWith("$") && message.Length > 1)
-                        {
-                            try
+                            foreach (DataRow row in dtActive.Rows)
                             {
-                                message = message.Replace("$", "");
-                                await msg.Channel.TriggerTypingAsync(new RequestOptions { Timeout = 30 });
-                                var api = new OpenAI_API.OpenAIAPI(Constants.openAiSecret);
-                                var result = await api.Completions.CreateCompletionAsync(new OpenAI_API.Completions.CompletionRequest(message, model: Model.ChatGPTTurboInstruct, max_tokens: 600, temperature: 0.9, null, null, 1, null, null));
-                                var response = result.ToString();
-
-                                int length = response.Length;
-
-                                if (response.Length > 2000)
-                                {
-                                    await msg.Channel.SendMessageAsync(response.Substring(0, 2000));
-
-                                    if (response.Length > 4000)
-                                        await msg.Channel.SendMessageAsync(response.Substring(2000, 4000));
-                                    else
-                                        await msg.Channel.SendMessageAsync(response.Substring(2000, length - 2000));
-                                }
-                                else
-                                    await msg.Channel.SendMessageAsync(response);
-
-                                await msg.Channel.SendMessageAsync("---END RESPONSE---");
-                            }
-                            catch (Exception ex)
-                            {
-                                var embed = new EmbedBuilder
-                                {
-                                    Title = "BigBirdBot - Error",
-                                    Color = Color.Red,
-                                    Description = ex.Message,
-                                    ThumbnailUrl = Constants.errorImageUrl
-                                };
-
-                                await msg.Channel.SendMessageAsync(embed: embed.Build());
+                                totalActive = int.Parse(row["TotalActive"].ToString());
+                                if (totalActive > 0)
+                                    isActive = true;
                             }
                         }
-                        else if ((message.Contains("https://twitter.com") || message.Contains("https://x.com")) && !message.Contains(prefix))
+
+                        if (isActive)
                         {
-                            DataTable dtTwitter = stored.Select(connStr, "GetTwitterBroken", new List<SqlParameter> { new SqlParameter("@ServerID", Int64.Parse(serverId)) });
-                            bool isTwitterBroken = false;
-                            foreach (DataRow dr in dtTwitter.Rows)
-                                isTwitterBroken = bool.Parse(dr["TwitterBroken"].ToString());
-                            
-                            if (isTwitterBroken)
+                            string prefix = "";
+                            DataTable dtPrefix = stored.Select(Constants.discordBotConnStr, "GetServerPrefixByServerID", new List<SqlParameter> { new SqlParameter("@ServerUID", Int64.Parse(serverId)) });
+                            foreach (DataRow dr in dtPrefix.Rows)
                             {
-                                if (message.Contains("https://twitter.com"))
-                                    message = message.Replace("twitter", "fxtwitter");
-                                if (message.Contains("https://x.com"))
-                                    message = message.Replace("x.com", "fxtwitter.com");
-
-                                message = message.Split("https://")[1];
-
-                                if (message.Split(' ').Count() > 1)
-                                    message = message.Split(' ')[0];
-
-                                message = "https://" + message;
-                                await msg.Channel.SendMessageAsync(message);
+                                prefix = dr["Prefix"].ToString();
                             }
-                            else
+
+                            if (message.StartsWith("$") && message.Length > 1)
                             {
-                                var urlStuff = message.Split(new string[] { "https://twitter.com/", "https://x.com" }, StringSplitOptions.None);
                                 try
                                 {
-                                    if (urlStuff.Length > 0)
+                                    message = message.Replace("$", "");
+                                    await msg.Channel.TriggerTypingAsync(new RequestOptions { Timeout = 30 });
+                                    var api = new OpenAI_API.OpenAIAPI(Constants.openAiSecret);
+                                    var result = await api.Completions.CreateCompletionAsync(new OpenAI_API.Completions.CompletionRequest(message, model: Model.ChatGPTTurboInstruct, max_tokens: 600, temperature: 0.9, null, null, 1, null, null));
+                                    var response = result.ToString();
+
+                                    int length = response.Length;
+
+                                    if (response.Length > 2000)
                                     {
-                                        urlStuff = urlStuff[1].Split("/");
+                                        await msg.Channel.SendMessageAsync(response.Substring(0, 2000));
+
+                                        if (response.Length > 4000)
+                                            await msg.Channel.SendMessageAsync(response.Substring(2000, 4000));
+                                        else
+                                            await msg.Channel.SendMessageAsync(response.Substring(2000, length - 2000));
+                                    }
+                                    else
+                                        await msg.Channel.SendMessageAsync(response);
+
+                                    await msg.Channel.SendMessageAsync("---END RESPONSE---");
+                                }
+                                catch (Exception ex)
+                                {
+                                    var embed = new EmbedBuilder
+                                    {
+                                        Title = "BigBirdBot - Error",
+                                        Color = Color.Red,
+                                        Description = ex.Message,
+                                        ThumbnailUrl = Constants.errorImageUrl
+                                    };
+
+                                    await msg.Channel.SendMessageAsync(embed: embed.Build());
+                                }
+                            }
+                            else if ((message.Contains("https://twitter.com") || message.Contains("https://x.com")) && !message.Contains(prefix))
+                            {
+                                DataTable dtTwitter = stored.Select(connStr, "GetTwitterBroken", new List<SqlParameter> { new SqlParameter("@ServerID", Int64.Parse(serverId)) });
+                                bool isTwitterBroken = false;
+                                foreach (DataRow dr in dtTwitter.Rows)
+                                    isTwitterBroken = bool.Parse(dr["TwitterBroken"].ToString());
+
+                                if (isTwitterBroken)
+                                {
+                                    if (message.Contains("https://twitter.com"))
+                                        message = message.Replace("twitter", "fxtwitter");
+                                    if (message.Contains("https://x.com"))
+                                        message = message.Replace("x.com", "fxtwitter.com");
+
+                                    message = message.Split("https://")[1];
+
+                                    if (message.Split(' ').Count() > 1)
+                                        message = message.Split(' ')[0];
+
+                                    message = "https://" + message;
+                                    await msg.Channel.SendMessageAsync(message);
+                                }
+                                else
+                                {
+                                    var urlStuff = message.Split(new string[] { "https://twitter.com/", "https://x.com" }, StringSplitOptions.None);
+                                    try
+                                    {
                                         if (urlStuff.Length > 0)
                                         {
-                                            var user = urlStuff[0];
-                                            var id = urlStuff[2];
-                                            if (id.Contains("?"))
+                                            urlStuff = urlStuff[1].Split("/");
+                                            if (urlStuff.Length > 0)
                                             {
-                                                id = id.Split('?')[0];
-
-                                                if (id.Contains(' '))
-                                                    id = id.Split(' ')[0];
-                                            }
-                                            else
-                                            {
-                                                if (id.Contains(' '))
-                                                    id = id.Split(' ')[0];
-                                            }
-
-                                            string apiUrl = $"https://api.fxtwitter.com/{user}/status/{id}/en";
-
-                                            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(apiUrl);
-                                            request.AutomaticDecompression = DecompressionMethods.GZip;
-                                            string results = string.Empty;
-
-                                            using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
-                                            using (Stream stream = response.GetResponseStream())
-                                            using (StreamReader reader = new StreamReader(stream))
-                                            {
-                                                results = reader.ReadToEnd();
-                                                StoredProcedure storedProcedure = new StoredProcedure();
-                                                DataTable dt = storedProcedure.Select(connStr, "GetTwitterType", new List<SqlParameter> { new SqlParameter("@json", results) });
-                                                if (dt.Rows.Count > 0)
+                                                var user = urlStuff[0];
+                                                var id = urlStuff[2];
+                                                if (id.Contains("?"))
                                                 {
-                                                    foreach (DataRow dr in dt.Rows)
-                                                    {
-                                                        if (dr["videoUrl"].ToString().Length > 0)
-                                                        {
-                                                            string url = dr["tweetUrl"].ToString();
-                                                            url = url.Replace("twitter", "fxtwitter");
+                                                    id = id.Split('?')[0];
 
-                                                            await msg.Channel.SendMessageAsync(url);
+                                                    if (id.Contains(' '))
+                                                        id = id.Split(' ')[0];
+                                                }
+                                                else
+                                                {
+                                                    if (id.Contains(' '))
+                                                        id = id.Split(' ')[0];
+                                                }
+
+                                                string apiUrl = $"https://api.fxtwitter.com/{user}/status/{id}/en";
+
+                                                HttpWebRequest request = (HttpWebRequest)WebRequest.Create(apiUrl);
+                                                request.AutomaticDecompression = DecompressionMethods.GZip;
+                                                string results = string.Empty;
+
+                                                using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
+                                                using (Stream stream = response.GetResponseStream())
+                                                using (StreamReader reader = new StreamReader(stream))
+                                                {
+                                                    results = reader.ReadToEnd();
+                                                    StoredProcedure storedProcedure = new StoredProcedure();
+                                                    DataTable dt = storedProcedure.Select(connStr, "GetTwitterType", new List<SqlParameter> { new SqlParameter("@json", results) });
+                                                    if (dt.Rows.Count > 0)
+                                                    {
+                                                        foreach (DataRow dr in dt.Rows)
+                                                        {
+                                                            if (dr["videoUrl"].ToString().Length > 0)
+                                                            {
+                                                                string url = dr["tweetUrl"].ToString();
+                                                                url = url.Replace("twitter", "fxtwitter");
+
+                                                                await msg.Channel.SendMessageAsync(url);
+                                                            }
                                                         }
                                                     }
                                                 }
                                             }
                                         }
                                     }
+                                    catch (Exception e)
+                                    { }
                                 }
-                                catch (Exception e)
-                                { }
                             }
-                        }
-                        else if (message.Contains("remind "))
-                        {
-                            var channel = msg.Channel as SocketGuildChannel;
-                            var sender = _client.GetChannel(channel.Id) as IMessageChannel;
-                            StoredProcedure storedProcedure = new StoredProcedure();
-                            List<SqlParameter> parameters = new List<SqlParameter>();
-                            string createdBy = msg.Author.Mention;
-
-                            parameters.Add(new SqlParameter("@Message", message));
-                            DataTable dt = storedProcedure.Select(connStr, "GetEventTimeRange", parameters);
-
-                            if (dt.Rows.Count > 0)
+                            else if (message.Contains("remind "))
                             {
-                                if (msg.MentionedUsers.Count > 0)
-                                    createdBy = string.Join(",", msg.MentionedUsers.Select(s => s.Mention.ToString()));
-                                if (msg.MentionedRoles.Count > 0)
-                                    createdBy = string.Join(",", msg.MentionedRoles.Select(s => s.Mention.ToString()));
+                                var channel = msg.Channel as SocketGuildChannel;
+                                var sender = _client.GetChannel(channel.Id) as IMessageChannel;
+                                StoredProcedure storedProcedure = new StoredProcedure();
+                                List<SqlParameter> parameters = new List<SqlParameter>();
+                                string createdBy = msg.Author.Mention;
 
-                                foreach (DataRow dr in dt.Rows)
+                                parameters.Add(new SqlParameter("@Message", message));
+                                DataTable dt = storedProcedure.Select(connStr, "GetEventTimeRange", parameters);
+
+                                if (dt.Rows.Count > 0)
                                 {
-                                    string split = message.Split(dr["EventKeyword"].ToString())[1];
-                                    if (split.Contains("to")) { split = split.Replace("to", ""); }
+                                    if (msg.MentionedUsers.Count > 0)
+                                        createdBy = string.Join(",", msg.MentionedUsers.Select(s => s.Mention.ToString()));
+                                    if (msg.MentionedRoles.Count > 0)
+                                        createdBy = string.Join(",", msg.MentionedRoles.Select(s => s.Mention.ToString()));
 
-                                    DataTable dtNewEvent = storedProcedure.Select(Constants.discordBotConnStr, "AddEvent", new List<SqlParameter>
+                                    foreach (DataRow dr in dt.Rows)
+                                    {
+                                        string split = message.Split(dr["EventKeyword"].ToString())[1];
+                                        if (split.Contains("to")) { split = split.Replace("to", ""); }
+
+                                        DataTable dtNewEvent = storedProcedure.Select(Constants.discordBotConnStr, "AddEvent", new List<SqlParameter>
                                     {
                                         new SqlParameter("@EventDateTime", DateTime.Now.AddMinutes(double.Parse(dr["Minutes"].ToString()))),
                                         new SqlParameter("@EventName", split),
@@ -288,10 +302,10 @@ class Program
                                         new SqlParameter("@CreatedBy", createdBy)
                                     });
 
-                                    foreach (DataRow drEvent in dtNewEvent.Rows)
-                                    {
-                                        // Defaulting to 15 minutes reminder
-                                        storedProcedure.UpdateCreate(Constants.discordBotConnStr, "AddEventReminder", new List<SqlParameter>
+                                        foreach (DataRow drEvent in dtNewEvent.Rows)
+                                        {
+                                            // Defaulting to 15 minutes reminder
+                                            storedProcedure.UpdateCreate(Constants.discordBotConnStr, "AddEventReminder", new List<SqlParameter>
                                         {
                                             new SqlParameter("@EventID", int.Parse(drEvent["EventID"].ToString())),
                                             new SqlParameter("@EventDateTime", DateTime.Now.AddMinutes(double.Parse(dr["Minutes"].ToString()))),
@@ -302,68 +316,68 @@ class Program
                                             new SqlParameter("@CreatedBy", createdBy)
                                         });
 
-                                        var embed = new EmbedBuilder
-                                        {
-                                            Title = ":calendar_spiral: BigBirdBot - Event - " + split,
-                                            Color = Color.Gold
-                                        };
-                                        embed
-                                            .AddField("Time (EST)", DateTime.Now.AddMinutes(double.Parse(dr["Minutes"].ToString())))
-                                            .WithFooter(footer => footer.Text = "Created by " + msg.Author.Username)
-                                            .WithCurrentTimestamp();
-                                        await sender.SendMessageAsync(embed: embed.Build());
+                                            var embed = new EmbedBuilder
+                                            {
+                                                Title = ":calendar_spiral: BigBirdBot - Event - " + split,
+                                                Color = Color.Gold
+                                            };
+                                            embed
+                                                .AddField("Time (EST)", DateTime.Now.AddMinutes(double.Parse(dr["Minutes"].ToString())))
+                                                .WithFooter(footer => footer.Text = "Created by " + msg.Author.Username)
+                                                .WithCurrentTimestamp();
+                                            await sender.SendMessageAsync(embed: embed.Build());
+                                        }
                                     }
                                 }
                             }
-                        }
-                        else
-                        {
-                            if (message.StartsWith(prefix))
+                            else
                             {
-                                string keyword = "";
-                                if (message.Split(' ').Count() == 1)
-                                    keyword = message.Replace(prefix, "");
-                                if (message.Split(' ').Count() > 1)
-                                    keyword = message.Split(' ')[0].Replace(prefix, "");
-
-                                // Check if it's in the ThirstMap and run the add command
-                                List<SqlParameter> parameters = new List<SqlParameter>();
-                                parameters.Add(new SqlParameter("@AddKeyword", keyword));
-
-                                DataTable dt = stored.Select(connStr, "GetThirstTableByMap", parameters);
-                                if (dt.Rows.Count > 0)
+                                if (message.StartsWith(prefix))
                                 {
-                                    if (msg.Attachments.Count > 0)
+                                    string keyword = "";
+                                    if (message.Split(' ').Count() == 1)
+                                        keyword = message.Replace(prefix, "");
+                                    if (message.Split(' ').Count() > 1)
+                                        keyword = message.Split(' ')[0].Replace(prefix, "");
+
+                                    // Check if it's in the ThirstMap and run the add command
+                                    List<SqlParameter> parameters = new List<SqlParameter>();
+                                    parameters.Add(new SqlParameter("@AddKeyword", keyword));
+
+                                    DataTable dt = stored.Select(connStr, "GetThirstTableByMap", parameters);
+                                    if (dt.Rows.Count > 0)
                                     {
-                                        string userId = msg.Author.Id.ToString();
-                                        foreach (DataRow dr in dt.Rows)
+                                        if (msg.Attachments.Count > 0)
                                         {
-                                            var attachments = msg.Attachments;
-                                            foreach (var attachment in attachments)
+                                            string userId = msg.Author.Id.ToString();
+                                            foreach (DataRow dr in dt.Rows)
                                             {
-                                                string path = @"C:\Users\Unmolded\Desktop\DiscordBot\" + dr["TableName"].ToString() + @"\" + attachment.Filename;
+                                                var attachments = msg.Attachments;
+                                                foreach (var attachment in attachments)
+                                                {
+                                                    string path = @"C:\Users\Unmolded\Desktop\DiscordBot\" + dr["TableName"].ToString() + @"\" + attachment.Filename;
 
-                                                // Check if link exists for thirst table
-                                                //DataTable dtExists = stored.Select(connStr, "CheckIfThirstURLExists", new List<SqlParameter>
-                                                //{
-                                                //    new SqlParameter("@FilePath", path),
-                                                //    new SqlParameter("@TableName", dt.Rows[0]["TableName"].ToString())
-                                                //});
+                                                    // Check if link exists for thirst table
+                                                    //DataTable dtExists = stored.Select(connStr, "CheckIfThirstURLExists", new List<SqlParameter>
+                                                    //{
+                                                    //    new SqlParameter("@FilePath", path),
+                                                    //    new SqlParameter("@TableName", dt.Rows[0]["TableName"].ToString())
+                                                    //});
 
-                                                //if (dtExists.Rows.Count > 0)
-                                                //{
-                                                //    var embedError = new EmbedBuilder
-                                                //    {
-                                                //        Title = "BigBirdBot - Error",
-                                                //        Color = Color.Red,
-                                                //        Description = $"The image provided was already added for this Thirst Command."
-                                                //    }.WithCurrentTimestamp();
+                                                    //if (dtExists.Rows.Count > 0)
+                                                    //{
+                                                    //    var embedError = new EmbedBuilder
+                                                    //    {
+                                                    //        Title = "BigBirdBot - Error",
+                                                    //        Color = Color.Red,
+                                                    //        Description = $"The image provided was already added for this Thirst Command."
+                                                    //    }.WithCurrentTimestamp();
 
-                                                //    await msg.Channel.SendMessageAsync(embed: embedError.Build());
-                                                //    await Task.CompletedTask;
-                                                //}
-                                                //else
-                                                //{
+                                                    //    await msg.Channel.SendMessageAsync(embed: embedError.Build());
+                                                    //    await Task.CompletedTask;
+                                                    //}
+                                                    //else
+                                                    //{
                                                     using (WebClient client = new WebClient())
                                                     {
                                                         client.DownloadFileAsync(new Uri(attachment.Url), path);
@@ -375,125 +389,126 @@ class Program
                                                         new SqlParameter("@TableName", dr["TableName"].ToString()),
                                                         new SqlParameter("@UserID", userId)
                                                     });
-                                                //}
+                                                    //}
+                                                }
+                                                var embed = new EmbedBuilder
+                                                {
+                                                    Title = "BigBirdBot - Added Image",
+                                                    Color = Color.Blue,
+                                                    Description = "Added attachment(s) successfully."
+                                                };
+
+                                                await msg.Channel.SendMessageAsync(embed: embed.Build());
                                             }
-                                            var embed = new EmbedBuilder
-                                            {
-                                                Title = "BigBirdBot - Added Image",
-                                                Color = Color.Blue,
-                                                Description = "Added attachment(s) successfully."
-                                            };
-
-                                            await msg.Channel.SendMessageAsync(embed: embed.Build());
                                         }
-                                    }
-                                    if (message.Split(' ').Count() > 1)
-                                    {
-                                        string content = message.Split(' ')[1].Trim();
-
-                                        Uri uriResult;
-                                        bool result = Uri.TryCreate(content, UriKind.Absolute, out uriResult)
-                                            && (uriResult.Scheme == Uri.UriSchemeHttp || uriResult.Scheme == Uri.UriSchemeHttps);
-
-                                        if (!result)
+                                        if (message.Split(' ').Count() > 1)
                                         {
-                                            var embed = new EmbedBuilder
-                                            {
-                                                Title = "BigBirdBot - Error",
-                                                Color = Color.Red,
-                                                Description = $"The URL provided for this command is invalid."
-                                            }.WithCurrentTimestamp();
+                                            string content = message.Split(' ')[1].Trim();
 
-                                            await msg.Channel.SendMessageAsync(embed: embed.Build());
-                                        }
-                                        else
-                                        {
-                                            if (message.Contains("https://fxtwitter.com"))
-                                                content = content.Replace("fxtwitter.com", "dl.fxtwitter.com");
-                                            if (message.Contains("https://vxtwitter.com"))
-                                                content = content.Replace("vxtwitter.com", "dl.vxtwitter.com");
-                                            if (message.Contains("https://twitter.com"))
-                                                content = content.Replace("twitter.com", "dl.fxtwitter.com");
-                                            if (message.Contains("https://x.com"))
-                                                content = content.Replace("x.com", "dl.fxtwitter.com");
+                                            Uri uriResult;
+                                            bool result = Uri.TryCreate(content, UriKind.Absolute, out uriResult)
+                                                && (uriResult.Scheme == Uri.UriSchemeHttp || uriResult.Scheme == Uri.UriSchemeHttps);
 
-                                            // Check if link exists for thirst table
-                                            DataTable dtExists = stored.Select(connStr, "CheckIfThirstURLExists", new List<SqlParameter>
-                                            {
-                                                new SqlParameter("@FilePath", content),
-                                                new SqlParameter("@TableName", dt.Rows[0]["TableName"].ToString())
-                                            });
-
-                                            if (dtExists.Rows.Count > 0)
+                                            if (!result)
                                             {
                                                 var embed = new EmbedBuilder
                                                 {
                                                     Title = "BigBirdBot - Error",
                                                     Color = Color.Red,
-                                                    Description = $"The URL provided was already added for this Thirst Command."
+                                                    Description = $"The URL provided for this command is invalid."
                                                 }.WithCurrentTimestamp();
 
                                                 await msg.Channel.SendMessageAsync(embed: embed.Build());
                                             }
                                             else
                                             {
-                                                string userId = msg.Author.Id.ToString();
-                                                foreach (DataRow dr in dt.Rows)
+                                                if (message.Contains("https://fxtwitter.com"))
+                                                    content = content.Replace("fxtwitter.com", "dl.fxtwitter.com");
+                                                if (message.Contains("https://vxtwitter.com"))
+                                                    content = content.Replace("vxtwitter.com", "dl.vxtwitter.com");
+                                                if (message.Contains("https://twitter.com"))
+                                                    content = content.Replace("twitter.com", "dl.fxtwitter.com");
+                                                if (message.Contains("https://x.com"))
+                                                    content = content.Replace("x.com", "dl.fxtwitter.com");
+
+                                                // Check if link exists for thirst table
+                                                DataTable dtExists = stored.Select(connStr, "CheckIfThirstURLExists", new List<SqlParameter>
+                                            {
+                                                new SqlParameter("@FilePath", content),
+                                                new SqlParameter("@TableName", dt.Rows[0]["TableName"].ToString())
+                                            });
+
+                                                if (dtExists.Rows.Count > 0)
                                                 {
-                                                    stored.UpdateCreate(connStr, "AddThirstByMap", new List<System.Data.SqlClient.SqlParameter>
+                                                    var embed = new EmbedBuilder
+                                                    {
+                                                        Title = "BigBirdBot - Error",
+                                                        Color = Color.Red,
+                                                        Description = $"The URL provided was already added for this Thirst Command."
+                                                    }.WithCurrentTimestamp();
+
+                                                    await msg.Channel.SendMessageAsync(embed: embed.Build());
+                                                }
+                                                else
+                                                {
+                                                    string userId = msg.Author.Id.ToString();
+                                                    foreach (DataRow dr in dt.Rows)
+                                                    {
+                                                        stored.UpdateCreate(connStr, "AddThirstByMap", new List<System.Data.SqlClient.SqlParameter>
                                                     {
                                                         new SqlParameter("@FilePath", content),
                                                         new SqlParameter("@TableName", dr["TableName"].ToString()),
                                                         new SqlParameter("@UserID", userId)
                                                     });
 
-                                                    var embed = new EmbedBuilder
-                                                    {
-                                                        Title = "BigBirdBot - Added Image",
-                                                        Color = Color.Blue,
-                                                        Description = "Added attachment(s) successfully."
-                                                    };
+                                                        var embed = new EmbedBuilder
+                                                        {
+                                                            Title = "BigBirdBot - Added Image",
+                                                            Color = Color.Blue,
+                                                            Description = "Added attachment(s) successfully."
+                                                        };
 
-                                                    await msg.Channel.SendMessageAsync(embed: embed.Build());
+                                                        await msg.Channel.SendMessageAsync(embed: embed.Build());
+                                                    }
                                                 }
                                             }
                                         }
                                     }
                                 }
-                            }
 
-                            // Todo, check all the commands eventually but for now let's stop the accidently double triggering.
-                            if (!message.StartsWith(prefix) && !message.StartsWith("$"))
-                            {
-                                var channel = msg.Channel as SocketGuildChannel;
-                                StoredProcedure storedProcedure = new StoredProcedure();
-                                List<SqlParameter> parameters = new List<SqlParameter>();
-                                parameters.Add(new SqlParameter("@ServerID", Int64.Parse(channel.Guild.Id.ToString())));
-                                parameters.Add(new SqlParameter("@Message", message));
-                                DataTable dt = storedProcedure.Select(connStr, "GetChatAction", parameters);
-
-                                var sender = _client.GetChannel(channel.Id) as IMessageChannel;
-
-                                if (dt.Rows.Count > 0 && sender != null)
+                                // Todo, check all the commands eventually but for now let's stop the accidently double triggering.
+                                if (!message.StartsWith(prefix) && !message.StartsWith("$"))
                                 {
-                                    foreach (DataRow dr in dt.Rows)
+                                    var channel = msg.Channel as SocketGuildChannel;
+                                    StoredProcedure storedProcedure = new StoredProcedure();
+                                    List<SqlParameter> parameters = new List<SqlParameter>();
+                                    parameters.Add(new SqlParameter("@ServerID", Int64.Parse(channel.Guild.Id.ToString())));
+                                    parameters.Add(new SqlParameter("@Message", message));
+                                    DataTable dt = storedProcedure.Select(connStr, "GetChatAction", parameters);
+
+                                    var sender = _client.GetChannel(channel.Id) as IMessageChannel;
+
+                                    if (dt.Rows.Count > 0 && sender != null)
                                     {
-                                        string chatAction = dr["ChatAction"].ToString();
-
-                                        if (!string.IsNullOrEmpty(chatAction))
+                                        foreach (DataRow dr in dt.Rows)
                                         {
-                                            await msg.Channel.TriggerTypingAsync(new RequestOptions { Timeout = 30 });
-                                            if (chatAction.Contains("C:\\"))
-                                                await msg.Channel.SendFileAsync(dr["ChatAction"].ToString());
-                                            else
-                                                await sender.SendMessageAsync(dr["ChatAction"].ToString());
+                                            string chatAction = dr["ChatAction"].ToString();
 
-                                            parameters.Clear();
-                                            parameters.Add(new SqlParameter("@ChatKeywordID", int.Parse(dr["ChatKeywordID"].ToString())));
-                                            parameters.Add(new SqlParameter("@MessageText", message));
-                                            parameters.Add(new SqlParameter("@CreatedBy", msg.Author.Id.ToString()));
-                                            parameters.Add(new SqlParameter("@ServerID", Int64.Parse(serverId)));
-                                            storedProcedure.UpdateCreate(connStr, "AddAuditKeyword", parameters);
+                                            if (!string.IsNullOrEmpty(chatAction))
+                                            {
+                                                await msg.Channel.TriggerTypingAsync(new RequestOptions { Timeout = 30 });
+                                                if (chatAction.Contains("C:\\"))
+                                                    await msg.Channel.SendFileAsync(dr["ChatAction"].ToString());
+                                                else
+                                                    await sender.SendMessageAsync(dr["ChatAction"].ToString());
+
+                                                parameters.Clear();
+                                                parameters.Add(new SqlParameter("@ChatKeywordID", int.Parse(dr["ChatKeywordID"].ToString())));
+                                                parameters.Add(new SqlParameter("@MessageText", message));
+                                                parameters.Add(new SqlParameter("@CreatedBy", msg.Author.Id.ToString()));
+                                                parameters.Add(new SqlParameter("@ServerID", Int64.Parse(serverId)));
+                                                storedProcedure.UpdateCreate(connStr, "AddAuditKeyword", parameters);
+                                            }
                                         }
                                     }
                                 }
@@ -515,13 +530,23 @@ class Program
                 {
                     foreach (DataRow dr in dt.Rows)
                     {
+                        string voiceChannelId = dr["VoiceChannelID"].ToString();
+                        string textChannelId = dr["TextChannelID"].ToString();
                         foreach (var guild in _client.Guilds)
                         {
-                            var voiceChannel = guild.VoiceChannels.Where(s => s.Id.Equals(dr["VoiceChannelID"].ToString())).FirstOrDefault();
-                            var textChannel = guild.TextChannels.Where(s => s.Id.Equals(dr["TextChannelID"].ToString())).FirstOrDefault();
-                            if (voiceChannel != null && textChannel != null && voiceChannel.ConnectedUsers.Count > 0)
+                            var voiceChannel = guild.VoiceChannels.Where(s => s.Id.ToString().Equals(voiceChannelId)).FirstOrDefault();
+                            var textChannel = guild.TextChannels.Where(s => s.Id.ToString().Equals(textChannelId)).FirstOrDefault();
+                            if (voiceChannel != null && textChannel != null)
                             {
-                                await lavaNode.JoinAsync(voiceChannel, textChannel);
+                                if (voiceChannel.ConnectedUsers.Count > 0)
+                                {
+                                    await lavaNode.JoinAsync(voiceChannel, textChannel);
+                                    Console.WriteLine($"{guild.Name} Player joined successfully");
+                                }
+                                else
+                                {
+                                    Console.WriteLine($"No Connected Users for {voiceChannel.Name} in {guild.Name} so the bot will not join.");
+                                }
                             }
                         }
                     }
