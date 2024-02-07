@@ -1,22 +1,24 @@
 ﻿using Discord;
-using Discord.Commands;
+using Discord.Interactions;
 using DiscordBot.Constants;
 using DiscordBot.Helper;
-using DiscordBot.Json;
-using KillersLibrary.Extensions;
+using System;
+using System.Collections.Generic;
 using System.Data;
-using System.Net;
-using System.Text.Encodings.Web;
-using System.Threading.Channels;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
 using System.Web;
 
-namespace DiscordBot.Modules
+namespace DiscordBot.SlashCommands
 {
-    public class InteractionCommands : ModuleBase<SocketCommandContext>
+    public class Interaction : InteractionModuleBase<SocketInteractionContext>
     {
-        [Command("trivia")]
+        [SlashCommand("trivia", "Trivia Bot")]
         public async Task HandleTrivia()
         {
+            await DeferAsync();
+
             StoredProcedure stored = new StoredProcedure();
             string token = "";
 
@@ -47,7 +49,7 @@ namespace DiscordBot.Modules
 
                         answers = answers.OrderBy(s => r.Next()).ToList();
 
-                        for(int i = 0; i < answers.Count; i++)
+                        for (int i = 0; i < answers.Count; i++)
                             answers[i] = HttpUtility.HtmlDecode(answers[i]);
 
                         string question = HttpUtility.HtmlDecode(dr["Question"].ToString());
@@ -81,14 +83,14 @@ namespace DiscordBot.Modules
                             embed.AddField("D. ", answers[3]);
                         }
 
-                        var message = await ReplyAsync(embed: embed.Build());
+                        var message = await FollowupAsync(embed: embed.Build());
                         var messageId = Int64.Parse(message.Id.ToString());
                         stored.UpdateCreate(Constants.Constants.discordBotConnStr, "AddTriviaMessage", new List<System.Data.SqlClient.SqlParameter>
                         {
                             new System.Data.SqlClient.SqlParameter("@TriviaMessageID", messageId),
                             new System.Data.SqlClient.SqlParameter("@CorrectAnswer", dr["CorrectAnswer"].ToString())
                         });
-                        
+
                         Emoji triviaA = new Emoji("🇦");
                         Emoji triviaB = new Emoji("🇧");
                         Emoji triviaC = new Emoji("🇨");
@@ -120,14 +122,14 @@ namespace DiscordBot.Modules
                 {
                     // Can't get Trivia
                     EmbedHelper errorEmbed = new EmbedHelper();
-                    await ReplyAsync(embed: errorEmbed.BuildMessageEmbed("BigBirdBot - Error", "Unable to retrieve Token", Constants.Constants.errorImageUrl, "", Color.Red, "").Build());
+                    await FollowupAsync(embed: errorEmbed.BuildMessageEmbed("BigBirdBot - Error", "Unable to retrieve Token", Constants.Constants.errorImageUrl, "", Color.Red, "").Build());
                 }
             }
             else
             {
                 // Can't get token
                 EmbedHelper errorEmbed = new EmbedHelper();
-                await ReplyAsync(embed: errorEmbed.BuildMessageEmbed("BigBirdBot - Error", "Unable to retrieve Token", Constants.Constants.errorImageUrl, "", Color.Red, "").Build());
+                await FollowupAsync(embed: errorEmbed.BuildMessageEmbed("BigBirdBot - Error", "Unable to retrieve Token", Constants.Constants.errorImageUrl, "", Color.Red, "").Build());
             }
         }
     }

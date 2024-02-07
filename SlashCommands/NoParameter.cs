@@ -1,22 +1,63 @@
 ﻿using Discord;
 using Discord.Commands;
-using DiscordBot.Constants;
-using System.Data.SqlClient;
-using System.Data;
-using DiscordBot.Helper;
 using Discord.Interactions;
-using System.Runtime.CompilerServices;
 using Discord.WebSocket;
+using DiscordBot.Constants;
+using DiscordBot.Helper;
+using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Data.SqlClient;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using RequireBotPermissionAttribute = Discord.Interactions.RequireBotPermissionAttribute;
+using RequireContextAttribute = Discord.Interactions.RequireContextAttribute;
+using RequireUserPermissionAttribute = Discord.Interactions.RequireUserPermissionAttribute;
 
-namespace DiscordBot.Modules
+namespace DiscordBot.SlashCommands
 {
-    public class NoParameterCommands : ModuleBase<SocketCommandContext>
+    public class NoParameter : InteractionModuleBase<SocketInteractionContext>
     {
-        [Command("info")]
-        [Alias("serverinfo", "server")]
-        [Discord.Commands.RequireBotPermission(GuildPermission.EmbedLinks)]
+        [SlashCommand("help", "Gets a list of commands and descriptions available to the bot.")]
+        public async Task TaskHelpCommand()
+        {
+            await DeferAsync();
+            StoredProcedure storedProcedure = new StoredProcedure();
+            EmbedHelper helper = new EmbedHelper();
+            DataTable dt = storedProcedure.Select(Constants.Constants.discordBotConnStr, "GetCommandList", new List<System.Data.SqlClient.SqlParameter>());
+            string output = "";
+
+            if (dt.Rows.Count > 0)
+            {
+                foreach (DataRow dr in dt.Rows)
+                {
+                    output += $"**{dr["CommandName"].ToString()} ({dr["CommandAliases"]})\nDescription:** {dr["CommandDescription"].ToString()}\n\n";
+                }
+            }
+
+            await FollowupAsync(embed: helper.BuildMessageEmbed("BigBirdBot - Help Commands", output, "", "BigBirdBot", Discord.Color.Gold, null, null).Build());
+        }
+
+        // Ban a user
+        [SlashCommand("ban", "Bans a user but the bot and user must have permission.")]
+        [RequireContext(Discord.Interactions.ContextType.Guild)]
+        // make sure the user invoking the command can ban
+        [RequireUserPermission(GuildPermission.BanMembers)]
+        // make sure the bot itself can ban
+        [RequireBotPermission(GuildPermission.BanMembers)]
+        public async Task BanUserAsync(IGuildUser user, string reason)
+        {
+            await DeferAsync();
+            await user.Guild.AddBanAsync(user, reason: reason);
+            await FollowupAsync($"{user.Username} was banned successfully.");
+        }
+
+        [SlashCommand("info", "Shows information of the current server.")]
+        [RequireBotPermission(GuildPermission.EmbedLinks)]
         public async Task HandleServerInformation()
         {
+            await DeferAsync();
             double botPercentage = Math.Round(Context.Guild.Users.Count(x => x.IsBot) / Context.Guild.MemberCount * 100d, 2);
 
             string bannerUrl = Context.Guild.BannerUrl ?? "";
@@ -33,7 +74,7 @@ namespace DiscordBot.Modules
                     $"**Users:** {Context.Guild.MemberCount - Context.Guild.Users.Count(x => x.IsBot)}\n" +
                     $"**Bots:** {Context.Guild.Users.Count(x => x.IsBot)} [ {botPercentage}% ]\n" +
                     $"**Text Channels:** {Context.Guild.TextChannels.Count}\n" +
-                    $"**Voice Channels:** {Context.Guild.VoiceChannels.Count }\n" +
+                    $"**Voice Channels:** {Context.Guild.VoiceChannels.Count}\n" +
                     $"**Roles:** {Context.Guild.Roles.Count}\n" +
                     $"**Emotes:** {Context.Guild.Emotes.Count}\n" +
                     $"**Stickers:** {Context.Guild.Stickers.Count}\n\n" +
@@ -41,13 +82,14 @@ namespace DiscordBot.Modules
                  .WithImageUrl(bannerUrl)
                  .WithCurrentTimestamp();
 
-            await ReplyAsync(embed: embed.Build());
+            await FollowupAsync(embed: embed.Build());
         }
 
-        [Command("populateallusers")]
-        [Discord.Commands.RequireUserPermission(ChannelPermission.ManageMessages)]
+        [SlashCommand("populateallusers", "Populate users into the DB.")]
+        [Discord.Interactions.RequireOwner]
         public async Task HandlePopulateAllUserCommand()
         {
+            await DeferAsync();
             try
             {
                 StoredProcedure stored = new StoredProcedure();
@@ -88,20 +130,21 @@ namespace DiscordBot.Modules
                     }
                 }
 
-                await ReplyAsync("User table updated.");
+                await FollowupAsync("User table updated.");
             }
             catch (Exception e)
             {
                 EmbedHelper embedHelper = new EmbedHelper();
                 var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", e.Message, Constants.Constants.errorImageUrl, "", Color.Red, "");
-                await ReplyAsync(embed: embed.Build());
+                await FollowupAsync(embed: embed.Build());
             }
         }
 
-        [Command("kaonoff")]
-        [Discord.Commands.RequireUserPermission(ChannelPermission.ManageMessages)]
+        [SlashCommand("kaonoff", "Disables all keywords for the server.")]
+        [Discord.Interactions.RequireUserPermission(ChannelPermission.ManageMessages)]
         public async Task HandleKeywordOnOff()
         {
+            await DeferAsync();
             StoredProcedure procedure = new StoredProcedure();
             var serverId = Int64.Parse(Context.Guild.Id.ToString());
             string result = "";
@@ -124,53 +167,29 @@ namespace DiscordBot.Modules
             string embedCreatedBy = "Command from: " + Context.User.Username;
 
             EmbedHelper embed = new EmbedHelper();
-            await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Green, imageUrl).Build());
+            await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Green, imageUrl).Build());
         }
 
-        [Command("raffle")]
+        [SlashCommand("raffle", "Picks a random person in the server to win a prize.")]
         public async Task HandleRaffle()
         {
+            await DeferAsync();
             var userList = Context.Guild.GetUsersAsync().ToListAsync().Result;
             foreach (var user in userList)
             {
                 var finalList = user.Where(s => !s.IsBot).ToList();
                 Random r = new Random();
                 var winningUser = finalList[r.Next(0, finalList.Count)];
-                
+
                 EmbedHelper embed = new EmbedHelper();
-                await ReplyAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Raffle", $"Congratulations {winningUser.Mention}, you won the raffle!", "", Context.Message.Author.Username, Discord.Color.Green).Build());
+                await FollowupAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Raffle", $"Congratulations {winningUser.Mention}, you won the raffle!", "", Context.User.Username, Discord.Color.Green).Build());
             }
         }
 
-        [Command("brendancounter")]
-        [Discord.Commands.RequireUserPermission(ChannelPermission.ManageMessages)]
-        public async Task HandleLowLevel()
-        {
-            // AddLowLevel
-            string connStr = Constants.Constants.discordBotConnStr;
-            StoredProcedure stored = new StoredProcedure();
-
-            DataTable dt = stored.Select(connStr, "AddLowLevel", new List<SqlParameter>
-            { new SqlParameter("@CreatedBy", Context.User.Username)});
-
-            string counterHistory = "Here are the most recent times low level content was stated.\n";
-            string currentCounter = "";
-            string currentDateTime = "";
-
-            foreach (DataRow dr in dt.Rows)
-            {
-                currentCounter = dr["CurrentCounter"].ToString();
-                currentDateTime = DateTime.Parse(dr["CurrentDateTime"].ToString()).ToString("MM/dd/yyyy HH:mm:ss ET");
-                counterHistory += $"{dr["UpdatedCounter"].ToString()} - {DateTime.Parse(dr["TimeStamp"].ToString()).ToString("MM/dd/yyyy HH:mm:ss ET")}\n";
-            }
-
-            EmbedHelper embed = new EmbedHelper();
-            await ReplyAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Low Level", $"**The low level content counter was updated to {currentCounter} on {currentDateTime}**\n{counterHistory}", "", Context.Message.Author.Username, Discord.Color.Green).Build());
-        }
-
-        [Command("twitter")]
+        [SlashCommand("twitter", "When Twitter embeds fail, have the bot autocorrect the links.")]
         public async Task HandleTwitterEmbeds()
         {
+            await DeferAsync();
             StoredProcedure procedure = new StoredProcedure();
             string result = "";
 
@@ -189,13 +208,13 @@ namespace DiscordBot.Modules
             string embedCreatedBy = "Command from: " + Context.User.Username;
 
             EmbedHelper embed = new EmbedHelper();
-            await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Green, imageUrl).Build());
+            await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Green, imageUrl).Build());
         }
 
-        [Command("kalist")]
-        [Alias("kal")]
+        [SlashCommand("kalist", "List of all keywords in the server.")]
         public async Task HandleKeywordList()
         {
+            await DeferAsync();
             string connStr = Constants.Constants.discordBotConnStr;
             var serverId = Int64.Parse(Context.Guild.Id.ToString());
             int i = 1;
@@ -208,7 +227,7 @@ namespace DiscordBot.Modules
                 new SqlParameter("@ServerUID", serverId)
             });
 
-            if (dt.Rows.Count > 0) 
+            if (dt.Rows.Count > 0)
             {
                 foreach (DataRow dr in dt.Rows)
                 {
@@ -217,13 +236,14 @@ namespace DiscordBot.Modules
                 }
 
                 EmbedHelper embed = new EmbedHelper();
-                await ReplyAsync(embed: embed.BuildMessageEmbed("BigBirdBot - List of Active Keywords", output, "", Context.Message.Author.Username, Discord.Color.Green).Build());
+                await FollowupAsync(embed: embed.BuildMessageEmbed("BigBirdBot - List of Active Keywords", output, "", Context.User.Username, Discord.Color.Green).Build());
             }
         }
 
-        [Command("log")]
+        [SlashCommand("log", "Most recent error message in the bot.")]
         public async Task HandleLog()
         {
+            await DeferAsync();
             string connStr = Constants.Constants.discordBotConnStr;
             StoredProcedure stored = new StoredProcedure();
             string output = "";
@@ -233,22 +253,23 @@ namespace DiscordBot.Modules
 
             if (dt.Rows.Count > 0)
             {
-                foreach(DataRow dr in dt.Rows)
+                foreach (DataRow dr in dt.Rows)
                 {
                     output += $"__Most Recent Error Message Reported__\nDate Logged: {dr["CreatedOn"].ToString()}\nSource: {dr["Source"].ToString()}\nSeverity: {dr["Severity"].ToString()}\nMessage: {dr["Message"].ToString()}\nException: {dr["Exception"].ToString()}";
                 }
-                await ReplyAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Error Log", output, "", Context.Message.Author.Username, Discord.Color.Red).Build());
+                await FollowupAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Error Log", output, "", Context.User.Username, Discord.Color.Red).Build());
             }
             else
             {
-                await ReplyAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Error Log", "No recent exceptions found.", "", Context.Message.Author.Username, Discord.Color.Blue).Build());
+                await FollowupAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Error Log", "No recent exceptions found.", "", Context.User.Username, Discord.Color.Blue).Build());
             }
         }
 
-        [Command("welcomemsg")]
-        [Discord.Commands.RequireUserPermission(ChannelPermission.ManageMessages)]
+        [SlashCommand("welcomemsg", "Enables/Disables the welcome message for the bot.")]
+        [Discord.Interactions.RequireUserPermission(ChannelPermission.ManageMessages)]
         public async Task HandleWelcomeMessage()
         {
+            await DeferAsync();
             StoredProcedure procedure = new StoredProcedure();
             string result = "";
 
@@ -267,12 +288,13 @@ namespace DiscordBot.Modules
             string embedCreatedBy = "Command from: " + Context.User.Username;
 
             EmbedHelper embed = new EmbedHelper();
-            await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Blue, imageUrl).Build());
+            await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Blue, imageUrl).Build());
         }
 
-        [Command("connplayers")]
+        [SlashCommand("connplayers", "List of all connected players in voice channels.")]
         public async Task HandlePlayersConnected()
         {
+            await DeferAsync();
             StoredProcedure stored = new StoredProcedure();
             DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "GetPlayerConnected", new List<SqlParameter>());
             EmbedHelper embed = new EmbedHelper();
@@ -290,14 +312,13 @@ namespace DiscordBot.Modules
                 {
                     desc += "\n- " + dr["ServerName"];
                 }
-                await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Blue, imageUrl).Build());
+                await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Blue, imageUrl).Build());
             }
             else
             {
                 desc = "No Players are connected at this time.";
-                await ReplyAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Blue, imageUrl).Build());
+                await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Blue, imageUrl).Build());
             }
         }
-
     }
 }
