@@ -633,7 +633,7 @@ internal class Program
                 LogGatewayIntentWarnings = false,
                 AlwaysDownloadUsers = true,
                 DefaultRetryMode = RetryMode.AlwaysRetry,
-                LogLevel = LogSeverity.Warning
+                LogLevel = LogSeverity.Warning,
             })
             .AddLavaNode(x =>
             {
@@ -645,7 +645,7 @@ internal class Program
             .AddSingleton<SpotifyHelper>()
             .AddSingleton<EmbedPagesService>()
             .AddSingleton<MultiButtonsService>()
-            .AddSingleton(new InteractiveConfig { DefaultTimeout = TimeSpan.FromMinutes(15) })
+            .AddSingleton(new InteractiveConfig { DefaultTimeout = TimeSpan.FromMinutes(15), LogLevel = LogSeverity.Verbose })
             .AddSingleton<InteractiveService>()
             .AddLogging(builder => builder.AddConsole())
             .BuildServiceProvider();
