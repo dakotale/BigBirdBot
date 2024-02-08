@@ -8,6 +8,7 @@ using System.Runtime.CompilerServices;
 using DiscordBot.Constants;
 using System.Data.SqlClient;
 using System;
+using DiscordBot.Helper;
 
 namespace DiscordBot.Services
 {

@@ -18,6 +18,7 @@ using OpenAI_API.Models;
 using Fergun.Interactive;
 using Microsoft.Extensions.Configuration;
 using Discord.Interactions;
+using System;
 
 internal class Program
 {
@@ -55,6 +56,24 @@ internal class Program
 
         client.Log += message =>
         {
+            EmbedHelper embedHelper = new EmbedHelper();
+            // Send an error to the specific server and channel
+            ulong guildId = ulong.Parse("880569055856185354");
+            ulong textChannelId = ulong.Parse("1156625507840954369");
+
+            if (message.Exception != null)
+            {
+                string exception = message.Exception.Message;
+
+                if (client.GetGuild(guildId) != null)
+                {
+                    if (client.GetGuild(guildId).GetTextChannel(textChannelId) != null && message.Message.Length > 0)
+                    {
+                        client.GetGuild(guildId).GetTextChannel(textChannelId).SendMessageAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Exception Thrown", $"Exception: {exception}\nMessage: {message.Message}", "", "BigBirdBot", Discord.Color.Red, null, null).Build());
+                    }
+                }
+            }
+
             Console.WriteLine(message);
             return Task.CompletedTask;
         };
@@ -633,7 +652,7 @@ internal class Program
                 LogGatewayIntentWarnings = false,
                 AlwaysDownloadUsers = true,
                 DefaultRetryMode = RetryMode.AlwaysRetry,
-                LogLevel = LogSeverity.Warning,
+                LogLevel = LogSeverity.Verbose
             })
             .AddLavaNode(x =>
             {
