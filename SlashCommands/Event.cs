@@ -1,14 +1,8 @@
-﻿using Discord.Commands;
-using Discord.Interactions;
+﻿using Discord.Interactions;
 using DiscordBot.Constants;
 using DiscordBot.Helper;
-using System;
-using System.Collections.Generic;
 using System.Data.SqlClient;
 using System.Data;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using Discord.WebSocket;
 
 namespace DiscordBot.SlashCommands
@@ -51,6 +45,36 @@ namespace DiscordBot.SlashCommands
                 foreach (DataRow dr in dt.Rows)
                 {
                     await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - " + dr["EventName"].ToString(), "Description: " + eventDescription + "\nDate: " + dr["EventDateTime"].ToString(), "", Context.User.Username, Discord.Color.Blue).Build());
+                }
+            }
+            catch (Exception ex)
+            {
+                await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Error", ex.Message, Constants.Constants.errorImageUrl, Context.User.Username, Discord.Color.Red).Build());
+            }
+        }
+
+        [SlashCommand("delevent", "Delete an event that was created.")]
+        [Discord.Interactions.RequireUserPermission(Discord.ChannelPermission.ManageMessages)]
+        public async Task HandleDeleteEvent([MinLength(1), MaxLength(255)] string eventName)
+        {
+            await DeferAsync();
+            EmbedHelper embedHelper = new EmbedHelper();
+            StoredProcedure stored = new StoredProcedure();
+            
+            try
+            {
+                DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "DeleteEventByName", new List<SqlParameter>
+                {
+                    new SqlParameter("@EventName", eventName.Trim())
+                });
+
+                if (dt.Rows.Count > 0)
+                {
+                    await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Event Deleted", $"{eventName} was deleted successfully.", Constants.Constants.errorImageUrl, Context.User.Username, Discord.Color.Blue).Build());
+                }
+                else
+                {
+                    await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Error", "The event entered does not exist.", Constants.Constants.errorImageUrl, Context.User.Username, Discord.Color.Red).Build());
                 }
             }
             catch (Exception ex)

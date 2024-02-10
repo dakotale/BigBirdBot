@@ -19,26 +19,6 @@ namespace DiscordBot.SlashCommands
 {
     public class NoParameter : InteractionModuleBase<SocketInteractionContext>
     {
-        [SlashCommand("help", "Gets a list of commands and descriptions available to the bot.")]
-        public async Task TaskHelpCommand()
-        {
-            await DeferAsync();
-            StoredProcedure storedProcedure = new StoredProcedure();
-            EmbedHelper helper = new EmbedHelper();
-            DataTable dt = storedProcedure.Select(Constants.Constants.discordBotConnStr, "GetCommandList", new List<System.Data.SqlClient.SqlParameter>());
-            string output = "";
-
-            if (dt.Rows.Count > 0)
-            {
-                foreach (DataRow dr in dt.Rows)
-                {
-                    output += $"**{dr["CommandName"].ToString()} ({dr["CommandAliases"]})\nDescription:** {dr["CommandDescription"].ToString()}\n\n";
-                }
-            }
-
-            await FollowupAsync(embed: helper.BuildMessageEmbed("BigBirdBot - Help Commands", output, "", "BigBirdBot", Discord.Color.Gold, null, null).Build());
-        }
-
         // Ban a user
         [SlashCommand("ban", "Bans a user but the bot and user must have permission.")]
         [RequireContext(Discord.Interactions.ContextType.Guild)]
@@ -171,6 +151,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("raffle", "Picks a random person in the server to win a prize.")]
+        [Discord.Interactions.RequireUserPermission(ChannelPermission.ManageMessages)]
         public async Task HandleRaffle()
         {
             await DeferAsync();
@@ -241,6 +222,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("log", "Most recent error message in the bot.")]
+        [Discord.Interactions.RequireOwner]
         public async Task HandleLog()
         {
             await DeferAsync();
@@ -292,6 +274,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("connplayers", "List of all connected players in voice channels.")]
+        [Discord.Interactions.RequireOwner]
         public async Task HandlePlayersConnected()
         {
             await DeferAsync();
