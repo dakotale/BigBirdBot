@@ -47,7 +47,6 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("join", "Bot joins the voice channel.")]
-        [Alias("j")]
         public async Task JoinAsync()
         {
             await DeferAsync();
@@ -92,8 +91,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("play", "Play a Youtube, Spotify, Soundcloud, or attachment track/playlist in the bot.")]
-        [Alias("p")]
-        public async Task PlayAsync(string searchQuery = null, Attachment attachment = null)
+        public async Task PlayAsync(string searchQuery, Attachment attachment = null)
         {
             await DeferAsync();
             if (string.IsNullOrWhiteSpace(searchQuery))
@@ -464,7 +462,6 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("forceskip", "Skips the current track.")]
-        [Alias("fs", "fskip", "skip")]
         public async Task ForceSkipTaskAsync()
         {
             await DeferAsync();
@@ -625,7 +622,6 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("nowplaying", "View the current track.")]
-        [Alias("np")]
         public async Task NowPlayingAsync()
         {
             await DeferAsync();
@@ -664,7 +660,6 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("queue", "View the list of tracks set to play.")]
-        [Alias("q")]
         public async Task GetQueue()
         {
             await DeferAsync();
@@ -735,7 +730,6 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("equalizer", "Set the audio EQ to one of the three settings: super bass, bass, or pop.")]
-        [Alias("eq")]
         public async Task GetEqualizer(string eq)
         {
             await DeferAsync();
@@ -1036,8 +1030,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("playnext", "Sets this track to be the next in the queue.")]
-        [Alias("pn")]
-        public async Task PlayNext(string searchQuery = null, Attachment attachment = null)
+        public async Task PlayNext(string searchQuery, Attachment attachment = null)
         {
             await DeferAsync();
             if (string.IsNullOrWhiteSpace(searchQuery))

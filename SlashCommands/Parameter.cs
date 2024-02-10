@@ -788,34 +788,12 @@ namespace DiscordBot.SlashCommands
             }
         }
 
-        [SlashCommand("announcement", "Broadcast a message to all server.")]
-        [Discord.Interactions.RequireOwner]
-        public async Task HandleAnnouncement([Remainder] string message)
+        [SlashCommand("reportbug", "Found an issue with the bot?  Report it here, please.")]
+        public async Task HandleBugReport([MinLength(1), MaxLength(4000)] string bugFound)
         {
-            await DeferAsync();
-            try
-            {
-                StoredProcedure stored = new StoredProcedure();
-
-                // GetServer ulong IDs
-                // var test = Context.Client.GetGuild(id).Users.Where(s => s.IsBot == false).ToList();
-                DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "GetServersNonNullDefaultChannel", new List<SqlParameter>());
-                EmbedHelper embedHelper = new EmbedHelper();
-                foreach (DataRow dr in dt.Rows)
-                {
-                    // Need to check if Guild exists
-                    if (Context.Client.GetGuild(ulong.Parse(dr["ServerUID"].ToString())) != null)
-                    {
-                        await Context.Client.GetGuild(ulong.Parse(dr["ServerUID"].ToString())).DefaultChannel.SendMessageAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Announcement", message, "", "BigBirdBot", Discord.Color.Gold, null, null).Build());
-                    }
-                }
-            }
-            catch (Exception e)
-            {
-                EmbedHelper embedHelper = new EmbedHelper();
-                var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", e.Message, Constants.Constants.errorImageUrl, "", Color.Red, "");
-                await ReplyAsync(embed: embed.Build());
-            }
+            ulong guildId = ulong.Parse("880569055856185354");
+            ulong textChannelId = ulong.Parse("1156625507840954369");
+            await Context.Client.GetGuild(guildId).GetTextChannel(textChannelId).SendMessageAsync($"Bug Report from {Context.User.Username} in {Context.Guild.Name}: \n" + bugFound);
         }
     }
 }

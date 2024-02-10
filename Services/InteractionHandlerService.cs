@@ -13,6 +13,7 @@ using Victoria.Node;
 using DiscordBot.Constants;
 using System.Data.SqlClient;
 using System.Data;
+using DiscordBot.Helper;
 
 namespace DiscordBot.Services
 {
@@ -41,6 +42,8 @@ namespace DiscordBot.Services
 
             // Process the InteractionCreated payloads to execute Interactions commands
             _client.InteractionCreated += HandleInteraction;
+
+            _handler.InteractionExecuted += HandleInteractionExecute;
         }
 
         private async Task ReadyAsync()
@@ -52,7 +55,7 @@ namespace DiscordBot.Services
             foreach (var command in commands)
                 _ = _services.GetRequiredService<LoggingService>().DebugAsync($"Name:{command.Name} Type.{command.Type} loaded");
 
-            if (!_lavaNode.IsConnected)
+            if (_lavaNode != null && !_lavaNode.IsConnected)
                 await _lavaNode.ConnectAsync();
 
             StoredProcedure stored = new StoredProcedure();
@@ -95,6 +98,8 @@ namespace DiscordBot.Services
                 // Execute the incoming command.
                 var result = await _handler.ExecuteCommandAsync(context, _services);
 
+                EmbedHelper embedHelper = new EmbedHelper();
+
                 if (result.IsSuccess)
                 {
                     if (interaction.Type is InteractionType.ApplicationCommand)
@@ -111,7 +116,21 @@ namespace DiscordBot.Services
                     switch (result.Error)
                     {
                         case InteractionCommandError.UnmetPrecondition:
-                            // implement
+                            await interaction.RespondAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Unmet Precondition", $"Unmet Precondition: {result.ErrorReason}", Constants.Constants.errorImageUrl, context.User.Username, Discord.Color.Red).Build());
+                            break;
+                        case InteractionCommandError.UnknownCommand:
+                            await interaction.RespondAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Unknown Command", $"Unknown command.", Constants.Constants.errorImageUrl, context.User.Username, Discord.Color.Red).Build());
+                            break;
+                        case InteractionCommandError.BadArgs:
+                            await interaction.RespondAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Bad Arguments", $"Invalid number of arguments.", Constants.Constants.errorImageUrl, context.User.Username, Discord.Color.Red).Build());
+                            break;
+                        case InteractionCommandError.Exception:
+                            await interaction.RespondAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Command Exception", $"Command exception: {result.ErrorReason}", Constants.Constants.errorImageUrl, context.User.Username, Discord.Color.Red).Build());
+                            break;
+                        case InteractionCommandError.Unsuccessful:
+                            await interaction.RespondAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Unsuccessful", "Command could not be executed.", Constants.Constants.errorImageUrl, context.User.Username, Discord.Color.Red).Build());
+                            break;
+                        default:
                             break;
                     }
 
@@ -125,6 +144,33 @@ namespace DiscordBot.Services
                 if (interaction.Type is InteractionType.ApplicationCommand)
                     await interaction.GetOriginalResponseAsync().ContinueWith(async msg => await msg.Result.DeleteAsync());
             }
+        }
+
+        private async Task HandleInteractionExecute(ICommandInfo commandInfo, IInteractionContext context, IResult result)
+        {
+            EmbedHelper embedHelper = new EmbedHelper();
+
+            if (!result.IsSuccess)
+                switch (result.Error)
+                {
+                    case InteractionCommandError.UnmetPrecondition:
+                        await context.Interaction.RespondAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Unmet Precondition", $"Unmet Precondition: {result.ErrorReason}", Constants.Constants.errorImageUrl, context.User.Username, Discord.Color.Red).Build());
+                        break;
+                    case InteractionCommandError.UnknownCommand:
+                        await context.Interaction.RespondAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Unknown Command", $"Unknown command.", Constants.Constants.errorImageUrl, context.User.Username, Discord.Color.Red).Build());
+                        break;
+                    case InteractionCommandError.BadArgs:
+                        await context.Interaction.RespondAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Bad Arguments", $"Invalid number of arguments.", Constants.Constants.errorImageUrl, context.User.Username, Discord.Color.Red).Build());
+                        break;
+                    case InteractionCommandError.Exception:
+                        await context.Interaction.RespondAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Command Exception", $"Command exception: {result.ErrorReason}", Constants.Constants.errorImageUrl, context.User.Username, Discord.Color.Red).Build());
+                        break;
+                    case InteractionCommandError.Unsuccessful:
+                        await context.Interaction.RespondAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Unsuccessful", "Command could not be executed.", Constants.Constants.errorImageUrl, context.User.Username, Discord.Color.Red).Build());
+                        break;
+                    default:
+                        break;
+                }
         }
     }
 }

@@ -53,7 +53,6 @@ internal class Program
 
         _ = loggingService.InfoAsync("Starting Bot");
 
-
         client.Log += message =>
         {
             EmbedHelper embedHelper = new EmbedHelper();
@@ -124,7 +123,7 @@ internal class Program
             return Task.CompletedTask;
         };
 
-        await client.SetGameAsync("/help");
+        await client.SetGameAsync("/reportbug");
 
         client.MessageReceived += async (msg) =>
         {
@@ -607,16 +606,18 @@ internal class Program
             });
         }
 
-        using (SqlConnection conn = new SqlConnection(Constants.discordBotConnStr))
+        await Task.Run(async () =>
         {
-            await arg.DownloadUsersAsync();
-            if (arg.Users.Count > 0)
+            using (SqlConnection conn = new SqlConnection(Constants.discordBotConnStr))
             {
-                foreach (var user in arg.Users)
+                arg.DownloadUsersAsync();
+                if (arg.Users.Count > 0)
                 {
-                    if (!user.IsBot && !user.IsWebhook)
+                    foreach (var user in arg.Users)
                     {
-                        stored.UpdateCreate(Constants.discordBotConnStr, "AddUser", new List<SqlParameter>
+                        if (!user.IsBot && !user.IsWebhook)
+                        {
+                            stored.UpdateCreate(Constants.discordBotConnStr, "AddUser", new List<SqlParameter>
                         {
                             new SqlParameter("@UserID", user.Id.ToString()),
                             new SqlParameter("@Username", user.Username),
@@ -624,17 +625,18 @@ internal class Program
                             new SqlParameter("@ServerUID", Int64.Parse(arg.Id.ToString())),
                             new SqlParameter("@Nickname", user.Nickname)
                         });
+                        }
                     }
+                    Console.WriteLine($"{arg.Users.Count} users were added successfully for {arg.Name}");
                 }
-                Console.WriteLine($"{arg.Users.Count} users were added successfully for {arg.Name}");
+                else
+                {
+                    ulong guildId = ulong.Parse("880569055856185354");
+                    ulong textChannelId = ulong.Parse("1156625507840954369");
+                    await client.GetGuild(guildId).GetTextChannel(textChannelId).SendMessageAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - New Server Added", $"Bot was added to {arg.Name} and no users were found on DownloadUsersAsync call.\nThe owner is {arg.Owner}", "", "BigBirdBot", Discord.Color.Red, null, null).Build());
+                }
             }
-            else
-            {
-                ulong guildId = ulong.Parse("880569055856185354");
-                ulong textChannelId = ulong.Parse("1156625507840954369");
-                await client.GetGuild(guildId).GetTextChannel(textChannelId).SendMessageAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - New Server Added", $"Bot was added to {arg.Name} and no users were found on DownloadUsersAsync call.\nThe owner is {arg.Owner}", "", "BigBirdBot", Discord.Color.Red, null, null).Build());
-            }
-        }
+        });
     }
 
     private ServiceProvider ConfigureServices()
@@ -652,7 +654,7 @@ internal class Program
                 LogGatewayIntentWarnings = false,
                 AlwaysDownloadUsers = true,
                 DefaultRetryMode = RetryMode.AlwaysRetry,
-                LogLevel = LogSeverity.Verbose
+                LogLevel = LogSeverity.Warning
             })
             .AddLavaNode(x =>
             {
@@ -664,7 +666,7 @@ internal class Program
             .AddSingleton<SpotifyHelper>()
             .AddSingleton<EmbedPagesService>()
             .AddSingleton<MultiButtonsService>()
-            .AddSingleton(new InteractiveConfig { DefaultTimeout = TimeSpan.FromMinutes(15), LogLevel = LogSeverity.Verbose })
+            .AddSingleton(new InteractiveConfig { DefaultTimeout = TimeSpan.FromMinutes(15), LogLevel = LogSeverity.Warning })
             .AddSingleton<InteractiveService>()
             .AddLogging(builder => builder.AddConsole())
             .BuildServiceProvider();
