@@ -9,6 +9,8 @@ using Figgle;
 using System.Data;
 using System.Data.SqlClient;
 using System.Net;
+using WolframAlphaNet;
+using WolframAlphaNet.Objects;
 
 namespace DiscordBot.SlashCommands
 {
@@ -476,15 +478,15 @@ namespace DiscordBot.SlashCommands
             items = items.Where(s => !string.IsNullOrEmpty(s)).Select(s => s.Trim()).ToList();
             EmbedHelper embed = new EmbedHelper();
             string title = "BigBirdBot - Poll";
-            string desc = $"Poll Item: **{items[0]}**\n\nChoices:";
+            string desc = $"Poll Item: **{statement.Trim()}**\n\nChoices:";
             string createdByMsg = "Command from: " + Context.User.Username;
 
-            for (int i = 1; i < items.Count; i++)
+            for (int i = 0; i < items.Count; i++)
                 desc += "\n" + i.ToString() + ". **" + items[i] + "**";
 
             IUserMessage msg = await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, "", createdByMsg, Discord.Color.Blue).Build());
 
-            for (int i = 0; i < items.Count - 1; i++)
+            for (int i = 0; i < items.Count; i++)
                 await msg.AddReactionAsync(emojis[i]);
         }
 
@@ -602,6 +604,7 @@ namespace DiscordBot.SlashCommands
             StoredProcedure storedProcedure = new StoredProcedure();
             try
             {
+                EmbedHelper embedHelper = new EmbedHelper();
                 var serverId = Int64.Parse(Context.Guild.Id.ToString());
                 var guild = Context.Client.GetGuild(ulong.Parse(serverId.ToString()));
 
@@ -617,32 +620,41 @@ namespace DiscordBot.SlashCommands
                         Description = "A **birthday** role was created, please have an administrator add the users to this role before running this command again."
                     };
 
+                    await FollowupAsync(embed: embed.Build());
+
                     return;
                 }
 
-                DataTable dtNewEvent = storedProcedure.Select(Constants.Constants.discordBotConnStr, "AddEvent", new List<SqlParameter>
+                storedProcedure.UpdateCreate(Constants.Constants.discordBotConnStr, "AddBirthday", new List<SqlParameter>
                 {
-                    new SqlParameter("@EventDateTime", birthday),
-                    new SqlParameter("@EventName", user.DisplayName + " Birthday"),
-                    new SqlParameter("@EventDescription", "Happy Birthday to " + user.DisplayName),
-                    new SqlParameter("@EventUserUTCDate", TimeZoneInfo.ConvertTimeToUtc(birthday, TimeZoneInfo.Local)),
-                    new SqlParameter("@EventChannelSource", Context.Channel.Id.ToString()),
-                    new SqlParameter("@CreatedBy", guild.Roles.Where(s => s.Name.Contains("birthday")).Select(s => s.Mention).FirstOrDefault())
+                    new SqlParameter("@BirthdayDate", birthday),
+                    new SqlParameter("@BirthdayUser", user.Mention),
+                    new SqlParameter("@BirthdayGuild", Context.Guild.Id.ToString())
                 });
 
-                foreach (DataRow dr in dtNewEvent.Rows)
-                {
-                    var embed = new EmbedBuilder
-                    {
-                        Title = ":calendar_spiral: BigBirdBot - Birthday - " + dr["EventName"].ToString(),
-                        Color = Color.Gold
-                    };
-                    embed
-                        .AddField("Time", dr["eventDateTime"].ToString())
-                        .WithFooter(footer => footer.Text = "Created by " + Context.User.Username)
-                        .WithCurrentTimestamp();
-                    await FollowupAsync(embed: embed.Build());
-                }
+                await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Birthday Added", $"{user.DisplayName} birthday was added to the bot.", "", Context.User.Username, Discord.Color.Blue).Build());
+                //DataTable dtNewEvent = storedProcedure.Select(Constants.Constants.discordBotConnStr, "AddEvent", new List<SqlParameter>
+                //{
+                //    new SqlParameter("@EventDateTime", birthday),
+                //    new SqlParameter("@EventName", user.DisplayName + " Birthday"),
+                //    new SqlParameter("@EventDescription", "Happy Birthday to " + user.DisplayName),
+                //    new SqlParameter("@EventChannelSource", Context.Channel.Id.ToString()),
+                //    new SqlParameter("@CreatedBy", guild.Roles.Where(s => s.Name.Contains("birthday")).Select(s => s.Mention).FirstOrDefault())
+                //});
+
+                //foreach (DataRow dr in dtNewEvent.Rows)
+                //{
+                //    var embed = new EmbedBuilder
+                //    {
+                //        Title = ":calendar_spiral: BigBirdBot - Birthday - " + dr["EventName"].ToString(),
+                //        Color = Color.Gold
+                //    };
+                //    embed
+                //        .AddField("Time", dr["eventDateTime"].ToString())
+                //        .WithFooter(footer => footer.Text = "Created by " + Context.User.Username)
+                //        .WithCurrentTimestamp();
+                //    await FollowupAsync(embed: embed.Build());
+                //}
             }
             catch (Exception e)
             {
@@ -650,7 +662,7 @@ namespace DiscordBot.SlashCommands
                 string title = "BigBirdBot - Birthday Error";
                 string desc = e.Message;
                 string createdByMsg = "Command from: " + Context.User.Username;
-                await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, "", createdByMsg, Color.Red).Build());
+                await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, Constants.Constants.errorImageUrl, createdByMsg, Color.Red).Build());
             }
         }
 
@@ -794,6 +806,42 @@ namespace DiscordBot.SlashCommands
             ulong guildId = ulong.Parse("880569055856185354");
             ulong textChannelId = ulong.Parse("1156625507840954369");
             await Context.Client.GetGuild(guildId).GetTextChannel(textChannelId).SendMessageAsync($"Bug Report from {Context.User.Username} in {Context.Guild.Name}: \n" + bugFound);
+        }
+
+        [SlashCommand("wolfram", "Ask Wolfram Alpha a silly question.")]
+        public async Task HandleWolfram([MinLength(1), MaxLength(4000)] string question)
+        {
+            await DeferAsync();
+            EmbedHelper embedHelper = new EmbedHelper();
+            string title = "";
+            string description = "";
+
+            try
+            {
+                //Create the client.
+                WolframAlpha wolfram = new WolframAlpha(Constants.Constants.wolframAlphaKey);
+
+                //We start a new query.
+                QueryResult results = wolfram.Query(question);
+
+                //Results are split into "pods" that contain information.
+                foreach (Pod pod in results.Pods)
+                {
+                    title = pod.Title;
+
+                    foreach (SubPod subPod in pod.SubPods)
+                    {
+                        if (!string.IsNullOrEmpty(subPod.Plaintext))
+                            description += subPod.Plaintext + "\n";
+                    }
+                }
+
+                await FollowupAsync(embed: embedHelper.BuildMessageEmbed(title, description, "", Context.User.Username, Discord.Color.Blue).Build());
+            }
+            catch (Exception ex)
+            {
+                await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Error", ex.Message, Constants.Constants.errorImageUrl, Context.User.Username, Discord.Color.Red).Build());
+            }
         }
     }
 }
