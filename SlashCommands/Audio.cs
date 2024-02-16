@@ -549,7 +549,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("volume", "Set the volume between 0 and 150.")]
-        public async Task VolumeAsync(string volume)
+        public async Task VolumeAsync(int volume)
         {
             await DeferAsync();
             if (!_lavaNode.TryGetPlayer(Context.Guild, out var player))
@@ -564,55 +564,32 @@ namespace DiscordBot.SlashCommands
                 StoredProcedure procedure = new StoredProcedure();
                 var guildId = Int64.Parse(player.VoiceChannel.GuildId.ToString());
 
-                if (string.IsNullOrWhiteSpace(volume))
+                if (ushort.TryParse(volume.ToString(), out var vol))
                 {
-                    DataTable dt = procedure.Select(Constants.Constants.discordBotConnStr, "GetVolume", new List<SqlParameter>
+                    if (vol > 150 || vol < 0)
                     {
-                        new SqlParameter("@ServerUID", guildId)
+                        var errorEmbed = BuildMusicEmbed("Volume", "The volume must be between 0 and 150!");
+                        await FollowupAsync(embed: errorEmbed.Build());
+                        return;
+                    }
+
+                    await player.SetVolumeAsync(vol);
+
+                    procedure.UpdateCreate(Constants.Constants.discordBotConnStr, "UpdateVolume", new List<SqlParameter>
+                    {
+                        new SqlParameter("@ServerUID", guildId),
+                        new SqlParameter("@Volume", volume)
                     });
 
-                    if (dt.Rows.Count > 0)
-                    {
-                        foreach (DataRow dr in dt.Rows)
-                        {
-                            // Display current volume
-                            string msg = $"The current player volume is **{dr["Volume"].ToString()} out of 150**.";
-                            var embed = BuildMusicEmbed("Volume", msg);
-                            await FollowupAsync(embed: embed.Build());
-                        }
-                    }
+                    string msg = $"I've changed the player volume to {volume.ToString()}.";
+                    var embed = BuildMusicEmbed("Volume", msg);
+                    await FollowupAsync(embed: embed.Build());
                 }
                 else
                 {
-                    if (ushort.TryParse(volume, out var vol))
-                    {
-                        if (vol > 150 || vol < 0)
-                        {
-                            var errorEmbed = BuildMusicEmbed("Volume", "The volume must be between 0 and 150!");
-                            await FollowupAsync(embed: errorEmbed.Build());
-                            return;
-                        }
-
-                        await player.SetVolumeAsync(vol);
-
-                        procedure.UpdateCreate(Constants.Constants.discordBotConnStr, "UpdateVolume", new List<SqlParameter>
-                        {
-                            new SqlParameter("@ServerUID", guildId),
-                            new SqlParameter("@Volume", int.Parse(volume))
-                        });
-
-                        string msg = $"I've changed the player volume to {volume}.";
-                        var embed = BuildMusicEmbed("Volume", msg);
-                        await FollowupAsync(embed: embed.Build());
-                    }
-                    else
-                    {
-                        var embed = BuildMusicEmbed("Volume", "Please enter a volume between 0 and 150.");
-                        await FollowupAsync(embed: embed.Build());
-                    }
+                    var embed = BuildMusicEmbed("Volume", "Please enter a volume between 0 and 150.");
+                    await FollowupAsync(embed: embed.Build());
                 }
-
-
             }
             catch (Exception exception)
             {
@@ -730,7 +707,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("equalizer", "Set the audio EQ to one of the three settings: super bass, bass, or pop.")]
-        public async Task GetEqualizer(string eq)
+        public async Task GetEqualizer([Choice("Superbass", "superbass"), Choice("Bass", "bass"), Choice("Pop", "pop"), Choice("Off", "off")] string eq)
         {
             await DeferAsync();
             if (!_lavaNode.HasPlayer(Context.Guild))
@@ -821,7 +798,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("loop", "Repeats the current track the number of times provided.")]
-        public async Task LoopTrack(int times)
+        public async Task LoopTrack([MinValue(1)] int times)
         {
             await DeferAsync();
             if (!_lavaNode.TryGetPlayer(Context.Guild, out var player))
@@ -888,7 +865,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("swap", "Switch two tracks in the queue.")]
-        public async Task SwapTrack(string swap)
+        public async Task SwapTrack(int oldPosition, int newPosition)
         {
             await DeferAsync();
             if (!_lavaNode.TryGetPlayer(Context.Guild, out var player))
@@ -900,52 +877,24 @@ namespace DiscordBot.SlashCommands
 
             EmbedHelper embedHelper = new EmbedHelper();
 
-            if (swap.Contains(","))
+            oldPosition--;
+            newPosition--;
+            if (player.Vueue.ElementAt(oldPosition) != null && player.Vueue.ElementAt(newPosition) != null)
             {
-                var swapList = swap.Split(',', StringSplitOptions.TrimEntries);
-                if (swapList.Length == 2)
-                {
-                    string oldSwap = swapList[0];
-                    string newSwap = swapList[1];
+                var itemList = player.Vueue.ToList();
+                var val = itemList[oldPosition];
+                itemList[oldPosition] = itemList[newPosition];
+                itemList[newPosition] = val;
 
-                    if (int.TryParse(oldSwap, out int swapOne) && int.TryParse(newSwap, out int swapTwo))
-                    {
-                        swapOne--;
-                        swapTwo--;
-                        if (player.Vueue.ElementAt(swapOne) != null && player.Vueue.ElementAt(swapTwo) != null)
-                        {
-                            var itemList = player.Vueue.ToList();
-                            var val = itemList[swapOne];
-                            itemList[swapOne] = itemList[swapTwo];
-                            itemList[swapTwo] = val;
+                player.Vueue.Clear();
+                player.Vueue.Enqueue(itemList);
 
-                            player.Vueue.Clear();
-                            player.Vueue.Enqueue(itemList);
-
-                            var embed = BuildMusicEmbed("Swap", $"Successfully swapped **{itemList[swapOne].Title}** and **{itemList[swapTwo].Title}** in the queue.");
-                            await FollowupAsync(embed: embed.Build());
-                        }
-                        else
-                        {
-                            var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Swap Error", "Both elements must be present in the queue.", Constants.Constants.errorImageUrl, "", Color.Red, "");
-                            await FollowupAsync(embed: embed.Build());
-                        }
-                    }
-                    else
-                    {
-                        var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Swap Error", "The values entered must be whole numbers.\nExample -swap 5, 10", Constants.Constants.errorImageUrl, "", Color.Red, "");
-                        await FollowupAsync(embed: embed.Build());
-                    }
-                }
-                else
-                {
-                    var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Swap Error", "There must be two positions included in your message separated with a comma.\nExample -swap 5, 10", Constants.Constants.errorImageUrl, "", Color.Red, "");
-                    await FollowupAsync(embed: embed.Build());
-                }
+                var embed = BuildMusicEmbed("Swap", $"Successfully swapped **{itemList[oldPosition].Title}** and **{itemList[newPosition].Title}** in the queue.");
+                await FollowupAsync(embed: embed.Build());
             }
             else
             {
-                var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Swap Error", "There must be two positions included in your message separated with a comma.\nExample -swap 5, 10", Constants.Constants.errorImageUrl, "", Color.Red, "");
+                var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Swap Error", "Both elements must be present in the queue.", Constants.Constants.errorImageUrl, "", Color.Red, "");
                 await FollowupAsync(embed: embed.Build());
             }
         }
@@ -1351,7 +1300,7 @@ namespace DiscordBot.SlashCommands
         public int GetVolume(long guildId)
         {
             StoredProcedure procedure = new StoredProcedure();
-            int volume = 100;
+            int volume = 50;
 
             DataTable dt = procedure.Select(Constants.Constants.discordBotConnStr, "GetVolume", new List<SqlParameter>
             {

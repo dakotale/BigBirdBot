@@ -81,7 +81,7 @@ namespace DiscordBot.Services
             await arg.Player.TextChannel.SendMessageAsync(embed: embed.Build());
 
             StoredProcedure procedure = new StoredProcedure();
-            int volume = 100;
+            int volume = 50;
 
             try
             {
@@ -123,7 +123,7 @@ namespace DiscordBot.Services
 
             if (arg.Player.Vueue.Count > 0)
             {
-                int volume = 100;
+                int volume = 50;
                 arg.Player.Vueue.TryDequeue(out var lavaTrack);
 
                 StoredProcedure procedure = new StoredProcedure();

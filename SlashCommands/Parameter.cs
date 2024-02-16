@@ -806,6 +806,7 @@ namespace DiscordBot.SlashCommands
             ulong guildId = ulong.Parse("880569055856185354");
             ulong textChannelId = ulong.Parse("1156625507840954369");
             await Context.Client.GetGuild(guildId).GetTextChannel(textChannelId).SendMessageAsync($"Bug Report from {Context.User.Username} in {Context.Guild.Name}: \n" + bugFound);
+            await ReplyAsync("Bug report submitted.");
         }
 
         [SlashCommand("wolfram", "Ask Wolfram Alpha a silly question.")]

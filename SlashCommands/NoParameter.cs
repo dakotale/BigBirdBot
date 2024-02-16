@@ -20,7 +20,7 @@ namespace DiscordBot.SlashCommands
     public class NoParameter : InteractionModuleBase<SocketInteractionContext>
     {
         // Ban a user
-        [SlashCommand("ban", "Bans a user but the bot and user must have permission.")]
+        [SlashCommand("ban", "Bans a user but the bot and user using the command must have permission.")]
         [RequireContext(Discord.Interactions.ContextType.Guild)]
         // make sure the user invoking the command can ban
         [RequireUserPermission(GuildPermission.BanMembers)]
