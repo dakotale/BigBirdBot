@@ -10,6 +10,7 @@ namespace DiscordBot.SlashCommands
     public class Event : InteractionModuleBase<SocketInteractionContext>
     {
         [SlashCommand("event", "Create an event with a notification in chat.")]
+        [EnabledInDm(false)]
         public async Task HandleEvent([MinLength(1), MaxLength(255)] string eventName, [MinLength(1), MaxLength(500)] string eventDescription, [MinValue(1)] int reminderTimeInMinutes, DateTime eventDateTime, SocketGuildUser user = null, SocketRole role = null)
         {
             await DeferAsync();
@@ -54,6 +55,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("delevent", "Delete an event that was created.")]
+        [EnabledInDm(false)]
         [Discord.Interactions.RequireUserPermission(Discord.ChannelPermission.ManageMessages)]
         public async Task HandleDeleteEvent([MinLength(1), MaxLength(255)] string eventName)
         {

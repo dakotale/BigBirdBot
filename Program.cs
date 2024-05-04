@@ -14,11 +14,8 @@ using Victoria;
 using Microsoft.Extensions.Logging;
 using DiscordBot.Helper;
 using KillersLibrary.Services;
-using OpenAI_API.Models;
 using Fergun.Interactive;
-using Microsoft.Extensions.Configuration;
 using Discord.Interactions;
-using System;
 
 internal class Program
 {
@@ -82,7 +79,6 @@ internal class Program
         client.ReactionAdded += HandleReactionAsync;
         client.JoinedGuild += JoinedGuild;
         client.UserJoined += UserJoined;
-        client.UserLeft += UserLeft;
 
         client.UserVoiceStateUpdated += (user, before, after) =>
         {
@@ -174,49 +170,8 @@ internal class Program
                             prefix = dr["Prefix"].ToString();
                         }
 
-                        // Convert this IF block to a separate command with a name of /gpt
-                        if (message.StartsWith("$") && message.Length > 1)
-                        {
-                            try
-                            {
-                                message = message.Replace("$", "");
-                                await msg.Channel.TriggerTypingAsync(new RequestOptions { Timeout = 30 });
-                                var api = new OpenAI_API.OpenAIAPI(Constants.openAiSecret);
-                                var result = await api.Completions.CreateCompletionAsync(new OpenAI_API.Completions.CompletionRequest(message, model: Model.ChatGPTTurboInstruct, max_tokens: 600, temperature: 0.9, null, null, 1, null, null));
-                                var response = result.ToString();
-
-                                int length = response.Length;
-
-                                if (response.Length > 2000)
-                                {
-                                    await msg.Channel.SendMessageAsync(response.Substring(0, 2000));
-
-                                    if (response.Length > 4000)
-                                        await msg.Channel.SendMessageAsync(response.Substring(2000, 4000));
-                                    else
-                                        await msg.Channel.SendMessageAsync(response.Substring(2000, length - 2000));
-                                }
-                                else
-                                    await msg.Channel.SendMessageAsync(response);
-
-                                await msg.Channel.SendMessageAsync("---END RESPONSE---");
-                            }
-                            catch (Exception ex)
-                            {
-                                var embed = new EmbedBuilder
-                                {
-                                    Title = "BigBirdBot - Error",
-                                    Color = Color.Red,
-                                    Description = ex.Message,
-                                    ThumbnailUrl = Constants.errorImageUrl
-                                };
-
-                                await msg.Channel.SendMessageAsync(embed: embed.Build());
-                            }
-                        }
-
                         // This should be okay
-                        if ((message.Contains("https://twitter.com") || message.Contains("https://x.com")) && !message.Contains(prefix))
+                        if ((message.Contains("https://twitter.com") || message.Contains("https://x.com") || message.Contains("https://tiktok.com")) && !message.Contains(prefix))
                         {
                             DataTable dtTwitter = stored.Select(connStr, "GetTwitterBroken", new List<SqlParameter> { new SqlParameter("@ServerID", Int64.Parse(serverId)) });
                             bool isTwitterBroken = false;
@@ -229,6 +184,10 @@ internal class Program
                                     message = message.Replace("twitter", "fxtwitter");
                                 if (message.Contains("https://x.com"))
                                     message = message.Replace("x.com", "fxtwitter.com");
+                                if (message.Contains("https://tiktok.com"))
+                                    message = message.Replace("tiktok.com", "vxtiktok.com");
+                                if (message.Contains("https://instagram.com"))
+                                    message = message.Replace("instagram.com", "ddinstagram.com");
 
                                 message = message.Split("https://")[1];
 
@@ -378,6 +337,10 @@ internal class Program
                                                 content = content.Replace("twitter.com", "dl.fxtwitter.com");
                                             if (message.Contains("https://x.com"))
                                                 content = content.Replace("x.com", "dl.fxtwitter.com");
+                                            if (message.Contains("https://tiktok.com"))
+                                                content = content.Replace("tiktok.com", "vxtiktok.com");
+                                            if (message.Contains("https://instagram.com")) 
+                                                content = content.Replace("instagram.com", "ddinstagram.com");
 
                                             // Check if link exists for thirst table
                                             DataTable dtExists = stored.Select(connStr, "CheckIfThirstURLExists", new List<SqlParameter>
@@ -467,47 +430,6 @@ internal class Program
         };
 
         await Task.Delay(Timeout.Infinite);
-    }
-
-    private async Task UserLeft(SocketGuild arg1, SocketUser arg2)
-    {
-        string title = "BigBirdBot - User Left";
-        string desc = $"{arg2.Username} left the server.";
-        string thumbnailUrl = arg2.GetAvatarUrl(ImageFormat.Png, 256);
-        string createdBy = "BigBirdBot";
-        string imageUrl = "";
-        StoredProcedure stored = new StoredProcedure();
-
-        if (!arg2.IsBot && !arg2.IsWebhook)
-        {
-            stored.UpdateCreate(Constants.discordBotConnStr, "DeleteUser", new List<SqlParameter>
-            {
-                new SqlParameter("@UserID", arg2.Id.ToString()),
-                new SqlParameter("@ServerID", arg1.Id.ToString())
-            });
-
-            // Let's pull the first channel and hope for the best.....
-            if (arg1.DefaultChannel != null)
-            {
-                var textChannels = arg1.DefaultChannel.Id;
-                var firstTextChannel = arg1.GetTextChannel(textChannels);
-                var channel = client.GetChannel(firstTextChannel.Id) as SocketTextChannel;
-
-                EmbedHelper embed = new EmbedHelper();
-                if (channel != null && !arg2.IsBot)
-                    await channel.SendMessageAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Color.Gold, imageUrl).Build());
-            }
-            else
-            {
-                var textChannels = arg1.TextChannels.Where(s => s.Name.Contains("general") || s.Name.Contains("no-mic")).ToList();
-                var firstTextChannel = arg1.GetTextChannel(textChannels[0].Id);
-                var channel = client.GetChannel(firstTextChannel.Id) as SocketTextChannel;
-
-                EmbedHelper embed = new EmbedHelper();
-                if (channel != null && !arg2.IsBot)
-                    await channel.SendMessageAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Color.Gold, imageUrl).Build());
-            }
-        }
     }
 
     private async Task UserJoined(SocketGuildUser arg)

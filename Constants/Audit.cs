@@ -36,5 +36,30 @@ namespace DiscordBot.Constants
                 cmd.Dispose();
             }
         }
+
+        public void InsertAuditChannel(string connStr, string serverId, string serverName, string createdBy)
+        {
+            using (SqlConnection conn = new SqlConnection(connStr))
+            {
+                conn.Open();
+
+                // 1.  create a command object identifying the stored procedure
+                SqlCommand cmd = new SqlCommand("AddAuditChannel", conn);
+
+                // 2. set the command object so it knows to execute a stored procedure
+                cmd.CommandType = CommandType.StoredProcedure;
+
+                // 3. add parameter to command, which will be passed to the stored procedure
+                cmd.Parameters.Add(new SqlParameter("@CreatedBy", createdBy));
+                cmd.Parameters.Add(new SqlParameter("@ServerID", Int64.Parse(serverId)));
+                cmd.Parameters.Add(new SqlParameter("@ServerName", serverName));
+
+                // execute the command
+                cmd.ExecuteNonQuery();
+
+                conn.Close();
+                cmd.Dispose();
+            }
+        }
     }
 }

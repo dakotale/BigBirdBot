@@ -21,6 +21,7 @@ namespace DiscordBot.SlashCommands
     {
         // Ban a user
         [SlashCommand("ban", "Bans a user but the bot and user using the command must have permission.")]
+        [EnabledInDm(false)]
         [RequireContext(Discord.Interactions.ContextType.Guild)]
         // make sure the user invoking the command can ban
         [RequireUserPermission(GuildPermission.BanMembers)]
@@ -34,6 +35,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("info", "Shows information of the current server.")]
+        [EnabledInDm(false)]
         [RequireBotPermission(GuildPermission.EmbedLinks)]
         public async Task HandleServerInformation()
         {
@@ -66,6 +68,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("populateallusers", "Populate users into the DB.")]
+        [EnabledInDm(false)]
         [Discord.Interactions.RequireOwner]
         public async Task HandlePopulateAllUserCommand()
         {
@@ -121,6 +124,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("kaonoff", "Disables all keywords for the server.")]
+        [EnabledInDm(false)]
         [Discord.Interactions.RequireUserPermission(ChannelPermission.ManageMessages)]
         public async Task HandleKeywordOnOff()
         {
@@ -151,6 +155,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("raffle", "Picks a random person in the server to win a prize.")]
+        [EnabledInDm(false)]
         [Discord.Interactions.RequireUserPermission(ChannelPermission.ManageMessages)]
         public async Task HandleRaffle()
         {
@@ -168,6 +173,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("twitter", "When Twitter embeds fail, have the bot autocorrect the links.")]
+        [EnabledInDm(false)]
         public async Task HandleTwitterEmbeds()
         {
             await DeferAsync();
@@ -193,6 +199,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("kalist", "List of all keywords in the server.")]
+        [EnabledInDm(false)]
         public async Task HandleKeywordList()
         {
             await DeferAsync();
@@ -222,6 +229,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("log", "Most recent error message in the bot.")]
+        [EnabledInDm(false)]
         [Discord.Interactions.RequireOwner]
         public async Task HandleLog()
         {
@@ -248,6 +256,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("welcomemsg", "Enables/Disables the welcome message for the bot.")]
+        [EnabledInDm(false)]
         [Discord.Interactions.RequireUserPermission(ChannelPermission.ManageMessages)]
         public async Task HandleWelcomeMessage()
         {
@@ -274,6 +283,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("connplayers", "List of all connected players in voice channels.")]
+        [EnabledInDm(true)]
         [Discord.Interactions.RequireOwner]
         public async Task HandlePlayersConnected()
         {

@@ -10,6 +10,7 @@ namespace DiscordBot.SlashCommands
     public class AdminCommands : InteractionModuleBase<SocketInteractionContext>
     {
         [SlashCommand("announcement", "ONLY THE BOT OWNER CAN RUN THIS - Broadcast a message to all server.")]
+        [EnabledInDm(false)]
         [Discord.Interactions.RequireOwner]
         public async Task HandleAnnouncement([Remainder] string message)
         {
@@ -27,7 +28,7 @@ namespace DiscordBot.SlashCommands
                     // Need to check if Guild exists
                     if (Context.Client.GetGuild(ulong.Parse(dr["ServerUID"].ToString())) != null)
                     {
-                        await Context.Client.GetGuild(ulong.Parse(dr["ServerUID"].ToString())).DefaultChannel.SendMessageAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Announcement", message, "", "BigBirdBot", Discord.Color.Gold, null, null).Build());
+                        await Context.Client.GetGuild(ulong.Parse(dr["ServerUID"].ToString())).GetTextChannel(ulong.Parse(dr["DefaultChannelID"].ToString())).SendMessageAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Announcement", message, "", "BigBirdBot", Discord.Color.Gold).Build());
                     }
                 }
 

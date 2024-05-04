@@ -8,6 +8,7 @@ namespace DiscordBot.SlashCommands
     public class WebScraper : InteractionModuleBase<SocketInteractionContext>
     {
         [SlashCommand("housing", "List of open houses for the current bid period based on the world and size.")]
+        [EnabledInDm(true)]
         public async Task HandleHousing(
                 [Choice("Aether", "aether"), Choice("Crystal", "crystal"), Choice("Primal", "primal")] string dataCenter,
                 [Choice("Aether - Adamantoise", "adamantoise"), Choice("Aether - Cactuar", "cactuar"), Choice("Aether - Faerie", "faerie"), Choice("Aether - Gilgamesh", "gilgamesh"), Choice("Aether - Jenova", "jenova"), Choice("Aether - Midgardsormr", "midgardsormr"), Choice("Aether - Sargatanas", "sargatanas"), Choice("Aether - Siren", "siren"), Choice("Crystal - Balmung", "balmung"), Choice("Crystal - Brynhildr", "brynhildr"), Choice("Crystal - Coeurl", "coeurl"), Choice("Crystal - Diabolos", "diabolos"), Choice("Crystal - Goblin", "goblin"), Choice("Crystal - Malboro", "malboro"), Choice("Crystal - Mateus", "mateus"), Choice("Crystal - Zalera", "zalera"), Choice("Primal - Behemoth", "behemoth"), Choice("Primal - Excalibur", "excalibur"), Choice("Primal - Exodus", "exodus"), Choice("Primal - Famfrit", "famfrit"), Choice("Primal - Hyperion", "hyperion"), Choice("Primal - Lamia", "lamia"), Choice("Primal - Leviathan", "leviathan"), Choice("Primal - Ultros", "ultros")] string residence,

@@ -17,6 +17,7 @@ namespace DiscordBot.SlashCommands
     public class Parameter : InteractionModuleBase<SocketInteractionContext>
     {
         [SlashCommand("random", "Randomize a number from the range provided.")]
+        [EnabledInDm(true)]
         public async Task GenerateRandomNumber([MinValue(1), MaxValue(int.MaxValue)]int number)
         {
             await DeferAsync();
@@ -33,6 +34,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("etext", "Convert your message into emojis.")]
+        [EnabledInDm(true)]
         public async Task HandleEmojiTextCommand([MinLength(1)] string message)
         {
             await DeferAsync();
@@ -41,6 +43,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("8ball", "Shake the figurative eight ball.")]
+        [EnabledInDm(true)]
         public async Task HandleEightBallCommand([MinLength(1)] string message)
         {
             await DeferAsync();
@@ -60,6 +63,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("ka", "Adds a keyword to the server.")]
+        [EnabledInDm(false)]
         [Discord.Interactions.RequireUserPermission(Discord.ChannelPermission.ManageMessages)]
         public async Task HandleKeywordAdd([MinLength(1)] string keyword, string action = null, Attachment attachment = null)
         {
@@ -187,6 +191,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("kaedit", "Edits a keyword to the server.")]
+        [EnabledInDm(false)]
         [Discord.Interactions.RequireUserPermission(Discord.ChannelPermission.ManageMessages)]
         public async Task HandleKeywordUpdate([MinLength(1)] string keyword, string action = null, Attachment attachment = null)
         {
@@ -396,6 +401,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("kadelete", "Deletes a keyword from the server.")]
+        [EnabledInDm(false)]
         [Discord.Interactions.RequireUserPermission(Discord.ChannelPermission.ManageMessages)]
         public async Task HandleKeywordDelete([MinLength(1)]  string keyword)
         {
@@ -441,6 +447,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("ascii", "Turn words into ascii.")]
+        [EnabledInDm(true)]
         public async Task HandleAscii([MinLength(1)] string message)
         {
             await DeferAsync();
@@ -448,16 +455,17 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("delete", "Removes messages from the chat.")]
+        [EnabledInDm(false)]
         [Discord.Interactions.RequireUserPermission(Discord.ChannelPermission.ManageMessages)]
         public async Task HandleDelete([MinValue(1), MaxValue(20)] int numToDelete)
         {
-            await DeferAsync();
             var channel = Context.Channel as SocketTextChannel;
             var messages = await channel.GetMessagesAsync(numToDelete + 1).FlattenAsync();
             await channel.DeleteMessagesAsync(messages);
         }
 
         [SlashCommand("poll", "Create a poll for people to vote on.")]
+        [EnabledInDm(true)]
         public async Task HandlePoll([MinLength(1)] string statement, [MinLength(1)] string pollAnswer1, [MinLength(1)] string pollAnswer2, string pollAnswer3 = null, string pollAnswer4 = null, string pollAnswer5 = null, string pollAnswer6 = null, string pollAnswer7 = null, string pollAnswer8 = null, string pollAnswer9 = null, string pollAnswer10 = null)
         {
             await DeferAsync();
@@ -491,6 +499,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("addkeymulti", "Adds a keyword that can access multiple actions.")]
+        [EnabledInDm(false)]
         [Discord.Interactions.RequireUserPermission(Discord.ChannelPermission.ManageMessages)]
         public async Task HandleAddKeyMulti([MinLength(1)] string addCommand, [MinLength(1)] string keyword, [MinLength(1)] string chatName, [Choice("Yes", "Yes"), Choice("No", "No"), MinLength(1)] string createChannel)
         {
@@ -598,6 +607,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("addbirthday", "Adds a role members birthday to celebrate.")]
+        [EnabledInDm(false)]
         public async Task HandleBirthday(SocketGuildUser user, DateTime birthday)
         {
             await DeferAsync();
@@ -667,6 +677,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("avatar", "See you or someone else's avatar in high quality.")]
+        [EnabledInDm(true)]
         public async Task HandleAvatarCommand(SocketGuildUser user = null)
         {
             await DeferAsync();
@@ -695,6 +706,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("delmultiurl", "Deletes a multi-keyword URL with a given table and link.")]
+        [EnabledInDm(false)]
         [Discord.Interactions.RequireUserPermission(Discord.ChannelPermission.ManageMessages)]
         public async Task HandleThirstURLDelete([MinLength(1)] string url, [MinLength(1)] string chatName)
         {
@@ -730,6 +742,7 @@ namespace DiscordBot.SlashCommands
         }
         
         [SlashCommand("addthirstevent", "Adds a scheduled job to send a photo for a user.")]
+        [EnabledInDm(false)]
         [Discord.Interactions.RequireUserPermission(Discord.ChannelPermission.ManageMessages)]
         public async Task HandleThirstEventAdd(SocketGuildUser user, [MinLength(1)] string chatName)
         {
@@ -766,6 +779,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("delkeymulti", "Deletes a multi-keyword that was created.")]
+        [EnabledInDm(false)]
         [Discord.Interactions.RequireUserPermission(Discord.ChannelPermission.ManageMessages)]
         public async Task HandleThirstDelete([MinLength(1)] string keyword)
         {
@@ -801,15 +815,17 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("reportbug", "Found an issue with the bot?  Report it here, please.")]
+        [EnabledInDm(true)]
         public async Task HandleBugReport([MinLength(1), MaxLength(4000)] string bugFound)
         {
             ulong guildId = ulong.Parse("880569055856185354");
             ulong textChannelId = ulong.Parse("1156625507840954369");
-            await Context.Client.GetGuild(guildId).GetTextChannel(textChannelId).SendMessageAsync($"Bug Report from {Context.User.Username} in {Context.Guild.Name}: \n" + bugFound);
+            await Context.Client.GetGuild(guildId).GetTextChannel(textChannelId).SendMessageAsync($"**Bug Report from {Context.User.Username} in {Context.Guild.Name}**: \n" + bugFound);
             await ReplyAsync("Bug report submitted.");
         }
 
         [SlashCommand("wolfram", "Ask Wolfram Alpha a silly question.")]
+        [EnabledInDm(true)]
         public async Task HandleWolfram([MinLength(1), MaxLength(4000)] string question)
         {
             await DeferAsync();

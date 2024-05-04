@@ -107,7 +107,8 @@ namespace DiscordBot.Services
                         var command = context.Interaction as SocketSlashCommand;
                         var commandName = command.CommandName;
                         Audit audit = new Audit();
-                        audit.InsertAudit(commandName, context.User.Id.ToString(), Constants.Constants.discordBotConnStr, context.Guild.Id.ToString());
+                        audit.InsertAudit(commandName, context.User.Id.ToString(), Constants.Constants.discordBotConnStr, (context.Guild is null) ? context.Channel.Id.ToString() : context.Guild.Id.ToString());
+                        audit.InsertAuditChannel(Constants.Constants.discordBotConnStr, (context.Guild is null) ? context.Channel.Id.ToString() : context.Guild.Id.ToString(), (context.Guild is null) ? context.Channel.Name : context.Guild.Name, context.User.Id.ToString());
                         return;
                     }
                 }
@@ -137,7 +138,7 @@ namespace DiscordBot.Services
                 if (!_lavaNode.IsConnected)
                     await _lavaNode.ConnectAsync();
             }
-            catch
+            catch (Exception e)
             {
                 // If Slash Command execution fails it is most likely that the original interaction acknowledgement will persist. It is a good idea to delete the original
                 // response, or at least let the user know that something went wrong during the command execution.

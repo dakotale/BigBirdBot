@@ -15,6 +15,7 @@ namespace DiscordBot.SlashCommands
     public class Interaction : InteractionModuleBase<SocketInteractionContext>
     {
         [SlashCommand("trivia", "Trivia Bot")]
+        [EnabledInDm(true)]
         public async Task HandleTrivia()
         {
             await DeferAsync();

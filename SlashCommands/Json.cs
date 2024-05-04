@@ -16,6 +16,7 @@ namespace DiscordBot.SlashCommands
     public class Json : InteractionModuleBase<SocketInteractionContext>
     {
         [SlashCommand("wikip", "Random Wikipedia article.")]
+        [EnabledInDm(true)]
         public async Task HandleWikipediaCommand()
         {
             await DeferAsync();
@@ -57,6 +58,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("hltb", "Using HowLongToBeat API, pull the information on a game for how it will take to beat.")]
+        [EnabledInDm(true)]
         public async Task HandleHowLongToBeat([MinLength(1)] string game)
         {
             await DeferAsync();

@@ -47,6 +47,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("join", "Bot joins the voice channel.")]
+        [EnabledInDm(true)]
         public async Task JoinAsync()
         {
             await DeferAsync();
@@ -91,6 +92,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("play", "Play a Youtube, Spotify, Soundcloud, or attachment track/playlist in the bot.")]
+        [EnabledInDm(true)]
         public async Task PlayAsync(string searchQuery, Attachment attachment = null)
         {
             await DeferAsync();
@@ -98,7 +100,12 @@ namespace DiscordBot.SlashCommands
             {
                 if (attachment != null)
                 {
-                    searchQuery = attachment.Url;
+                    if (searchQuery.Contains("https://twitter.com"))
+                        searchQuery = searchQuery.Replace("twitter", "dl.fxtwitter");
+                    else if (searchQuery.Contains("https://x.com"))
+                        searchQuery = searchQuery.Replace("x.com", "dl.fxtwitter.com");
+                    else
+                        searchQuery = attachment.Url;
                 }
                 else
                 {
@@ -266,6 +273,11 @@ namespace DiscordBot.SlashCommands
             }
             else
             {
+                if (searchQuery.Contains("https://twitter.com"))
+                    searchQuery = searchQuery.Replace("twitter", "dl.fxtwitter");
+                if (searchQuery.Contains("https://x.com"))
+                    searchQuery = searchQuery.Replace("x.com", "dl.fxtwitter.com");
+
                 var searchResponse = await _lavaNode.SearchAsync(Uri.IsWellFormedUriString(searchQuery, UriKind.Absolute) ? SearchType.Direct : SearchType.YouTube, searchQuery);
                 if (searchResponse.Status is SearchStatus.LoadFailed or SearchStatus.NoMatches)
                 {
@@ -313,6 +325,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("leave", "Leaves the voice channel and clears the queue.")]
+        [EnabledInDm(true)]
         public async Task LeaveAsync()
         {
             await DeferAsync();
@@ -356,6 +369,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("pause", "Pause the current audio playing.")]
+        [EnabledInDm(true)]
         public async Task PauseAsync()
         {
             await DeferAsync();
@@ -390,6 +404,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("resume", "Resumes the current audio playing")]
+        [EnabledInDm(true)]
         public async Task ResumeAsync()
         {
             await DeferAsync();
@@ -423,6 +438,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("stop", "Stops the audio, clears the queue, and leaves the voice channel.")]
+        [EnabledInDm(true)]
         public async Task StopAsync()
         {
             await DeferAsync();
@@ -462,6 +478,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("forceskip", "Skips the current track.")]
+        [EnabledInDm(true)]
         public async Task ForceSkipTaskAsync()
         {
             await DeferAsync();
@@ -507,6 +524,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("seek", "Goes to a specific time of the current track.")]
+        [EnabledInDm(true)]
         public async Task SeekAsync(string timeSpan)
         {
             await DeferAsync();
@@ -549,6 +567,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("volume", "Set the volume between 0 and 150.")]
+        [EnabledInDm(true)]
         public async Task VolumeAsync(int volume)
         {
             await DeferAsync();
@@ -599,6 +618,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("nowplaying", "View the current track.")]
+        [EnabledInDm(true)]
         public async Task NowPlayingAsync()
         {
             await DeferAsync();
@@ -637,6 +657,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("queue", "View the list of tracks set to play.")]
+        [EnabledInDm(true)]
         public async Task GetQueue()
         {
             await DeferAsync();
@@ -707,6 +728,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("equalizer", "Set the audio EQ to one of the three settings: super bass, bass, or pop.")]
+        [EnabledInDm(true)]
         public async Task GetEqualizer([Choice("Superbass", "superbass"), Choice("Bass", "bass"), Choice("Pop", "pop"), Choice("Off", "off")] string eq)
         {
             await DeferAsync();
@@ -758,6 +780,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("repeat", "Repeats the current track.")]
+        [EnabledInDm(true)]
         public async Task RepeatTrack()
         {
             await DeferAsync();
@@ -798,6 +821,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("loop", "Repeats the current track the number of times provided.")]
+        [EnabledInDm(true)]
         public async Task LoopTrack([MinValue(1)] int times)
         {
             await DeferAsync();
@@ -865,6 +889,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("swap", "Switch two tracks in the queue.")]
+        [EnabledInDm(true)]
         public async Task SwapTrack(int oldPosition, int newPosition)
         {
             await DeferAsync();
@@ -900,6 +925,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("shuffle", "Randomizes the queue.")]
+        [EnabledInDm(true)]
         public async Task ShuffleVueue()
         {
             await DeferAsync();
@@ -926,6 +952,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("clear", "Removes everything in the queue.")]
+        [EnabledInDm(true)]
         public async Task ClearQueue()
         {
             await DeferAsync();
@@ -952,6 +979,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("remove", "Deletes a track from the queue.")]
+        [EnabledInDm(true)]
         public async Task RemoveItem(int element)
         {
             await DeferAsync();
@@ -979,6 +1007,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("playnext", "Sets this track to be the next in the queue.")]
+        [EnabledInDm(true)]
         public async Task PlayNext(string searchQuery, Attachment attachment = null)
         {
             await DeferAsync();
@@ -986,7 +1015,12 @@ namespace DiscordBot.SlashCommands
             {
                 if (attachment != null)
                 {
-                    searchQuery = attachment.Url;
+                    if (searchQuery.Contains("https://twitter.com"))
+                        searchQuery = searchQuery.Replace("twitter", "dl.fxtwitter");
+                    else if (searchQuery.Contains("https://x.com"))
+                        searchQuery = searchQuery.Replace("x.com", "dl.fxtwitter.com");
+                    else
+                        searchQuery = attachment.Url;
                 }
                 else
                 {
@@ -1083,6 +1117,11 @@ namespace DiscordBot.SlashCommands
                 }
                 else
                 {
+                    if (searchQuery.Contains("https://twitter.com"))
+                        searchQuery = searchQuery.Replace("twitter", "dl.fxtwitter");
+                    if (searchQuery.Contains("https://x.com"))
+                        searchQuery = searchQuery.Replace("x.com", "dl.fxtwitter.com");
+
                     var searchResponse = await _lavaNode.SearchAsync(Uri.IsWellFormedUriString(searchQuery, UriKind.Absolute) ? SearchType.Direct : SearchType.YouTube, searchQuery);
                     if (searchResponse.Status is SearchStatus.LoadFailed or SearchStatus.NoMatches)
                     {
@@ -1223,6 +1262,11 @@ namespace DiscordBot.SlashCommands
                 }
                 else
                 {
+                    if (searchQuery.Contains("https://twitter.com"))
+                        searchQuery = searchQuery.Replace("twitter", "dl.fxtwitter");
+                    if (searchQuery.Contains("https://x.com"))
+                        searchQuery = searchQuery.Replace("x.com", "dl.fxtwitter.com");
+
                     var searchResponse = await _lavaNode.SearchAsync(Uri.IsWellFormedUriString(searchQuery, UriKind.Absolute) ? SearchType.Direct : SearchType.YouTube, searchQuery);
                     if (searchResponse.Status is SearchStatus.LoadFailed or SearchStatus.NoMatches)
                     {
