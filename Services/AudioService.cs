@@ -8,6 +8,7 @@ using DiscordBot.Constants;
 using System.Data.SqlClient;
 using System.Text.Json;
 using System.Data;
+using System.Text;
 
 namespace DiscordBot.Services
 {
@@ -63,7 +64,18 @@ namespace DiscordBot.Services
 
         private Task OnStatsReceivedAsync(StatsEventArg arg)
         {
-            _logger.LogInformation(JsonSerializer.Serialize(arg));
+            if (arg.Players > 0)
+            {
+                StringBuilder sb = new StringBuilder();
+                sb.AppendLine(DateTime.Now.ToString("MM/dd/yyyy hh:mm:ss tt"));
+                sb.Append("Players Actively Playing: ");
+                sb.AppendLine(arg.PlayingPlayers.ToString());
+                sb.Append("Players Connected: ");
+                sb.AppendLine(arg.Players.ToString());
+
+                _logger.LogInformation(sb.ToString());
+            }
+            
             return Task.CompletedTask;
         }
 

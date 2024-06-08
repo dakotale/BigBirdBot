@@ -9,6 +9,7 @@ using DiscordBot.Constants;
 using System.Data.SqlClient;
 using System;
 using DiscordBot.Helper;
+using System.Text;
 
 namespace DiscordBot.Services
 {
@@ -80,7 +81,11 @@ namespace DiscordBot.Services
         [MethodImpl(MethodImplOptions.AggressiveInlining & MethodImplOptions.AggressiveOptimization)]
         public Task InfoAsync(string message, [CallerMemberName] string caller = "", [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return LogAsync(Severity.Info, message, caller, file, line);
+            StringBuilder sb = new StringBuilder();
+            sb.Append(DateTime.Now.ToLongDateString());
+            sb.Append("-");
+            sb.Append(message);
+            return LogAsync(Severity.Info, sb.ToString(), caller, file, line);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining & MethodImplOptions.AggressiveOptimization)]
