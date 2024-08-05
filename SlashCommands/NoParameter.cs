@@ -4,13 +4,8 @@ using Discord.Interactions;
 using Discord.WebSocket;
 using DiscordBot.Constants;
 using DiscordBot.Helper;
-using System;
-using System.Collections.Generic;
 using System.Data;
 using System.Data.SqlClient;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using RequireBotPermissionAttribute = Discord.Interactions.RequireBotPermissionAttribute;
 using RequireContextAttribute = Discord.Interactions.RequireContextAttribute;
 using RequireUserPermissionAttribute = Discord.Interactions.RequireUserPermissionAttribute;
@@ -123,37 +118,6 @@ namespace DiscordBot.SlashCommands
             }
         }
 
-        [SlashCommand("kaonoff", "Disables all keywords for the server.")]
-        [EnabledInDm(false)]
-        [Discord.Interactions.RequireUserPermission(ChannelPermission.ManageMessages)]
-        public async Task HandleKeywordOnOff()
-        {
-            await DeferAsync();
-            StoredProcedure procedure = new StoredProcedure();
-            var serverId = Int64.Parse(Context.Guild.Id.ToString());
-            string result = "";
-
-            DataTable dt = procedure.Select(Constants.Constants.discordBotConnStr, "TurnAllOnOffKeywordsByServer", new List<SqlParameter>
-            {
-                new SqlParameter("@ServerID", serverId)
-            });
-
-            if (dt.Rows.Count > 0)
-            {
-                foreach (DataRow dr in dt.Rows)
-                    result = dr["Result"].ToString();
-            }
-
-            string title = "BigBirdBot - Keywords Updated";
-            string desc = result;
-            string thumbnailUrl = "";
-            string imageUrl = "";
-            string embedCreatedBy = "Command from: " + Context.User.Username;
-
-            EmbedHelper embed = new EmbedHelper();
-            await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Green, imageUrl).Build());
-        }
-
         [SlashCommand("raffle", "Picks a random person in the server to win a prize.")]
         [EnabledInDm(false)]
         [Discord.Interactions.RequireUserPermission(ChannelPermission.ManageMessages)]
@@ -196,36 +160,6 @@ namespace DiscordBot.SlashCommands
 
             EmbedHelper embed = new EmbedHelper();
             await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Green, imageUrl).Build());
-        }
-
-        [SlashCommand("kalist", "List of all keywords in the server.")]
-        [EnabledInDm(false)]
-        public async Task HandleKeywordList()
-        {
-            await DeferAsync();
-            string connStr = Constants.Constants.discordBotConnStr;
-            var serverId = Int64.Parse(Context.Guild.Id.ToString());
-            int i = 1;
-
-            StoredProcedure stored = new StoredProcedure();
-            string output = "";
-
-            DataTable dt = stored.Select(connStr, "GetKeywordsByServerUID", new List<SqlParameter>
-            {
-                new SqlParameter("@ServerUID", serverId)
-            });
-
-            if (dt.Rows.Count > 0)
-            {
-                foreach (DataRow dr in dt.Rows)
-                {
-                    output += $"**{i.ToString()}.** {dr["Keyword"].ToString().Trim()}\n";
-                    i++;
-                }
-
-                EmbedHelper embed = new EmbedHelper();
-                await FollowupAsync(embed: embed.BuildMessageEmbed("BigBirdBot - List of Active Keywords", output, "", Context.User.Username, Discord.Color.Green).Build());
-            }
         }
 
         [SlashCommand("log", "Most recent error message in the bot.")]

@@ -16,6 +16,8 @@ using DiscordBot.Helper;
 using KillersLibrary.Services;
 using Fergun.Interactive;
 using Discord.Interactions;
+using Discord.Rest;
+using SpotifyAPI.Web;
 
 internal class Program
 {
@@ -79,6 +81,8 @@ internal class Program
         client.ReactionAdded += HandleReactionAsync;
         client.JoinedGuild += JoinedGuild;
         client.UserJoined += UserJoined;
+        client.UserLeft += UserLeft;
+        client.ButtonExecuted += ButtonHandler;
 
         client.UserVoiceStateUpdated += (user, before, after) =>
         {
@@ -288,7 +292,7 @@ internal class Program
                                                 string withExt = attachmentName.Split(".", StringSplitOptions.TrimEntries)[1];
                                                 withoutExt = withoutExt + "_" + DateTime.Now.ToString("yyyyMMdd_HHmmssfffff");
 
-                                                string path = @"C:\Users\Unmolded\Desktop\DiscordBot\" +tablename + @"\" + withoutExt + "." + withExt;
+                                                string path = @"C:\Temp\DiscordBot\" +tablename + @"\" + withoutExt + "." + withExt;
 
                                                 using (WebClient client = new WebClient())
                                                 {
@@ -523,6 +527,46 @@ internal class Program
         await Task.Delay(Timeout.Infinite);
     }
 
+    private async Task UserLeft(SocketGuild arg1, SocketUser arg2)
+    {
+        string title = "BigBirdBot - User Left";
+        string desc = $"{arg2.Username} left the server.";
+        string thumbnailUrl = arg2.GetAvatarUrl(ImageFormat.Png, 256);
+        string createdBy = "BigBirdBot";
+        string imageUrl = "";
+        StoredProcedure stored = new StoredProcedure();
+
+        if (!arg2.IsBot && !arg2.IsWebhook)
+        {
+            stored.UpdateCreate(Constants.discordBotConnStr, "DeleteUser", new List<SqlParameter>
+            {
+                new SqlParameter("@UserID", arg2.Id.ToString()),
+                new SqlParameter("@ServerID", arg1.Id.ToString())
+            });
+
+            // Let's pull the first channel and hope for the best.....
+            if (arg1.DefaultChannel != null)
+            {
+                var textChannels = arg1.DefaultChannel.Id;
+                var firstTextChannel = arg1.GetTextChannel(textChannels);
+                var channel = client.GetChannel(firstTextChannel.Id) as SocketTextChannel;
+
+                EmbedHelper embed = new EmbedHelper();
+                if (channel != null && !arg2.IsBot)
+                    await channel.SendMessageAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Color.Gold, imageUrl).Build());
+            }
+            else
+            {
+                var textChannels = arg1.TextChannels.Where(s => s.Name.Contains("general") || s.Name.Contains("no-mic")).ToList();
+                var firstTextChannel = arg1.GetTextChannel(textChannels[0].Id);
+                var channel = client.GetChannel(firstTextChannel.Id) as SocketTextChannel;
+
+                EmbedHelper embed = new EmbedHelper();
+                if (channel != null && !arg2.IsBot)
+                    await channel.SendMessageAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Color.Gold, imageUrl).Build());
+            }
+        }
+    }
     private async Task UserJoined(SocketGuildUser arg)
     {
         StoredProcedure stored = new StoredProcedure();
@@ -597,6 +641,186 @@ internal class Program
             }
         }
     }
+
+    private async Task ButtonHandler(SocketMessageComponent component)
+    {
+        StoredProcedure stored = new StoredProcedure();
+        string connStr = Constants.discordBotConnStr;
+        DataTable dt = new DataTable();
+        EmbedHelper embed = new EmbedHelper();
+
+        var customId = component.Data.CustomId;
+        var guildId = component.GuildId.Value.ToString() ?? "";
+        // Need to check if it's a role, if not default to a pronoun for now
+        dt = stored.Select(connStr, "GetRolesByID", new List<SqlParameter>
+        {
+            new SqlParameter("@ServerID", Int64.Parse(guildId)),
+            new SqlParameter("@RoleID", Int64.Parse(customId))
+        });
+        
+        // It's a role
+        if (dt.Rows.Count > 0)
+        {
+            dt = stored.Select(connStr, "GetRoleUsersByID", new List<SqlParameter>
+            {
+                new SqlParameter("@UserID", Int64.Parse(component.User.Id.ToString())),
+                new SqlParameter("@RoleID", Int64.Parse(customId))
+            });
+
+            DataTable dtRoles = new DataTable();
+            dtRoles = stored.Select(connStr, "GetRoles", new List<SqlParameter> { new SqlParameter("@ServerID", Int64.Parse(guildId)) });
+
+            // They have the role and are deleting the role
+            if (dt.Rows.Count > 0)
+            {
+                string roleIdSelected = "";
+                string roleNameSelected = "";
+                foreach (DataRow dr in dtRoles.Rows)
+                {
+                    string roleId = dr["RoleID"].ToString();
+                    string roleName = dr["RoleName"].ToString();
+
+                    if (roleId.Equals(component.Data.CustomId.ToString()))
+                    {
+                        roleIdSelected = roleId;
+                        roleNameSelected = roleName;
+                    }
+                }
+
+                var role = client.GetGuild(component.GuildId.Value).Roles.FirstOrDefault(s => s.Id.ToString().Equals(roleIdSelected));
+
+                var guild = client.GetGuild(component.GuildId.Value);
+                var guildUser = guild.GetUser(component.User.Id);
+
+                await (guildUser as IGuildUser).RemoveRoleAsync(role);
+
+                // Remove the Pronoun from the table
+                stored.UpdateCreate(connStr, "DeleteRoleUsers", new List<SqlParameter>
+                {
+                    new SqlParameter("@UserID", Int64.Parse(component.User.Id.ToString())),
+                    new SqlParameter("@RoleID", Int64.Parse(component.Data.CustomId)),
+                    new SqlParameter("@ServerID", Int64.Parse(component.GuildId.Value.ToString()))
+                });
+                await component.RespondAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Role Selection", $"Role was successfully removed for {component.User.Username}", "", component.User.Username, Discord.Color.Blue).Build(), ephemeral: true);
+            }
+            // They don't have the role and now are going to delete it
+            else
+            {
+                string roleIdSelected = "";
+                string roleNameSelected = "";
+                foreach (DataRow dr in dtRoles.Rows)
+                {
+                    string roleId = dr["RoleID"].ToString();
+                    string roleName = dr["RoleName"].ToString();
+
+                    if (roleId.Equals(component.Data.CustomId.ToString()))
+                    {
+                        roleIdSelected = roleId;
+                        roleNameSelected = roleName;
+                    }
+                }
+
+                var role = client.GetGuild(component.GuildId.Value).Roles.FirstOrDefault(s => s.Id.ToString().Equals(roleIdSelected));
+
+                var guild = client.GetGuild(component.GuildId.Value);
+                var guildUser = guild.GetUser(component.User.Id);
+
+                await (guildUser as IGuildUser).AddRoleAsync(role);
+
+                // Remove the Pronoun from the table
+                stored.UpdateCreate(connStr, "AddRoleUsers", new List<SqlParameter>
+                {
+                    new SqlParameter("@UserID", Int64.Parse(component.User.Id.ToString())),
+                    new SqlParameter("@RoleID", Int64.Parse(component.Data.CustomId)),
+                    new SqlParameter("@ServerID", Int64.Parse(component.GuildId.Value.ToString()))
+                });
+
+                await component.RespondAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Role Selection", $"Role was successfully added for {component.User.Username}", "", component.User.Username, Discord.Color.Blue).Build(), ephemeral: true);
+            }
+        }
+        else
+        {
+            dt = stored.Select(connStr, "GetPronounUsersByID", new List<SqlParameter>
+            {
+                new SqlParameter("@UserID", Int64.Parse(component.User.Id.ToString())),
+                new SqlParameter("@PronounID", int.Parse(component.Data.CustomId))
+            });
+
+            DataTable dtPronouns = new DataTable();
+            dtPronouns = stored.Select(connStr, "GetPronouns", new List<SqlParameter>());
+
+            if (dt.Rows.Count > 0)
+            {
+                string pronounSelected = "";
+                // Remove them from the role
+                foreach (DataRow dr in dtPronouns.Rows)
+                {
+                    int pronounId = int.Parse(dr["ID"].ToString());
+                    string pronounName = dr["Pronoun"].ToString();
+
+                    if (client.GetGuild(component.GuildId.Value).Roles.Where(s => s.Name.Equals(pronounName)).Count() < 1)
+                    {
+                        // Create the role
+                        await client.GetGuild(component.GuildId.Value).CreateRoleAsync(pronounName);
+                    }
+
+                    if (pronounId.ToString() == component.Data.CustomId)
+                        pronounSelected = pronounName;
+                }
+
+                var role = client.GetGuild(component.GuildId.Value).Roles.FirstOrDefault(s => s.Name.Equals(pronounSelected));
+
+                var guild = client.GetGuild(component.GuildId.Value);
+                var guildUser = guild.GetUser(component.User.Id);
+
+                await (guildUser as IGuildUser).RemoveRoleAsync(role);
+
+                // Remove the Pronoun from the table
+                stored.UpdateCreate(connStr, "DeletePronounUsers", new List<SqlParameter>
+                {
+                    new SqlParameter("@UserID", Int64.Parse(component.User.Id.ToString())),
+                    new SqlParameter("@PronounID", int.Parse(component.Data.CustomId))
+                });
+
+                await component.RespondAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Pronoun Selection", $"Pronouns were successfully removed for {component.User.Username}", "", component.User.Username, Discord.Color.Blue).Build(), ephemeral: true);
+            }
+            else
+            {
+                string pronounSelected = "";
+
+                foreach (DataRow dr in dtPronouns.Rows)
+                {
+                    int pronounId = int.Parse(dr["ID"].ToString());
+                    string pronounName = dr["Pronoun"].ToString();
+
+                    if (client.GetGuild(component.GuildId.Value).Roles.Where(s => s.Name.Equals(pronounName)).Count() < 1)
+                    {
+                        // Create the role
+                        await client.GetGuild(component.GuildId.Value).CreateRoleAsync(pronounName);
+                    }
+
+                    if (pronounId.ToString() == component.Data.CustomId)
+                        pronounSelected = pronounName;
+                }
+
+                // Add them to the role
+                var role = client.GetGuild(component.GuildId.Value).Roles.FirstOrDefault(s => s.Name.Equals(pronounSelected));
+
+                var guild = client.GetGuild(component.GuildId.Value);
+                var guildUser = guild.GetUser(component.User.Id);
+
+                await (guildUser as IGuildUser).AddRoleAsync(role);
+
+                // Add Pronoun for User
+                stored.UpdateCreate(connStr, "AddPronounUsers", new List<SqlParameter>
+                {
+                    new SqlParameter("@UserID", Int64.Parse(component.User.Id.ToString())),
+                    new SqlParameter("@PronounID", int.Parse(component.Data.CustomId))
+                });
+                await component.RespondAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Pronoun Selection", $"Pronouns were successfully added for {component.User.Username}.", "", component.User.Username, Discord.Color.Blue).Build(), ephemeral: true);
+            }
+        }
+    }
     private async Task JoinedGuild(SocketGuild arg)
     {
         StoredProcedure stored = new StoredProcedure();
@@ -631,13 +855,13 @@ internal class Program
                         if (!user.IsBot && !user.IsWebhook)
                         {
                             stored.UpdateCreate(Constants.discordBotConnStr, "AddUser", new List<SqlParameter>
-                        {
-                            new SqlParameter("@UserID", user.Id.ToString()),
-                            new SqlParameter("@Username", user.Username),
-                            new SqlParameter("@JoinDate", user.JoinedAt),
-                            new SqlParameter("@ServerUID", Int64.Parse(arg.Id.ToString())),
-                            new SqlParameter("@Nickname", user.Nickname)
-                        });
+                            {
+                                new SqlParameter("@UserID", user.Id.ToString()),
+                                new SqlParameter("@Username", user.Username),
+                                new SqlParameter("@JoinDate", user.JoinedAt),
+                                new SqlParameter("@ServerUID", Int64.Parse(arg.Id.ToString())),
+                                new SqlParameter("@Nickname", user.Nickname)
+                            });
                         }
                     }
                     Console.WriteLine($"{arg.Users.Count} users were added successfully for {arg.Name}");
@@ -801,18 +1025,21 @@ internal class Program
         dt = storedProcedure.Select(connStr, "GetEventScheduledTime", new List<SqlParameter>());
         if (dt.Rows.Count > 0)
         {
+            EmbedHelper embed = new EmbedHelper();
             foreach (DataRow dr in dt.Rows)
             {
                 string userId = dr["UserID"].ToString();
                 string filePath = dr["FilePath"].ToString();
+                string tableName = dr["ThirstTable"].ToString();
+                tableName = string.Concat(tableName[0].ToString().ToUpper(), tableName.AsSpan(1));
 
                 // Send the DM :)
                 var user = await client.GetUserAsync(ulong.Parse(userId));
 
                 if (dr["FilePath"].ToString().Contains("C:\\"))
-                    await user.SendFileAsync(dr["FilePath"].ToString());
+                    await user.SendFileAsync(filePath, $"**{tableName} - {DateTime.Now.ToString("MM/dd/yyyy hh:mm tt ET")}**");
                 else
-                    await user.SendMessageAsync(dr["FilePath"].ToString());
+                    await user.SendMessageAsync($"**{tableName} - {DateTime.Now.ToString("MM/dd/yyyy hh:mm tt ET")}**\n**URL:** {filePath}");
 
                 storedProcedure.UpdateCreate(connStr, "AddUsersThirstTableLog", new List<SqlParameter>
                 {

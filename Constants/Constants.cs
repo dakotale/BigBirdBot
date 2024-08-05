@@ -24,7 +24,7 @@ namespace DiscordBot.Constants
         public const string spotifyClientSecret = "e5c19c145b0e4ba68b8b76f3a5acf1b2";
         public const string openAiSecret = "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";
         public const string errorImageUrl = "https://cdn0.iconfinder.com/data/icons/shift-interfaces/32/Error-512.png";
-        public const string minecraftModsLocation = @"C:\Users\Unmolded\Desktop\ForgeCreate_1182Server\Server\mods\";
+        public const string minecraftModsLocation = @"C:\Temp\ForgeCreate_1182Server\Server\mods\";
         public static Int32 ToUnixTimestamp(this DateTime dateTime) => (int)dateTime.Subtract(new DateTime(1970, 1, 1)).TotalSeconds;
         public static string ToDiscordUnixTimeestampFormat(this DateTime dateTime) => $"<t:{dateTime.ToUnixTimestamp()}:R>";
         public const string testServerGuildId = "880569055856185354";

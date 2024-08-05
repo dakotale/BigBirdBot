@@ -4,18 +4,12 @@ using DiscordBot.Constants;
 using DiscordBot.Helper;
 using DiscordBot.Services;
 using Fergun.Interactive;
-using System;
-using System.Collections.Generic;
 using System.Data.SqlClient;
 using System.Data;
-using System.Linq;
-using System.Runtime.InteropServices;
 using System.Text;
-using System.Threading.Tasks;
 using Victoria.Node;
 using Victoria.Player;
 using Victoria.Responses.Search;
-using Discord.Commands;
 using Victoria;
 using Fergun.Interactive.Pagination;
 using System.Globalization;
@@ -47,7 +41,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("join", "Bot joins the voice channel.")]
-        [EnabledInDm(true)]
+        [EnabledInDm(false)]
         public async Task JoinAsync()
         {
             await DeferAsync();
@@ -80,7 +74,7 @@ namespace DiscordBot.SlashCommands
                 });
 
                 //await FollowupAsync($"Joined {voiceState.VoiceChannel.Name}!");
-                var embed = BuildMusicEmbed("Join", $"Thank you for having me, as a heads up the current volume for the player is **{GetVolume(long.Parse(Context.Guild.Id.ToString()))} out of 150**!");
+                var embed = BuildMusicEmbed("Join", $"Thank you for having me!\nThe current volume for the player is **{GetVolume(long.Parse(Context.Guild.Id.ToString()))}%**!");
                 await FollowupAsync(embed: embed.Build());
             }
             catch (Exception exception)
@@ -91,29 +85,16 @@ namespace DiscordBot.SlashCommands
             }
         }
 
-        [SlashCommand("play", "Play a Youtube, Spotify, Soundcloud, or attachment track/playlist in the bot.")]
-        [EnabledInDm(true)]
-        public async Task PlayAsync(string searchQuery, Attachment attachment = null)
+        [SlashCommand("play", "Play a Youtube, Spotify, or Soundcloud track/playlist in the bot.")]
+        [EnabledInDm(false)]
+        public async Task PlayAsync(string searchQuery)
         {
             await DeferAsync();
-            if (string.IsNullOrWhiteSpace(searchQuery))
-            {
-                if (attachment != null)
-                {
-                    if (searchQuery.Contains("https://twitter.com"))
-                        searchQuery = searchQuery.Replace("twitter", "dl.fxtwitter");
-                    else if (searchQuery.Contains("https://x.com"))
-                        searchQuery = searchQuery.Replace("x.com", "dl.fxtwitter.com");
-                    else
-                        searchQuery = attachment.Url;
-                }
-                else
-                {
-                  var embed = BuildMusicEmbed("Play", "Please provide search terms.");
-                  await FollowupAsync(embed: embed.Build());
-                  return;
-                }
-            }
+            if (searchQuery.Contains("https://twitter.com"))
+                searchQuery = searchQuery.Replace("twitter", "dl.fxtwitter");
+            if (searchQuery.Contains("https://x.com"))
+                searchQuery = searchQuery.Replace("x.com", "dl.fxtwitter.com");
+            
             var voiceState = Context.User as IVoiceState;
             if (!_lavaNode.TryGetPlayer(Context.Guild, out var player))
             {
@@ -139,7 +120,7 @@ namespace DiscordBot.SlashCommands
                     });
 
                     //await FollowupAsync($"Joined {voiceState.VoiceChannel.Name}!");
-                    var embed = BuildMusicEmbed("Play", $"Thank you for having me, as a heads up the current volume for the player is **{GetVolume(long.Parse(Context.Guild.Id.ToString()))} out of 150**!");
+                    var embed = BuildMusicEmbed("Play", $"Thank you for having me!\nThe current volume for the player is **{GetVolume(long.Parse(Context.Guild.Id.ToString()))}%**!");
                     await FollowupAsync(embed: embed.Build());
                 }
                 catch (Exception exception)
@@ -151,126 +132,7 @@ namespace DiscordBot.SlashCommands
             }
 
             if (_spotifyHelper.IsSpotifyUrl(searchQuery).Result)
-            {
-                try
-                {
-                    SpotifyHelper spotify = new SpotifyHelper(_lavaNode);
-                    var tracks = await spotify.SearchSpotify(Context.Channel, searchQuery);
-                    if (tracks != null)
-                    {
-                        if (player != null)
-                        {
-                            string msg = "";
-                            //It's a playlist
-                            if (tracks.Count > 1)
-                            {
-                                List<LavaTrack?> lavaTracks = new List<LavaTrack?>();
-                                var serverId = player.VoiceChannel.GuildId.ToString();
-
-                                // Load the first 5 to get something going
-                                for (int i = 0; i < 5; i++)
-                                {
-                                    var node = await _lavaNode.SearchAsync(SearchType.YouTube, tracks[i]);
-                                    if (node.Status != SearchStatus.NoMatches || node.Status != SearchStatus.LoadFailed)
-                                    {
-                                        var track = node.Tracks.FirstOrDefault();
-                                        if (track != null)
-                                        {
-                                            AddMusicTable(track, serverId, Context.User.Id.ToString());
-                                            lavaTracks.Add(track);
-                                        }
-                                    }
-                                }
-
-                                player.Vueue.Enqueue(lavaTracks);
-
-                                msg = "**Loaded the first five Spotify tracks successfully, queueing the rest of the playlist.**";
-
-                                var embed = BuildMusicEmbed("Playlist Loaded", msg);
-                                await FollowupAsync(embed: embed.Build());
-
-                                if (player.PlayerState == PlayerState.Playing || player.PlayerState == PlayerState.Paused)
-                                {
-                                    // Load the rest while the first 5 play
-                                    for (int i = 5; i < tracks.Count; i++)
-                                    {
-                                        var node = await _lavaNode.SearchAsync(SearchType.YouTube, tracks[i]);
-                                        if (node.Status != SearchStatus.NoMatches || node.Status != SearchStatus.LoadFailed)
-                                        {
-                                            var track = node.Tracks.FirstOrDefault();
-                                            if (track != null)
-                                            {
-                                                AddMusicTable(track, serverId, Context.User.Id.ToString());
-                                                lavaTracks.Add(track);
-                                            }
-                                        }
-                                    }
-
-                                    player.Vueue.Enqueue(lavaTracks);
-                                }
-                                else
-                                {
-                                    player.Vueue.TryDequeue(out var lavaTrack);
-                                    await player.PlayAsync(lavaTrack);
-
-                                    lavaTracks = new List<LavaTrack?>();
-                                    // Load the rest while the first 5 play
-                                    for (int i = 5; i < tracks.Count; i++)
-                                    {
-                                        var node = await _lavaNode.SearchAsync(SearchType.YouTube, tracks[i]);
-                                        if (node.Status != SearchStatus.NoMatches || node.Status != SearchStatus.LoadFailed)
-                                        {
-                                            var track = node.Tracks.FirstOrDefault();
-                                            if (track != null)
-                                            {
-                                                AddMusicTable(track, serverId, Context.User.Id.ToString());
-                                                lavaTracks.Add(track);
-                                            }
-                                        }
-                                    }
-
-                                    player.Vueue.Enqueue(lavaTracks);
-                                }
-
-                                msg = "**The remaining tracks are loaded in queue.**";
-                                embed = BuildMusicEmbed("Playlist Loaded", msg);
-                                await FollowupAsync(embed: embed.Build());
-                            }
-                            // It's not a playlist
-                            else
-                            {
-                                var node = await _lavaNode.SearchAsync(SearchType.YouTube, tracks[0]);
-                                if (node.Status != SearchStatus.NoMatches || node.Status != SearchStatus.LoadFailed)
-                                {
-                                    var track = node.Tracks.FirstOrDefault();
-                                    player.Vueue.Enqueue(track);
-                                    var serverId = player.VoiceChannel.GuildId.ToString();
-
-                                    msg = $"One **{track?.Title}** coming right up!\nURL: {track?.Url}\n Duration: {track?.Duration}\n Source: {track?.Source.ToUpper()}";
-
-                                    var embed = BuildMusicEmbed("Track Loaded", msg);
-                                    await FollowupAsync(embed: embed.Build());
-
-                                    if (player.PlayerState == PlayerState.Playing || player.PlayerState == PlayerState.Paused)
-                                    {
-                                        var queueEmbed = BuildMusicEmbed("Queue", "Item was added to the queue because something is currently playing.");
-                                        await FollowupAsync(embed: queueEmbed.Build());
-                                        return;
-                                    }
-                                    player.Vueue.TryDequeue(out var lavaTrack);
-                                    AddMusicTable(track, serverId, Context.User.Id.ToString());
-                                    await player.PlayAsync(lavaTrack);
-                                }
-                            }
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    var embed = BuildMusicEmbed("Spotify", ex.Message);
-                    await FollowupAsync(embed: embed.Build());
-                }
-            }
+                HandleSpotify(searchQuery, player);
             else
             {
                 if (searchQuery.Contains("https://twitter.com"))
@@ -303,18 +165,22 @@ namespace DiscordBot.SlashCommands
                 else
                 {
                     LavaTrack? track = searchResponse.Tracks.FirstOrDefault();
+                    var artwork = await track.FetchArtworkAsync();
+                    if (string.IsNullOrEmpty(artwork))
+                        artwork = "";
+                        
                     AddMusicTable(track, serverId, Context.User.Id.ToString());
                     player.Vueue.Enqueue(track);
 
-                    string msg = $"**{track?.Title}** coming right up!\nURL: {track?.Url}\nDuration: **{track?.Duration}**\nSource: **{track?.Source.ToUpper()}**\nVolume: **{GetVolume(long.Parse(Context.Guild.Id.ToString()))} out of 150**";
+                    string msg = $"Track Name: **{track?.Title}**\nURL: {track?.Url}\nDuration: **{track?.Duration}**\nSource: **{track?.Source.ToUpper()}**\nVolume: **{GetVolume(long.Parse(Context.Guild.Id.ToString()))}%**";
 
-                    var embed = BuildMusicEmbed("Track Loaded", msg);
+                    var embed = BuildMusicEmbed("Track Loaded", msg, artwork);
                     await FollowupAsync(embed: embed.Build());
 
                 }
                 if (player.PlayerState == PlayerState.Playing || player.PlayerState == PlayerState.Paused)
                 {
-                    var embed = BuildMusicEmbed("Queue", "Item was added to the queue because something is currently playing.");
+                    var embed = BuildMusicEmbed("Queue", "**Item added to the queue because something was playing.**");
                     await FollowupAsync(embed: embed.Build());
                     return;
                 }
@@ -325,7 +191,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("leave", "Leaves the voice channel and clears the queue.")]
-        [EnabledInDm(true)]
+        [EnabledInDm(false)]
         public async Task LeaveAsync()
         {
             await DeferAsync();
@@ -369,7 +235,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("pause", "Pause the current audio playing.")]
-        [EnabledInDm(true)]
+        [EnabledInDm(false)]
         public async Task PauseAsync()
         {
             await DeferAsync();
@@ -404,7 +270,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("resume", "Resumes the current audio playing")]
-        [EnabledInDm(true)]
+        [EnabledInDm(false)]
         public async Task ResumeAsync()
         {
             await DeferAsync();
@@ -438,7 +304,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("stop", "Stops the audio, clears the queue, and leaves the voice channel.")]
-        [EnabledInDm(true)]
+        [EnabledInDm(false)]
         public async Task StopAsync()
         {
             await DeferAsync();
@@ -451,7 +317,7 @@ namespace DiscordBot.SlashCommands
 
             if (player.PlayerState == PlayerState.Stopped)
             {
-                var embed = BuildMusicEmbed("Stop", "Woaaah there, I can't stop the stopped forced!");
+                var embed = BuildMusicEmbed("Stop", "**There was nothing to stop!**");
                 await FollowupAsync(embed: embed.Build());
                 return;
             }
@@ -465,9 +331,18 @@ namespace DiscordBot.SlashCommands
                 {
                     await _lavaNode.LeaveAsync(voiceChannel);
                     DeletePlayerConnected(Int64.Parse(Context.Guild.Id.ToString()));
+                    var embed = new EmbedBuilder
+                    {
+                        Title = $"BigBirdBot Music - Leave",
+                        Color = Color.Blue,
+                        Description = $"Bye, have a beautiful time",
+                        ThumbnailUrl = "https://static.wikia.nocookie.net/americandad/images/d/d0/Officer_Pena.jpg/revision/latest?cb=20100228182532",
+                    };
+
+                    embed.WithFooter(footer => footer.Text = "Command from: " + Context.User.Username)
+                                            .WithCurrentTimestamp();
+                    await FollowupAsync(embed: embed.Build());
                 }
-                var embed = BuildMusicEmbed("Stop", "Fine, I guess I'll shut up.");
-                await FollowupAsync(embed: embed.Build());
             }
             catch (Exception exception)
             {
@@ -478,7 +353,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("forceskip", "Skips the current track.")]
-        [EnabledInDm(true)]
+        [EnabledInDm(false)]
         public async Task ForceSkipTaskAsync()
         {
             await DeferAsync();
@@ -524,7 +399,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("seek", "Goes to a specific time of the current track.")]
-        [EnabledInDm(true)]
+        [EnabledInDm(false)]
         public async Task SeekAsync(string timeSpan)
         {
             await DeferAsync();
@@ -566,9 +441,9 @@ namespace DiscordBot.SlashCommands
             }
         }
 
-        [SlashCommand("volume", "Set the volume between 0 and 150.")]
-        [EnabledInDm(true)]
-        public async Task VolumeAsync(int volume)
+        [SlashCommand("volume", "Set the volume between 0 and 100.")]
+        [EnabledInDm(false)]
+        public async Task VolumeAsync([MinValue(0), MaxValue(100)] int volume)
         {
             await DeferAsync();
             if (!_lavaNode.TryGetPlayer(Context.Guild, out var player))
@@ -585,13 +460,6 @@ namespace DiscordBot.SlashCommands
 
                 if (ushort.TryParse(volume.ToString(), out var vol))
                 {
-                    if (vol > 150 || vol < 0)
-                    {
-                        var errorEmbed = BuildMusicEmbed("Volume", "The volume must be between 0 and 150!");
-                        await FollowupAsync(embed: errorEmbed.Build());
-                        return;
-                    }
-
                     await player.SetVolumeAsync(vol);
 
                     procedure.UpdateCreate(Constants.Constants.discordBotConnStr, "UpdateVolume", new List<SqlParameter>
@@ -618,7 +486,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("nowplaying", "View the current track.")]
-        [EnabledInDm(true)]
+        [EnabledInDm(false)]
         public async Task NowPlayingAsync()
         {
             await DeferAsync();
@@ -657,7 +525,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("queue", "View the list of tracks set to play.")]
-        [EnabledInDm(true)]
+        [EnabledInDm(false)]
         public async Task GetQueue()
         {
             await DeferAsync();
@@ -728,7 +596,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("equalizer", "Set the audio EQ to one of the three settings: super bass, bass, or pop.")]
-        [EnabledInDm(true)]
+        [EnabledInDm(false)]
         public async Task GetEqualizer([Choice("Superbass", "superbass"), Choice("Bass", "bass"), Choice("Pop", "pop"), Choice("Off", "off")] string eq)
         {
             await DeferAsync();
@@ -780,7 +648,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("repeat", "Repeats the current track.")]
-        [EnabledInDm(true)]
+        [EnabledInDm(false)]
         public async Task RepeatTrack()
         {
             await DeferAsync();
@@ -821,7 +689,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("loop", "Repeats the current track the number of times provided.")]
-        [EnabledInDm(true)]
+        [EnabledInDm(false)]
         public async Task LoopTrack([MinValue(1)] int times)
         {
             await DeferAsync();
@@ -838,38 +706,21 @@ namespace DiscordBot.SlashCommands
 
             if (voiceChannel != null)
             {
-                if (times > 0)
+                var embed = new EmbedBuilder
                 {
-                    var embed = new EmbedBuilder
-                    {
-                        Title = $"BigBirdBot Music - Loop",
-                        Color = Color.Blue,
-                        Description = $"Looping {track.Title} {times.ToString()} times.",
-                        ThumbnailUrl = "",
-                    };
+                    Title = $"BigBirdBot Music - Loop",
+                    Color = Color.Blue,
+                    Description = $"Looping {track.Title} {times.ToString()} times.",
+                    ThumbnailUrl = "",
+                };
 
-                    embed.WithFooter(footer => footer.Text = "Command from: " + Context.User.Username)
-                                        .WithCurrentTimestamp();
-                    await FollowupAsync(embed: embed.Build());
-                    for (int i = 0; i < times; i++)
-                    {
-                        // Get current track and loop it until said otherwise /shrug
-                        player.Vueue.Enqueue(track);
-                    }
-                }
-                else
+                embed.WithFooter(footer => footer.Text = "Command from: " + Context.User.Username)
+                                    .WithCurrentTimestamp();
+                await FollowupAsync(embed: embed.Build());
+                for (int i = 0; i < times; i++)
                 {
-                    var embed = new EmbedBuilder
-                    {
-                        Title = $"BigBirdBot Music - Loop",
-                        Color = Color.Blue,
-                        Description = $"Please enter a number greater than 0.",
-                        ThumbnailUrl = Constants.Constants.errorImageUrl,
-                    };
-
-                    embed.WithFooter(footer => footer.Text = "Command from: " + Context.User.Username)
-                                        .WithCurrentTimestamp();
-                    await FollowupAsync(embed: embed.Build());
+                    // Get current track and loop it until said otherwise /shrug
+                    player.Vueue.Enqueue(track);
                 }
             }
             else
@@ -889,7 +740,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("swap", "Switch two tracks in the queue.")]
-        [EnabledInDm(true)]
+        [EnabledInDm(false)]
         public async Task SwapTrack(int oldPosition, int newPosition)
         {
             await DeferAsync();
@@ -925,7 +776,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("shuffle", "Randomizes the queue.")]
-        [EnabledInDm(true)]
+        [EnabledInDm(false)]
         public async Task ShuffleVueue()
         {
             await DeferAsync();
@@ -952,7 +803,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("clear", "Removes everything in the queue.")]
-        [EnabledInDm(true)]
+        [EnabledInDm(false)]
         public async Task ClearQueue()
         {
             await DeferAsync();
@@ -979,7 +830,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("remove", "Deletes a track from the queue.")]
-        [EnabledInDm(true)]
+        [EnabledInDm(false)]
         public async Task RemoveItem(int element)
         {
             await DeferAsync();
@@ -1007,28 +858,16 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("playnext", "Sets this track to be the next in the queue.")]
-        [EnabledInDm(true)]
-        public async Task PlayNext(string searchQuery, Attachment attachment = null)
+        [EnabledInDm(false)]
+        public async Task PlayNext(string searchQuery)
         {
             await DeferAsync();
-            if (string.IsNullOrWhiteSpace(searchQuery))
-            {
-                if (attachment != null)
-                {
-                    if (searchQuery.Contains("https://twitter.com"))
-                        searchQuery = searchQuery.Replace("twitter", "dl.fxtwitter");
-                    else if (searchQuery.Contains("https://x.com"))
-                        searchQuery = searchQuery.Replace("x.com", "dl.fxtwitter.com");
-                    else
-                        searchQuery = attachment.Url;
-                }
-                else
-                {
-                    var embed = BuildMusicEmbed("Playnext", "Please provide search terms.");
-                    await FollowupAsync(embed: embed.Build());
-                    return;
-                }
-            }
+
+            if (!string.IsNullOrWhiteSpace(searchQuery) && searchQuery.Contains("https://twitter.com"))
+                searchQuery = searchQuery.Replace("twitter", "dl.fxtwitter");
+            if (!string.IsNullOrWhiteSpace(searchQuery) && searchQuery.Contains("https://x.com"))
+                searchQuery = searchQuery.Replace("x.com", "dl.fxtwitter.com");
+            
             var voiceState = Context.User as IVoiceState;
             if (!_lavaNode.TryGetPlayer(Context.Guild, out var player))
             {
@@ -1053,7 +892,7 @@ namespace DiscordBot.SlashCommands
                         new SqlParameter("@CreatedBy", Context.User.Id.ToString())
                     });
                     //await FollowupAsync($"Joined {voiceState.VoiceChannel.Name}!");
-                    var embed = BuildMusicEmbed("Play", $"Thank you for having me, as a heads up the current volume for the player is **{GetVolume(long.Parse(Context.Guild.Id.ToString()))} out of 150**!");
+                    var embed = BuildMusicEmbed("Play", $"Thank you for having me, as a heads up the current volume for the player is **{GetVolume(long.Parse(Context.Guild.Id.ToString()))}%**!");
                     await FollowupAsync(embed: embed.Build());
                 }
                 catch (Exception exception)
@@ -1069,52 +908,7 @@ namespace DiscordBot.SlashCommands
             if (player.Vueue.Count > 0)
             {
                 if (_spotifyHelper.IsSpotifyUrl(searchQuery).Result)
-                {
-                    try
-                    {
-                        SpotifyHelper spotify = new SpotifyHelper(_lavaNode);
-                        var tracks = await spotify.SearchSpotify(Context.Channel, searchQuery);
-                        if (tracks != null)
-                        {
-                            if (player != null)
-                            {
-                                string msg = "";
-                                var node = await _lavaNode.SearchAsync(SearchType.YouTube, tracks[0]);
-                                if (node.Status != SearchStatus.NoMatches || node.Status != SearchStatus.LoadFailed)
-                                {
-                                    var track = node.Tracks.FirstOrDefault();
-
-                                    var itemList = player.Vueue.ToList();
-                                    itemList.Insert(0, track);
-
-                                    AddMusicTable(track, serverId, Context.User.Id.ToString());
-
-                                    player.Vueue.Clear();
-                                    player.Vueue.Enqueue(itemList);
-
-                                    msg = $"**{track?.Title}** coming right up!\nURL: {track?.Url}\nDuration: {track?.Duration}\nSource: {track?.Source.ToUpper()}\nVolume: **{GetVolume(long.Parse(Context.Guild.Id.ToString()))} out of 150**";
-
-                                    var embed = BuildMusicEmbed("Track Loaded", msg);
-                                    await FollowupAsync(embed: embed.Build());
-
-                                    if (player.PlayerState == PlayerState.Playing || player.PlayerState == PlayerState.Paused)
-                                    {
-                                        var queueEmbed = BuildMusicEmbed("Queue", "Item was added to the top of the queue because something is currently playing.");
-                                        await FollowupAsync(embed: queueEmbed.Build());
-                                        return;
-                                    }
-                                    player.Vueue.TryDequeue(out var lavaTrack);
-                                    await player.PlayAsync(lavaTrack);
-                                }
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        var embed = BuildMusicEmbed("Spotify", ex.Message);
-                        await FollowupAsync(embed: embed.Build());
-                    }
-                }
+                    HandleSpotify(searchQuery, player);
                 else
                 {
                     if (searchQuery.Contains("https://twitter.com"))
@@ -1133,6 +927,10 @@ namespace DiscordBot.SlashCommands
                     }
 
                     LavaTrack? track = searchResponse.Tracks.FirstOrDefault();
+                    var artwork = await track.FetchArtworkAsync();
+                    if (string.IsNullOrEmpty(artwork))
+                        artwork = "";
+
                     AddMusicTable(track, serverId, Context.User.Id.ToString());
                     var itemList = player.Vueue.ToList();
                     itemList.Insert(0, track);
@@ -1140,14 +938,14 @@ namespace DiscordBot.SlashCommands
                     player.Vueue.Clear();
                     player.Vueue.Enqueue(itemList);
 
-                    string msg = $"**{track?.Title}** coming right up!\nURL:  {track?.Url} \nDuration:  {track?.Duration} \nSource: {track?.Source.ToUpper()}\nVolume: **{GetVolume(long.Parse(Context.Guild.Id.ToString()))} out of 150**";
+                    string msg = $"Track Name: **{track?.Title}**\nURL:  {track?.Url} \nDuration:  {track?.Duration} \nSource: {track?.Source.ToUpper()}\nVolume: **{GetVolume(long.Parse(Context.Guild.Id.ToString()))}%**";
 
-                    var embed = BuildMusicEmbed("Track Loaded", msg);
+                    var embed = BuildMusicEmbed("Track Loaded", msg, artwork);
                     await FollowupAsync(embed: embed.Build());
 
                     if (player.PlayerState == PlayerState.Playing || player.PlayerState == PlayerState.Paused)
                     {
-                        var embedMusic = BuildMusicEmbed("Queue", "Item was added to the top of the queue because something is currently playing.");
+                        var embedMusic = BuildMusicEmbed("Queue", "**Item added to the top of the queue because something was playing.**");
                         await FollowupAsync(embed: embedMusic.Build());
                         return;
                     }
@@ -1159,107 +957,7 @@ namespace DiscordBot.SlashCommands
             else
             {
                 if (_spotifyHelper.IsSpotifyUrl(searchQuery).Result)
-                {
-                    try
-                    {
-                        SpotifyHelper spotify = new SpotifyHelper(_lavaNode);
-                        var tracks = await spotify.SearchSpotify(Context.Channel, searchQuery);
-                        if (tracks != null)
-                        {
-                            if (player != null)
-                            {
-                                string msg = "";
-                                //It's a playlist
-                                if (tracks.Count > 1)
-                                {
-                                    List<LavaTrack?> lavaTracks = new List<LavaTrack?>();
-
-                                    // Load the first 5 to get something going
-                                    for (int i = 0; i < 5; i++)
-                                    {
-                                        var node = await _lavaNode.SearchAsync(SearchType.YouTube, tracks[i]);
-                                        if (node.Status != SearchStatus.NoMatches || node.Status != SearchStatus.LoadFailed)
-                                        {
-                                            var track = node.Tracks.FirstOrDefault();
-                                            if (track != null)
-                                            {
-                                                AddMusicTable(track, serverId, Context.User.Id.ToString());
-                                                lavaTracks.Add(track);
-                                            }
-                                        }
-                                    }
-
-                                    player.Vueue.Enqueue(lavaTracks);
-
-                                    msg = "Loaded the first five Spotify track(s) successfully, queuing the rest of the playlist.";
-
-                                    var embed = BuildMusicEmbed("Playlist Loaded", msg);
-                                    await FollowupAsync(embed: embed.Build());
-
-                                    if (player.PlayerState == PlayerState.Playing || player.PlayerState == PlayerState.Paused)
-                                    {
-                                        return;
-                                    }
-
-                                    player.Vueue.TryDequeue(out var lavaTrack);
-                                    await player.PlayAsync(lavaTrack);
-
-                                    lavaTracks = new List<LavaTrack?>();
-                                    // Load the rest while the first 5 play
-                                    for (int i = 5; i < tracks.Count; i++)
-                                    {
-                                        var node = await _lavaNode.SearchAsync(SearchType.YouTube, tracks[i]);
-                                        if (node.Status != SearchStatus.NoMatches || node.Status != SearchStatus.LoadFailed)
-                                        {
-                                            var track = node.Tracks.FirstOrDefault();
-                                            if (track != null)
-                                            {
-                                                AddMusicTable(track, serverId, Context.User.Id.ToString());
-                                                lavaTracks.Add(track);
-                                            }
-                                        }
-                                    }
-
-                                    player.Vueue.Enqueue(lavaTracks);
-
-                                    msg = "The remaining tracks are loaded in the queue.";
-                                    embed = BuildMusicEmbed("Playlist Loaded", msg);
-                                    await FollowupAsync(embed: embed.Build());
-                                }
-                                // It's not a playlist
-                                else
-                                {
-                                    var node = await _lavaNode.SearchAsync(SearchType.YouTube, tracks[0]);
-                                    if (node.Status != SearchStatus.NoMatches || node.Status != SearchStatus.LoadFailed)
-                                    {
-                                        var track = node.Tracks.FirstOrDefault();
-                                        AddMusicTable(track, serverId, Context.User.Id.ToString());
-                                        player.Vueue.Enqueue(track);
-
-                                        msg = $"One {track?.Title} coming right up!\n {track?.Url}\n {track?.Duration}\n {track?.Source.ToUpper()}";
-
-                                        var embed = BuildMusicEmbed("Track Loaded", msg);
-                                        await FollowupAsync(embed: embed.Build());
-
-                                        if (player.PlayerState == PlayerState.Playing || player.PlayerState == PlayerState.Paused)
-                                        {
-                                            var queueEmbed = BuildMusicEmbed("Queue", "Item was added to the queue because something is currently playing.");
-                                            await FollowupAsync(embed: queueEmbed.Build());
-                                            return;
-                                        }
-                                        player.Vueue.TryDequeue(out var lavaTrack);
-                                        await player.PlayAsync(lavaTrack);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        var embed = BuildMusicEmbed("Spotify", ex.Message);
-                        await FollowupAsync(embed: embed.Build());
-                    }
-                }
+                    HandleSpotify(searchQuery, player);
                 else
                 {
                     if (searchQuery.Contains("https://twitter.com"))
@@ -1289,17 +987,21 @@ namespace DiscordBot.SlashCommands
                     else
                     {
                         LavaTrack? track = searchResponse.Tracks.FirstOrDefault();
+                        var artwork = await track.FetchArtworkAsync();
+                        if (string.IsNullOrEmpty(artwork))
+                            artwork = "";
+
                         player.Vueue.Enqueue(track);
 
-                        string msg = $"**{track?.Title}** coming right up!\n {track?.Url}\n {track?.Duration}\n {track?.Source.ToUpper()}\nVolume: **{GetVolume(long.Parse(Context.Guild.Id.ToString()))} out of 150**";
+                        string msg = $"Track Name: **{track?.Title}**\n {track?.Url}\n {track?.Duration}\n {track?.Source.ToUpper()}\nVolume: **{GetVolume(long.Parse(Context.Guild.Id.ToString()))}%**";
 
-                        var embed = BuildMusicEmbed("Track Loaded", msg);
+                        var embed = BuildMusicEmbed("Track Loaded", msg, artwork);
                         await FollowupAsync(embed: embed.Build());
 
                     }
                     if (player.PlayerState == PlayerState.Playing || player.PlayerState == PlayerState.Paused)
                     {
-                        var embed = BuildMusicEmbed("Queue", "Item was added to the queue because something is currently playing.");
+                        var embed = BuildMusicEmbed("Queue", "**Item was added to the queue because something was playing.**");
                         await FollowupAsync(embed: embed.Build());
                         return;
                     }
@@ -1309,14 +1011,14 @@ namespace DiscordBot.SlashCommands
             }
         }
 
-        public EmbedBuilder BuildMusicEmbed(string title, string description)
+        public EmbedBuilder BuildMusicEmbed(string title, string description, string artwork = "")
         {
             var embed = new EmbedBuilder
             {
                 Title = $"BigBirdBot Music - {title}",
                 Color = Color.Blue,
                 Description = $"{description}",
-                ThumbnailUrl = ""//"https://toppng.com/uploads/preview/clip-art-free-music-ministry-transparent-background-music-notes-11562855021eg6xmxzw2u.png",
+                ImageUrl = artwork
             };
 
             embed.WithFooter(footer => footer.Text = "Command from: " + Context.User.Username)
@@ -1325,6 +1027,7 @@ namespace DiscordBot.SlashCommands
             return embed;
         }
 
+        #region Helpers
         public void AddMusicTable(LavaTrack lavaTrack, string serverId, string createdBy)
         {
             if (lavaTrack != null)
@@ -1357,6 +1060,128 @@ namespace DiscordBot.SlashCommands
             return volume;
         }
 
+        public async void HandleSpotify(string searchQuery, LavaPlayer<LavaTrack?> player)
+        {
+            try
+            {
+                SpotifyHelper spotify = new SpotifyHelper(_lavaNode);
+                var tracks = await spotify.SearchSpotify(Context.Channel, searchQuery);
+                if (tracks != null)
+                {
+                    if (player != null)
+                    {
+                        string msg = "";
+                        //It's a playlist
+                        if (tracks.Count > 1)
+                        {
+                            List<LavaTrack?> lavaTracks = new List<LavaTrack?>();
+                            var serverId = player.VoiceChannel.GuildId.ToString();
+
+                            // Load the first 5 to get something going
+                            for (int i = 0; i < 5; i++)
+                            {
+                                var node = await _lavaNode.SearchAsync(SearchType.YouTube, tracks[i]);
+                                if (node.Status != SearchStatus.NoMatches || node.Status != SearchStatus.LoadFailed)
+                                {
+                                    var track = node.Tracks.FirstOrDefault();
+                                    if (track != null)
+                                    {
+                                        AddMusicTable(track, serverId, Context.User.Id.ToString());
+                                        lavaTracks.Add(track);
+                                    }
+                                }
+                            }
+
+                            player.Vueue.Enqueue(lavaTracks);
+
+                            msg = "**Loaded the first five Spotify tracks successfully, queueing the rest of the playlist.**";
+
+                            var embed = BuildMusicEmbed("Playlist Loaded", msg);
+                            await FollowupAsync(embed: embed.Build());
+
+                            if (player.PlayerState == PlayerState.Playing || player.PlayerState == PlayerState.Paused)
+                            {
+                                // Load the rest while the first 5 play
+                                for (int i = 5; i < tracks.Count; i++)
+                                {
+                                    var node = await _lavaNode.SearchAsync(SearchType.YouTube, tracks[i]);
+                                    if (node.Status != SearchStatus.NoMatches || node.Status != SearchStatus.LoadFailed)
+                                    {
+                                        var track = node.Tracks.FirstOrDefault();
+                                        if (track != null)
+                                        {
+                                            AddMusicTable(track, serverId, Context.User.Id.ToString());
+                                            lavaTracks.Add(track);
+                                        }
+                                    }
+                                }
+
+                                player.Vueue.Enqueue(lavaTracks);
+                            }
+                            else
+                            {
+                                player.Vueue.TryDequeue(out var lavaTrack);
+                                await player.PlayAsync(lavaTrack);
+
+                                lavaTracks = new List<LavaTrack?>();
+                                // Load the rest while the first 5 play
+                                for (int i = 5; i < tracks.Count; i++)
+                                {
+                                    var node = await _lavaNode.SearchAsync(SearchType.YouTube, tracks[i]);
+                                    if (node.Status != SearchStatus.NoMatches || node.Status != SearchStatus.LoadFailed)
+                                    {
+                                        var track = node.Tracks.FirstOrDefault();
+                                        if (track != null)
+                                        {
+                                            AddMusicTable(track, serverId, Context.User.Id.ToString());
+                                            lavaTracks.Add(track);
+                                        }
+                                    }
+                                }
+
+                                player.Vueue.Enqueue(lavaTracks);
+                            }
+
+                            msg = "**The remaining tracks were loaded in queue.**";
+                            embed = BuildMusicEmbed("Playlist Loaded", msg);
+                            await FollowupAsync(embed: embed.Build());
+                        }
+                        // It's not a playlist
+                        else
+                        {
+                            var node = await _lavaNode.SearchAsync(SearchType.YouTube, tracks[0]);
+                            if (node.Status != SearchStatus.NoMatches || node.Status != SearchStatus.LoadFailed)
+                            {
+                                var track = node.Tracks.FirstOrDefault();
+                                player.Vueue.Enqueue(track);
+                                var serverId = player.VoiceChannel.GuildId.ToString();
+
+                                msg = $"Track Name: **{track?.Title}**\nURL: {track?.Url}\n Duration: {track?.Duration}\n Source: {track?.Source.ToUpper()}";
+
+                                var embed = BuildMusicEmbed("Track Loaded", msg);
+                                await FollowupAsync(embed: embed.Build());
+
+                                if (player.PlayerState == PlayerState.Playing || player.PlayerState == PlayerState.Paused)
+                                {
+                                    var queueEmbed = BuildMusicEmbed("Queue", "Item added to the queue because something was playing.");
+                                    await FollowupAsync(embed: queueEmbed.Build());
+                                    return;
+                                }
+                                player.Vueue.TryDequeue(out var lavaTrack);
+                                AddMusicTable(track, serverId, Context.User.Id.ToString());
+                                await player.PlayAsync(lavaTrack);
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                var embed = BuildMusicEmbed("Spotify", ex.Message);
+                await FollowupAsync(embed: embed.Build());
+            }
+        }
+
         public void DeletePlayerConnected(long serverId)
         {
             StoredProcedure stored = new StoredProcedure();
@@ -1365,5 +1190,6 @@ namespace DiscordBot.SlashCommands
                 new SqlParameter("@ServerID", Int64.Parse(serverId.ToString()))
             });
         }
+        #endregion
     }
 }

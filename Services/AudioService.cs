@@ -37,14 +37,14 @@ namespace DiscordBot.Services
         private async Task OnTrackExceptionAsync(TrackExceptionEventArg<LavaPlayer<LavaTrack>, LavaTrack> arg)
         {
             arg.Player.Vueue.Enqueue(arg.Track);
-            await arg.Player.TextChannel.SendMessageAsync($"{arg.Track} has been requeued because it threw an exception.");
+            await arg.Player.TextChannel.SendMessageAsync($"{arg.Track} was requeued because an exception was thrown.");
             await Task.CompletedTask;
         }
 
         private async Task OnTrackStuckAsync(TrackStuckEventArg<LavaPlayer<LavaTrack>, LavaTrack> arg)
         {
             arg.Player.Vueue.Enqueue(arg.Track);
-            await arg.Player.TextChannel.SendMessageAsync($"{arg.Track} has been requeued because it got stuck.");
+            await arg.Player.TextChannel.SendMessageAsync($"{arg.Track} was requeued because it was stuck.");
             await Task.CompletedTask;
         }
 
@@ -68,10 +68,10 @@ namespace DiscordBot.Services
             {
                 StringBuilder sb = new StringBuilder();
                 sb.AppendLine(DateTime.Now.ToString("MM/dd/yyyy hh:mm:ss tt"));
-                sb.Append("Players Actively Playing: ");
-                sb.AppendLine(arg.PlayingPlayers.ToString());
-                sb.Append("Players Connected: ");
+                sb.Append("Connected: ");
                 sb.AppendLine(arg.Players.ToString());
+                sb.Append("Playing: ");
+                sb.AppendLine(arg.PlayingPlayers.ToString());
 
                 _logger.LogInformation(sb.ToString());
             }
@@ -85,7 +85,7 @@ namespace DiscordBot.Services
             {
                 Title = $"BigBirdBot Music - Start Playing",
                 Color = Color.Blue,
-                Description = $"Started playing **{arg.Track}**\nURL: {arg.Track.Url}\nDuration: {arg.Track.Duration}."
+                Description = $"Track Name: **{arg.Track}**\nURL: {arg.Track.Url}\nDuration: **{arg.Track.Duration}**."
             };
 
             embed.WithCurrentTimestamp();
@@ -124,15 +124,6 @@ namespace DiscordBot.Services
 
         private async Task OnTrackEndAsync(TrackEndEventArg<LavaPlayer<LavaTrack>, LavaTrack> arg)
         {
-            var embed = new EmbedBuilder
-            {
-                Title = $"BigBirdBot Music - Finished Playing",
-                Color = Color.Blue,
-                Description = $"Finished playing {arg.Track}\nURL: {arg.Track.Url}\nDuration: {arg.Track.Duration}\n\n**The bot will leave if inactive for 5 seconds, use -stay if you want the bot to stay in VC.**"
-            };
-
-            embed.WithCurrentTimestamp();
-
             if (arg.Player.Vueue.Count > 0)
             {
                 int volume = 50;
@@ -156,13 +147,15 @@ namespace DiscordBot.Services
                 }
                 catch (Exception ex)
                 {
-                    embed = new EmbedBuilder
+                    var embed = new EmbedBuilder
                     {
                         Title = $"BigBirdBot Music - Error",
                         Color = Color.Red,
                         ThumbnailUrl = Constants.Constants.errorImageUrl,
                         Description = $"{ex.Message}"
                     };
+
+                    embed.WithCurrentTimestamp();
 
                     await arg.Player.TextChannel.SendMessageAsync(embed: embed.Build());
                 }
