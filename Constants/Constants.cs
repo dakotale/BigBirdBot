@@ -16,15 +16,15 @@ namespace DiscordBot.Constants
         public const string weatherGeoCodeApiUrl = "http://api.openweathermap.org/geo/1.0/direct?q=";
         public const string weatherGeoCodeReverseApiUrl = "http://api.openweathermap.org/geo/1.0/reverse?lat=";
         public const string uselessSiteUrl = "https://www.theuselesswebindex.com/website/";
-        public const string botToken = "NTMyMzY3MDU4OTE1Mjk1MjMy.XJ_ypA.wgayR8pkXlju6Zwvv3YZus5n-xE";
+        public const string botToken = "NTMyMzY3MDU4OTE1Mjk1MjMy.XJ_ypA.wgayR8pkXlju6Zwvv3YZus5n-xE";//"MTE3NjI4NDg4NjYwOTQzMjU4Ng.GahGzJ.vASjBSTyU4FTKEgyu2Xfm5p9BwijXHtzq8-04Q";
         public const char msgPrefix = '-';
         public const string wikipediaUrl = "https://en.wikipedia.org/wiki/Special:Random";
+        public const string lavalinkUrl = "http://localhost:2333";
         public const string lavaLinkPwd = "This 1s @ Sup3r S3cr3t P@ssword!";
         public const string spotifyClientId = "9d3327c7e115414386b546393c6e935d";
         public const string spotifyClientSecret = "e5c19c145b0e4ba68b8b76f3a5acf1b2";
-        public const string openAiSecret = "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";
         public const string errorImageUrl = "https://cdn0.iconfinder.com/data/icons/shift-interfaces/32/Error-512.png";
-        public const string minecraftModsLocation = @"C:\Users\Unmolded\Desktop\ForgeCreate_1182Server\Server\mods\";
+        public const string minecraftModsLocation = @"C:\Temp\ForgeCreate_1182Server\Server\mods\";
         public static Int32 ToUnixTimestamp(this DateTime dateTime) => (int)dateTime.Subtract(new DateTime(1970, 1, 1)).TotalSeconds;
         public static string ToDiscordUnixTimeestampFormat(this DateTime dateTime) => $"<t:{dateTime.ToUnixTimestamp()}:R>";
         public const string testServerGuildId = "880569055856185354";

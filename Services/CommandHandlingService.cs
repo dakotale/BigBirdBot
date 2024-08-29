@@ -51,11 +51,17 @@ namespace DiscordBot.Services
             StoredProcedure stored = new StoredProcedure();
             string prefix = "";
             var channelId = message.Channel as SocketGuildChannel;
+            bool isActive = false;
             DataTable dtPrefix = stored.Select(Constants.Constants.discordBotConnStr, "GetServerPrefixByServerID", new List<SqlParameter> { new SqlParameter("@ServerUID", Int64.Parse(channelId.Guild.Id.ToString())) });
             foreach (DataRow dr in dtPrefix.Rows)
             {
                 prefix = dr["Prefix"].ToString();
+                isActive = bool.Parse(dr["IsActive"].ToString());
             }
+
+            // No Command for you, the server is inactive
+            if (!isActive)
+                return;
 
             if (!message.HasStringPrefix(prefix, ref argPos))
                 return;
