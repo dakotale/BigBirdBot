@@ -1,20 +1,16 @@
 ﻿using Discord.Interactions;
 using Discord.WebSocket;
 using Discord;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Reflection;
-using System.Text;
-using System.Threading.Tasks;
-using Victoria.Node;
 using DiscordBot.Constants;
 using System.Data.SqlClient;
 using System.Data;
 using DiscordBot.Helper;
-using System.Collections.Immutable;
+using Lavalink4NET.Players.Queued;
+using Lavalink4NET.Players;
+using Lavalink4NET;
+using Lavalink4NET.DiscordNet;
 
 namespace DiscordBot.Services
 {
@@ -23,14 +19,14 @@ namespace DiscordBot.Services
         private readonly DiscordSocketClient _client;
         private readonly InteractionService _handler;
         private readonly IServiceProvider _services;
-        private readonly LavaNode _lavaNode;
+        private readonly IAudioService _audioService;
 
-        public InteractionHandlerService(DiscordSocketClient client, InteractionService handler, IServiceProvider services, LavaNode lavaNode)
+        public InteractionHandlerService(DiscordSocketClient client, InteractionService handler, IServiceProvider services, IAudioService audioService)
         {
             _client = client;
             _handler = handler;
             _services = services;
-            _lavaNode = lavaNode;
+            _audioService = audioService;
         }
 
         public async Task InitializeAsync()
@@ -56,8 +52,6 @@ namespace DiscordBot.Services
             foreach (var command in commands)
                 _ = _services.GetRequiredService<LoggingService>().DebugAsync($"Name:{command.Name} Type.{command.Type} loaded");
 
-            if (_lavaNode != null && !_lavaNode.IsConnected)
-                await _lavaNode.ConnectAsync();
 
             StoredProcedure stored = new StoredProcedure();
             DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "GetPlayerConnected", new List<SqlParameter>());
@@ -76,7 +70,20 @@ namespace DiscordBot.Services
                         {
                             if (voiceChannel.ConnectedUsers.Count > 0)
                             {
-                                await _lavaNode.JoinAsync(voiceChannel, textChannel);
+                                _ = Task.Run(async () =>
+                                {
+                                    await _audioService.StartAsync();
+                                    await Task.Delay(3000);
+
+                                    var channelBehavior = PlayerChannelBehavior.Join;
+                                    var options = new CustomPlayerOptions();
+                                    options.SelfMute = true;
+                                    options.TextChannel = textChannel;
+                                    var retrieveOptions = new PlayerRetrieveOptions(ChannelBehavior: channelBehavior);
+
+                                    await _audioService.Players.JoinAsync<CustomPlayer, CustomPlayerOptions>(voiceChannel, CreatePlayerAsync, options);
+                                });
+                                
                                 Console.WriteLine($"{guild.Name} Player joined successfully");
                             }
                             else
@@ -100,6 +107,7 @@ namespace DiscordBot.Services
                 var result = await _handler.ExecuteCommandAsync(context, _services);
 
                 EmbedHelper embedHelper = new EmbedHelper();
+
 
                 if (result.IsSuccess)
                 {
@@ -132,9 +140,6 @@ namespace DiscordBot.Services
                         default:
                             break;
                     }
-
-                if (!_lavaNode.IsConnected)
-                    await _lavaNode.ConnectAsync();
             }
             catch (Exception e)
             {
@@ -169,6 +174,14 @@ namespace DiscordBot.Services
                         break;
                 }
             }
+        }
+
+        private static ValueTask<CustomPlayer> CreatePlayerAsync(IPlayerProperties<CustomPlayer, CustomPlayerOptions> properties, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            ArgumentNullException.ThrowIfNull(properties);
+
+            return ValueTask.FromResult(new CustomPlayer(properties));
         }
     }
 }

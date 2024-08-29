@@ -72,7 +72,7 @@ namespace DiscordBot.SlashCommands
             }
         }
 
-        [SlashCommand("thirstlist", "Get's list of all available thirst characters/people available by server.")]
+        [SlashCommand("multikeywordlist", "List of all available multiple keyword characters/people available by the server.")]
         [EnabledInDm(false)]
         public async Task GetThirstList()
         {
@@ -97,7 +97,7 @@ namespace DiscordBot.SlashCommands
             }
         }
 
-        [SlashCommand("userthirstlist", "Get's list of all user's scheduled thirst characters/people.")]
+        [SlashCommand("usermultilist", "Get a list of all user scheduled multiple action keywords.")]
         [EnabledInDm(false)]
         public async Task GetThirstListByUserID()
         {
@@ -118,7 +118,7 @@ namespace DiscordBot.SlashCommands
                     description += "- " + dr["TableList"].ToString() + Environment.NewLine;
                 }
 
-                await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Thirst List", "List of thirst tables for this user:\n" + description, "", Context.User.Username, Discord.Color.Blue).Build());
+                await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Multi-Keyword List", "List of multiple action tables for this user:\n" + description, "", Context.User.Username, Discord.Color.Blue).Build());
             }
         }
 
@@ -531,7 +531,7 @@ namespace DiscordBot.SlashCommands
                 string textChannelName = chatName;
 
                 var guild = Context.Client.GetGuild(ulong.Parse(serverId.ToString()));
-                var categoryIdList = guild.CategoryChannels.Where(s => s.Name == "thirsting").ToList(); // prod: thirsting
+                var categoryIdList = guild.CategoryChannels.Where(s => s.Name.ToLower() == "thirsting" || s.Name.ToLower() == "stanning" || s.Name.ToLower() == "keyword multi").ToList();
                 ulong categoryId = default(ulong);
 
                 if (categoryIdList.Any())
@@ -544,10 +544,10 @@ namespace DiscordBot.SlashCommands
 
                 if (categoryIdList.Count == 0 && createChannel.Equals("Yes"))
                 {
-                    await guild.CreateCategoryChannelAsync("thirsting");
+                    await guild.CreateCategoryChannelAsync("Keyword Multi");
                     title = "BigBirdBot - Keyword Multi Information";
-                    desc = "The channel category does not exist, creating one for you to store the thirsting channels.\n**NOTE**: For a channel to not be created, pass 'no' into the command arguments.\n";
-                    categoryIdList = guild.CategoryChannels.Where(s => s.Name == "thirsting").ToList(); // prod: thirsting
+                    desc = "The channel category does not exist, creating one for you to store the multiple action keyword channels.\n**NOTE**: For a channel to not be created, pass 'no' into the command arguments.\n";
+                    categoryIdList = guild.CategoryChannels.Where(s => s.Name.ToLower() == "thirsting" || s.Name.ToLower() == "stanning" || s.Name.ToLower() == "keyword multi").ToList(); // prod: thirsting
                 }
 
                 DataTable dtCheck = stored.Select(Constants.Constants.discordBotConnStr, "CheckKeywordExistsThirstMap", new List<SqlParameter>
@@ -693,7 +693,7 @@ namespace DiscordBot.SlashCommands
             }
         }
 
-        [SlashCommand("addthirstevent", "Adds a scheduled job to send a photo for a user.")]
+        [SlashCommand("addmultievent", "Adds a scheduled job to send a photo for a user.")]
         [EnabledInDm(false)]
         [RequireUserPermission(ChannelPermission.ManageMessages)]
         public async Task HandleThirstEventAdd(SocketGuildUser user, [MinLength(1)] string keyword)
@@ -717,7 +717,7 @@ namespace DiscordBot.SlashCommands
                 {
                     foreach (DataRow dr in dt.Rows)
                     {
-                        var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Thirst User Added", $"{tableName.Trim()} was successfully added and **{user.Username}** will start receiving this on {DateTime.Parse(dr["ScheduleTime"].ToString()).ToString("MM/dd/yyyy hh:mm t")} ET.\nThe current list of thirst people/characters for this user are; *{dr["ScheduledEventTable"].ToString()}*", "", Context.User.Username, Color.Blue, "");
+                        var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Multiple Keyword User Added", $"{tableName.Trim()} was successfully added and **{user.Username}** will start receiving this on {DateTime.Parse(dr["ScheduleTime"].ToString()).ToString("MM/dd/yyyy hh:mm t")} ET.\nThe current list of thirst people/characters for this user are; *{dr["ScheduledEventTable"].ToString()}*", "", Context.User.Username, Color.Blue, "");
                         await FollowupAsync(embed: embed.Build());
                     }
                 }
@@ -755,18 +755,18 @@ namespace DiscordBot.SlashCommands
                         new SqlParameter("@TableName", dr["TableName"].ToString())
                     });
 
-                    var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Delete Successful", "The thirst/multi-keyword provided was removed successfully.", "", "", Color.Blue, "");
+                    var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Delete Successful", "The multi-keyword provided was removed successfully.", "", "", Color.Blue, "");
                     await FollowupAsync(embed: embed.Build());
                 }
             }
             else
             {
-                var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "The thirst/multi-keyword entered does not exist.", Constants.Constants.errorImageUrl, "", Color.Red, "");
+                var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "The multi-keyword entered does not exist.", Constants.Constants.errorImageUrl, "", Color.Red, "");
                 await FollowupAsync(embed: embed.Build());
             }
         }
 
-        [SlashCommand("requeuethirst", "Requeue a thirst event in the event something goes wrong when sending the scheduled action.")]
+        [SlashCommand("requeuemulti", "Requeue a keyword event if something goes wrong when sending the scheduled action.")]
         [EnabledInDm(false)]
         [RequireOwner]
         public async Task RequeueThirst(SocketGuildUser user)
@@ -786,7 +786,7 @@ namespace DiscordBot.SlashCommands
             }
         }
 
-        [SlashCommand("delthirstevent", "Removes a user's scheduled event for a user.")]
+        [SlashCommand("delmultievent", "Removes a user's scheduled event for a user.")]
         [EnabledInDm(false)]
         [RequireOwner]
         public async Task HandleThirstEventDelete(SocketGuildUser user, string chatName = null)
@@ -814,7 +814,7 @@ namespace DiscordBot.SlashCommands
 
             foreach (DataRow dr in dt.Rows)
             {
-                await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Thirst User Removed", dr["Message"].ToString(), "", Context.User.Username, Discord.Color.Blue).Build());
+                await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Multi-Keyword User Removed", dr["Message"].ToString(), "", Context.User.Username, Discord.Color.Blue).Build());
             }
         }
     }

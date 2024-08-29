@@ -9,8 +9,6 @@ using Figgle;
 using System.Data;
 using System.Data.SqlClient;
 using System.Net;
-using WolframAlphaNet;
-using WolframAlphaNet.Objects;
 
 namespace DiscordBot.SlashCommands
 {
