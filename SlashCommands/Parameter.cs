@@ -60,14 +60,6 @@ namespace DiscordBot.SlashCommands
             await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Discord.Color.Green).Build());
         }
 
-        [SlashCommand("ascii", "Turn words into ascii.")]
-        [EnabledInDm(true)]
-        public async Task HandleAscii([MinLength(1), MaxLength(4000)] string message)
-        {
-            await DeferAsync();
-            await FollowupAsync($"```{FiggleFonts.Standard.Render(message.Trim())}```");
-        }
-
         [SlashCommand("delete", "Removes messages from the chat.")]
         [EnabledInDm(false)]
         [Discord.Interactions.RequireUserPermission(Discord.ChannelPermission.ManageMessages)]
@@ -114,7 +106,7 @@ namespace DiscordBot.SlashCommands
 
         [SlashCommand("addbirthday", "Adds a role members birthday to celebrate.")]
         [EnabledInDm(false)]
-        public async Task HandleBirthday(SocketGuildUser user, DateTime birthday)
+        public async Task HandleBirthday(SocketGuildUser user, [MinValue(1), MaxValue(12)] int monthNumber, [MinValue(1), MaxValue(31)] int dayNumber)
         {
             await DeferAsync();
             StoredProcedure storedProcedure = new StoredProcedure();
@@ -141,6 +133,8 @@ namespace DiscordBot.SlashCommands
                     return;
                 }
 
+                DateTime birthday = DateTime.Parse(monthNumber.ToString() + "/" + dayNumber.ToString() + "/" + DateTime.Now.Year.ToString());
+
                 storedProcedure.UpdateCreate(Constants.Constants.discordBotConnStr, "AddBirthday", new List<SqlParameter>
                 {
                     new SqlParameter("@BirthdayDate", birthday),
@@ -149,28 +143,6 @@ namespace DiscordBot.SlashCommands
                 });
 
                 await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Birthday Added", $"{user.DisplayName} birthday was added to the bot.", "", Context.User.Username, Discord.Color.Blue).Build());
-                //DataTable dtNewEvent = storedProcedure.Select(Constants.Constants.discordBotConnStr, "AddEvent", new List<SqlParameter>
-                //{
-                //    new SqlParameter("@EventDateTime", birthday),
-                //    new SqlParameter("@EventName", user.DisplayName + " Birthday"),
-                //    new SqlParameter("@EventDescription", "Happy Birthday to " + user.DisplayName),
-                //    new SqlParameter("@EventChannelSource", Context.Channel.Id.ToString()),
-                //    new SqlParameter("@CreatedBy", guild.Roles.Where(s => s.Name.Contains("birthday")).Select(s => s.Mention).FirstOrDefault())
-                //});
-
-                //foreach (DataRow dr in dtNewEvent.Rows)
-                //{
-                //    var embed = new EmbedBuilder
-                //    {
-                //        Title = ":calendar_spiral: BigBirdBot - Birthday - " + dr["EventName"].ToString(),
-                //        Color = Color.Gold
-                //    };
-                //    embed
-                //        .AddField("Time", dr["eventDateTime"].ToString())
-                //        .WithFooter(footer => footer.Text = "Created by " + Context.User.Username)
-                //        .WithCurrentTimestamp();
-                //    await FollowupAsync(embed: embed.Build());
-                //}
             }
             catch (Exception e)
             {

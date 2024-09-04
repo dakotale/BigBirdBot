@@ -118,25 +118,7 @@ namespace DiscordBot.SlashCommands
             }
         }
 
-        [SlashCommand("raffle", "Picks a random person in the server to win a prize.")]
-        [EnabledInDm(false)]
-        [Discord.Interactions.RequireUserPermission(ChannelPermission.ManageMessages)]
-        public async Task HandleRaffle()
-        {
-            await DeferAsync();
-            var userList = Context.Guild.GetUsersAsync().ToListAsync().Result;
-            foreach (var user in userList)
-            {
-                var finalList = user.Where(s => !s.IsBot).ToList();
-                Random r = new Random();
-                var winningUser = finalList[r.Next(0, finalList.Count)];
-
-                EmbedHelper embed = new EmbedHelper();
-                await FollowupAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Raffle", $"Congratulations {winningUser.Mention}, you won the raffle!", "", Context.User.Username, Discord.Color.Green).Build());
-            }
-        }
-
-        [SlashCommand("twitter", "When Twitter embeds fail, have the bot autocorrect the links.")]
+        [SlashCommand("fixembed", "Let the bot fix embeds for Twitter, Reddit, and Tiktok.")]
         [EnabledInDm(false)]
         public async Task HandleTwitterEmbeds()
         {

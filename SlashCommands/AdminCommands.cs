@@ -248,32 +248,5 @@ namespace DiscordBot.SlashCommands
 
             await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Scheduled List", description, "", Context.User.Username, Discord.Color.Blue).Build()).ConfigureAwait(false);
         }
-
-        [SlashCommand("chattothread", "Move items from a chat into a thread and create the thread.")]
-        [EnabledInDm(false)]
-        [Discord.Interactions.RequireOwner]
-        public async Task HandleChattoThread([MinValue(1), MaxValue(100)] int numberOfMsgs, string threadName, SocketGuildUser user)
-        {
-            await DeferAsync();
-            var channel = Context.Channel;
-            var msgs = await channel.GetMessagesAsync(numberOfMsgs, CacheMode.AllowDownload, RequestOptions.Default).FlattenAsync();
-
-            var msgsofUser = msgs.Where(s => s.Author.Username.Equals(user.Username)).OrderBy(s => s.CreatedAt).ToList();
-            var textChannel = channel as SocketTextChannel;
-            SocketThreadChannel? thread = null;
-
-            if (textChannel != null)
-            {
-                thread = await textChannel.CreateThreadAsync(threadName, ThreadType.PublicThread, ThreadArchiveDuration.OneWeek, msgsofUser.First(), true).ConfigureAwait(false);
-
-                foreach (var msg in msgsofUser)
-                    await thread.SendMessageAsync(msg.CleanContent).ConfigureAwait(false);
-
-                await FollowupAsync($"{user.Mention}, the {threadName} thread was created here {thread.Mention}");
-            }
-            else
-                await FollowupAsync("An error occurred generating the thread.");
-
-        }
     }
 }

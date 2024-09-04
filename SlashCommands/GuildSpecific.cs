@@ -12,7 +12,7 @@ namespace DiscordBot.SlashCommands
         [SupportGuildOnly(new ulong[] { 1057033598940745728 })]
         [SlashCommand("fireapologized", "Fire continuing the apology arc")]
         [EnabledInDm(false)]
-        [RequireUserPermission(ChannelPermission.ManageMessages)]
+        [RequireRole(1057945750543278082), RequireRole(1212920898009567283)]
         public async Task HandleApology()
         {
             await DeferAsync();
@@ -98,7 +98,7 @@ namespace DiscordBot.SlashCommands
         [SupportGuildOnly(new ulong[] { 1057033598940745728 })]
         [SlashCommand("burncounter", "Bad speller and awesome")]
         [EnabledInDm(false)]
-        [RequireUserPermission(ChannelPermission.ManageMessages)]
+        [RequireRole(1057945750543278082), RequireRole(1280706632199835781)]
         public async Task HandleBurn()
         {
             await DeferAsync();
