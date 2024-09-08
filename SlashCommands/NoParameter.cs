@@ -113,8 +113,7 @@ namespace DiscordBot.SlashCommands
             catch (Exception e)
             {
                 EmbedHelper embedHelper = new EmbedHelper();
-                var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", e.Message, Constants.Constants.errorImageUrl, "", Color.Red, "");
-                await FollowupAsync(embed: embed.Build());
+                await FollowupAsync(embed: embedHelper.BuildErrorEmbed("", e.Message, Context.User.Username).Build());
             }
         }
 
@@ -155,7 +154,7 @@ namespace DiscordBot.SlashCommands
             string output = "";
 
             DataTable dt = stored.Select(connStr, "GetLog", new List<SqlParameter>());
-            EmbedHelper embed = new EmbedHelper();
+            EmbedHelper embedHelper = new EmbedHelper();
 
             if (dt.Rows.Count > 0)
             {
@@ -163,12 +162,10 @@ namespace DiscordBot.SlashCommands
                 {
                     output += $"__Most Recent Error Message Reported__\nDate Logged: {dr["CreatedOn"].ToString()}\nSource: {dr["Source"].ToString()}\nSeverity: {dr["Severity"].ToString()}\nMessage: {dr["Message"].ToString()}\nException: {dr["Exception"].ToString()}";
                 }
-                await FollowupAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Error Log", output, "", Context.User.Username, Discord.Color.Red).Build());
+                await FollowupAsync(embed: embedHelper.BuildErrorEmbed("Log", output, Context.User.Username).Build());
             }
             else
-            {
-                await FollowupAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Error Log", "No recent exceptions found.", "", Context.User.Username, Discord.Color.Blue).Build());
-            }
+                await FollowupAsync(embed: embedHelper.BuildErrorEmbed("Log", "No recent exceptions found.", Context.User.Username).Build());
         }
 
         [SlashCommand("welcomemsg", "Enables/Disables the welcome message for the bot.")]

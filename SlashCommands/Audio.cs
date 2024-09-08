@@ -12,8 +12,6 @@ using Lavalink4NET.Rest.Entities.Tracks;
 using DiscordBot.Helper;
 using Fergun.Interactive.Pagination;
 using Lavalink4NET.Tracks;
-using Microsoft.Extensions.Options;
-using Flurl;
 
 namespace DiscordBot.SlashCommands
 {

@@ -1,14 +1,11 @@
 ﻿using Discord;
-using Discord.Commands;
 using Discord.Interactions;
 using Discord.WebSocket;
 using DiscordBot.Constants;
 using DiscordBot.Helper;
 using DiscordBot.Misc;
-using Figgle;
 using System.Data;
 using System.Data.SqlClient;
-using System.Net;
 
 namespace DiscordBot.SlashCommands
 {
@@ -146,11 +143,8 @@ namespace DiscordBot.SlashCommands
             }
             catch (Exception e)
             {
-                EmbedHelper embed = new EmbedHelper();
-                string title = "BigBirdBot - Birthday Error";
-                string desc = e.Message;
-                string createdByMsg = "Command from: " + Context.User.Username;
-                await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, Constants.Constants.errorImageUrl, createdByMsg, Color.Red).Build());
+                EmbedHelper embedHelper = new EmbedHelper();
+                await FollowupAsync(embed: embedHelper.BuildErrorEmbed("Birthday", e.Message, Context.User.Username).Build());
             }
         }
 
@@ -178,8 +172,7 @@ namespace DiscordBot.SlashCommands
             catch (Exception e)
             {
                 EmbedHelper embedHelper = new EmbedHelper();
-                var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", e.Message, Constants.Constants.errorImageUrl, "", Color.Red, "");
-                await FollowupAsync(embed: embed.Build());
+                await FollowupAsync(embed: embedHelper.BuildErrorEmbed("", e.Message, Context.User.Username).Build());
             }
         }
 
@@ -191,6 +184,91 @@ namespace DiscordBot.SlashCommands
             ulong textChannelId = ulong.Parse("1156625507840954369");
             await Context.Client.GetGuild(guildId).GetTextChannel(textChannelId).SendMessageAsync($"**Bug Report from {Context.User.Username} in {Context.Guild.Name}**: \n" + bugFound);
             await ReplyAsync("Bug report submitted.");
+        }
+
+        [SlashCommand("polldnd", "Poll feature specifically for D&D weekly scheduling")]
+        [EnabledInDm(false)]
+        public async Task HandlePollDND(SocketGuildUser user)
+        {
+            await DeferAsync();
+            List<Emoji> emojis = new List<Emoji>
+            {
+                new Emoji("1️⃣"),
+                new Emoji("2️⃣"),
+                new Emoji("3️⃣"),
+                new Emoji("4️⃣"),
+                new Emoji("5️⃣"),
+                new Emoji("6️⃣"),
+                new Emoji("7️⃣"),
+            };
+
+            EmbedHelper embed = new EmbedHelper();
+            string title = "BigBirdBot - Poll";
+            string desc = $"Poll Item: **Best day for {user.Mention}/{user.DisplayName}'s campaign?**\n\nChoices:";
+            string createdByMsg = "Command from: " + Context.User.Username;
+
+            List<string> items = new List<string>();
+            for (int i = 1; i < 8; i++)
+            {
+                DateTime dateTime = DateTime.Now.AddDays(i);
+                string dayOfWeek = dateTime.DayOfWeek.ToString();
+
+                string item = dayOfWeek + " (" + dateTime.ToString("MM/dd") + ")";
+                items.Add(item);
+            }
+
+            for (int i = 0; i < items.Count; i++)
+                desc += "\n" + i.ToString() + ". **" + items[i] + "**";
+
+            IUserMessage msg = await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, "", createdByMsg, Discord.Color.Blue).Build());
+
+            for (int i = 0; i < items.Count; i++)
+                await msg.AddReactionAsync(emojis[i]);
+        }
+
+        [SlashCommand("setrolecolor", "Set the color of your role by hex code")]
+        [EnabledInDm(false)]
+        public async Task HandleColor([MinLength(1), MaxLength(9)] string hexCode)
+        {
+            await DeferAsync();
+            EmbedHelper embedHelper = new EmbedHelper();
+            try
+            {
+                var color = System.Drawing.ColorTranslator.FromHtml(hexCode);
+                var serverId = Int64.Parse(Context.Guild.Id.ToString());
+                var guild = Context.Client.GetGuild(ulong.Parse(serverId.ToString()));
+                var user = Context.User;
+
+                if (color != System.Drawing.Color.Empty)
+                {
+                    Color roleColor = new Color(color.R, color.G, color.B);
+
+                    if (guild.Roles.Any(s => s.Name.Equals(Context.User.Username)))
+                    {
+                        var role = guild.Roles.First(s => s.Name.Equals(Context.User.Username));
+                        await role.ModifyAsync(f => f.Color = roleColor).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        var botRole = guild.Roles.First(s => s.Name.Equals("BigBirdBot"));
+                        var botPos = botRole.Position;
+
+                        var role = await guild.CreateRoleAsync(Context.User.Username, null, roleColor, false, true);
+
+                        // Should be 1 under the bot to prevent a missing permissions error
+                        await role.ModifyAsync(f => f.Position = (botPos - 1)).ConfigureAwait(false);
+                        await (user as IGuildUser).AddRoleAsync(role).ConfigureAwait(false);
+                    }
+
+                    await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Role Color", $"Color was updated successfully", "", Context.User.Username, Discord.Color.Blue).Build());
+                }
+                else
+                    await FollowupAsync(embed: embedHelper.BuildErrorEmbed("Color", "The hex code entered was not valid.\nExample: #607c8c", Context.User.Username).Build());
+            }
+            catch (Exception ex)
+            {
+                await FollowupAsync(embed: embedHelper.BuildErrorEmbed("Color", ex.Message, Context.User.Username).Build());
+            }
         }
     }
 }

@@ -70,8 +70,7 @@ namespace DiscordBot.SlashCommands
             catch (Exception e)
             {
                 EmbedHelper embedHelper = new EmbedHelper();
-                var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", e.Message, Constants.Constants.errorImageUrl, "", Discord.Color.Red, "");
-                await FollowupAsync(embed: embed.Build()).ConfigureAwait(false);
+                await FollowupAsync(embed: embedHelper.BuildErrorEmbed("", e.Message, Context.User.Username).Build());
             }
         }
 
@@ -121,9 +120,7 @@ namespace DiscordBot.SlashCommands
                 await FollowupAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Role Selection", "Please select from the list of available roles.", "", Context.User.Username, Discord.Color.Blue).Build(), components: builder.Build()).ConfigureAwait(false);
             }
             else
-            {
-                await FollowupAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Role Selection", "There are no roles available to select.", Constants.Constants.errorImageUrl, Context.User.Username, Discord.Color.Red).Build()).ConfigureAwait(false);
-            }
+                await FollowupAsync(embed: embed.BuildErrorEmbed("Roles", "There are no roles available to select.", Context.User.Username).Build());
         }
 
         [SlashCommand("addkeymultiroles", "Create a roles based on channels in the multiple action keyword category.")]
@@ -143,7 +140,7 @@ namespace DiscordBot.SlashCommands
 
             if (dt.Rows.Count > 24)
             {
-                await FollowupAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Roles Error", "The limit of 25 roles have been added, please delete a role before adding one.", Constants.Constants.errorImageUrl, Context.User.Username, Color.Red).Build());
+                await FollowupAsync(embed: embed.BuildErrorEmbed("Roles", "The limit of 25 roles have been added, please delete a role before adding one.", Context.User.Username).Build());
                 return;
             }
 
