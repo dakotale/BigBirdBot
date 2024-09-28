@@ -6,6 +6,7 @@ using System.Data.SqlClient;
 using System.Data;
 using System.Net;
 using Discord.WebSocket;
+using Microsoft.Extensions.Primitives;
 
 namespace DiscordBot.SlashCommands
 {
@@ -93,7 +94,7 @@ namespace DiscordBot.SlashCommands
                     description += "- " + dr["TableList"].ToString() + Environment.NewLine;
                 }
 
-                await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Thirst List", "List of available thirst tables:\n" + description, "", Context.User.Username, Discord.Color.Blue).Build());
+                await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Multi-Keyword List", "List of available multi-keyword tables:\n" + description, "", Context.User.Username, Discord.Color.Blue).Build());
             }
         }
 
@@ -657,42 +658,6 @@ namespace DiscordBot.SlashCommands
             }
         }
 
-        [SlashCommand("delmultiimage", "Deletes a multi-keyword image with a given path")]
-        [EnabledInDm(false)]
-        [RequireOwner]
-        public async Task HandleThirstImageDelete([MinLength(1)] string fileName, [MinLength(1)] string chatName)
-        {
-            await DeferAsync();
-
-            EmbedHelper embedHelper = new EmbedHelper();
-            string tableName = chatName.Trim();
-            fileName = @"C:\Temp\DiscordBot\" + tableName + @"\" + fileName.Trim();
-
-            StoredProcedure stored = new StoredProcedure();
-            DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "CheckIfThirstURLExists", new List<SqlParameter>
-            {
-                new SqlParameter("@FilePath", fileName),
-                new SqlParameter("TableName", tableName)
-            });
-
-            if (dt.Rows.Count > 0)
-            {
-                stored.UpdateCreate(Constants.Constants.discordBotConnStr, "DeleteThirstURL", new List<SqlParameter>
-                {
-                    new SqlParameter("@FilePath", fileName),
-                    new SqlParameter("TableName", tableName)
-                });
-
-                var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Delete Successful", $"Image {fileName} was successfully deleted from the {tableName} table.", "", Context.User.Username, Color.Blue, "");
-                await FollowupAsync(embed: embed.Build());
-            }
-            else
-            {
-                var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "The image doesn't exist in the table provided or the table doesn't exist.", Constants.Constants.errorImageUrl, Context.User.Username, Color.Red, "");
-                await FollowupAsync(embed: embed.Build());
-            }
-        }
-
         [SlashCommand("addmultievent", "Adds a scheduled job to send a photo for a user.")]
         [EnabledInDm(false)]
         [RequireUserPermission(ChannelPermission.ManageMessages)]
@@ -717,7 +682,7 @@ namespace DiscordBot.SlashCommands
                 {
                     foreach (DataRow dr in dt.Rows)
                     {
-                        var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Multiple Keyword User Added", $"{tableName.Trim()} was successfully added and **{user.Username}** will start receiving this on {DateTime.Parse(dr["ScheduleTime"].ToString()).ToString("MM/dd/yyyy hh:mm t")} ET.\nThe current list of thirst people/characters for this user are; *{dr["ScheduledEventTable"].ToString()}*", "", Context.User.Username, Color.Blue, "");
+                        var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Multiple Keyword User Added", $"{tableName.Trim()} was successfully added and **{user.Username}** will start receiving this on {DateTime.Parse(dr["ScheduleTime"].ToString()).ToString("MM/dd/yyyy hh:mm t")} ET.\nThe current list of multi people/characters for this user are; *{dr["ScheduledEventTable"].ToString()}*", "", Context.User.Username, Color.Blue, "");
                         await FollowupAsync(embed: embed.Build());
                     }
                 }
@@ -815,6 +780,111 @@ namespace DiscordBot.SlashCommands
             foreach (DataRow dr in dt.Rows)
             {
                 await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Multi-Keyword User Removed", dr["Message"].ToString(), "", Context.User.Username, Discord.Color.Blue).Build());
+            }
+        }
+
+        [SlashCommand("multicount", "Get the number of links/images for a keyword")]
+        [EnabledInDm(false)]
+        public async Task HandleMultiCount([MinLength(1)] string keyword)
+        {
+            await DeferAsync();
+            try
+            {
+                StoredProcedure stored = new StoredProcedure();
+                keyword = keyword.Trim();
+                var serverId = Int64.Parse(Context.Guild.Id.ToString());
+                EmbedHelper embed = new EmbedHelper();
+
+                DataTable dtCheck = stored.Select(Constants.Constants.discordBotConnStr, "CheckKeywordExistsThirstMap", new List<SqlParameter>
+                {
+                    new SqlParameter("@Keyword", keyword)
+                });
+
+                if (dtCheck.Rows.Count > 0)
+                {
+                    DataTable dt = new DataTable();
+                    string total = "0";
+                    string totalImages = "";
+                    string totalLinks = "";
+                    dt = stored.Select(Constants.Constants.discordBotConnStr, "GetFilePathCountByKeyword", new List<SqlParameter>
+                    {
+                        new SqlParameter("@Keyword", keyword)
+                    });
+
+                    foreach (DataRow dr in dt.Rows)
+                    {
+                        total = dr["Total"].ToString();
+                        totalImages = dr["TotalImages"].ToString();
+                        totalLinks = dr["TotalLinks"].ToString();
+                    }
+
+                    await FollowupAsync(embed: embed.BuildMessageEmbed($"BigBirdBot - {keyword} Keyword Count", $"The number of links/images for the **{keyword}** keyword is **{total}**\nNumber of Links: **{totalLinks}**\nNumber of Images: **{totalImages}**", "", Context.User.Username, Discord.Color.Blue).Build());
+                }
+                else
+                {
+                    await FollowupAsync(embed: embed.BuildErrorEmbed("Keyword", $"The keyword '{keyword}' does not exist.", Context.User.Username).Build());
+                }
+            }
+            catch (Exception ex)
+            {
+                EmbedHelper embed = new EmbedHelper();
+                await FollowupAsync(embed: embed.BuildErrorEmbed("Keyword Multi", ex.Message, Context.User.Username).Build());
+            }
+        }
+
+        [SlashCommand("keysourceadded", "See how many sources you added for a keyword")]
+        [EnabledInDm(false)]
+        public async Task HandleUserKeywordSource([MinLength(1)] string keyword)
+        {
+            await DeferAsync();
+            StoredProcedure stored = new StoredProcedure();
+            EmbedHelper embed = new EmbedHelper();
+            string userId = Context.User.Id.ToString();
+            string serverId = Context.Guild.Id.ToString();
+            keyword = keyword.Trim();
+
+            DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "GetUserKeywordSourceAdded", new List<SqlParameter>
+            {
+                new SqlParameter("@UserID", userId),
+                new SqlParameter("@Keyword", keyword),
+                 new SqlParameter("@ServerUID", serverId)
+            });
+
+            if (dt.Rows.Count == 0 || dt.Rows[0]["TotalTimesSourced"].ToString() == "0")
+                await FollowupAsync(embed: embed.BuildErrorEmbed("Keyword Source Added", "This keyword does not exist or you have not added any sources to this keyword.", Context.User.Username).Build());
+            else
+            {
+                DataRow dr = dt.Rows[0];
+                string value = dr["TotalTimesSourced"].ToString();
+                await FollowupAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Keyword Source Added", $"{Context.User.Mention} added **{value}** source(s) to this keyword (**{keyword}**)!\nThank you so much! :)", "", Context.User.Username, Discord.Color.Blue).Build());
+            }
+        }
+
+        [SlashCommand("keytyped", "See how many times you typed a keyword")]
+        [EnabledInDm(false)]
+        public async Task HandleUserKeywordTyped([MinLength(1)] string keyword)
+        {
+            await DeferAsync();
+            StoredProcedure stored = new StoredProcedure();
+            EmbedHelper embed = new EmbedHelper();
+            string userId = Context.User.Id.ToString();
+            string serverId = Context.Guild.Id.ToString();
+            keyword = keyword.Trim();
+
+            DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "GetUserKeywordTyped", new List<SqlParameter>
+            {
+                new SqlParameter("@UserID", userId),
+                new SqlParameter("@Keyword", keyword), 
+                new SqlParameter("@ServerUID", serverId)
+            });
+
+            if (dt.Rows.Count == 0 || dt.Rows[0]["TotalTimesTyped"].ToString() == "0")
+                await FollowupAsync(embed: embed.BuildErrorEmbed("Keyword Typed", "This keyword does not exist or you have not typed this keyword.", Context.User.Username).Build());
+            else
+            {
+                DataRow dr = dt.Rows[0];
+                string value = dr["TotalTimesTyped"].ToString();
+                await FollowupAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Keyword Source Added", $"{Context.User.Mention} typed keyword (**{keyword}) {value}** times!", "", Context.User.Username, Discord.Color.Blue).Build());
             }
         }
     }

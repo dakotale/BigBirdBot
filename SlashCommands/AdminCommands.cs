@@ -6,73 +6,12 @@ using System.Data;
 using Discord;
 using Fergun.Interactive;
 using Discord.WebSocket;
-using static System.Runtime.InteropServices.JavaScript.JSType;
-using System.Collections.Generic;
 
 namespace DiscordBot.SlashCommands
 {
     public class AdminCommands : InteractionModuleBase<SocketInteractionContext>
     {
         private readonly InteractiveService _interactive;
-
-        [SlashCommand("announcement", "ONLY THE BOT OWNER CAN RUN THIS - Broadcast a message to all server.")]
-        [EnabledInDm(false)]
-        [Discord.Interactions.RequireOwner]
-        public async Task HandleAnnouncement([MinValue(1), MaxLength(4000)] string message, Attachment attachment = null)
-        {
-            await DeferAsync();
-            List<string> serverList = new List<string>();
-            List<string> serverListNoPerms = new List<string>();
-            try
-            {
-                StoredProcedure stored = new StoredProcedure();
-                string imageUrl = "";
-
-                if (attachment != null)
-                    imageUrl = attachment.Url;
-
-                // GetServer ulong IDs
-                // var test = Context.Client.GetGuild(id).Users.Where(s => s.IsBot == false).ToList();
-                DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "GetServersNonNullDefaultChannel", new List<SqlParameter>());
-                EmbedHelper embedHelper = new EmbedHelper();
-                foreach (DataRow dr in dt.Rows)
-                {
-                    // Need to check if Guild exists
-                    if (Context.Client.GetGuild(ulong.Parse(dr["ServerUID"].ToString())) != null)
-                    {
-                        var guild = Context.Client.GetGuild(ulong.Parse(dr["ServerUID"].ToString()));
-                        var textChannel = guild.GetTextChannel(ulong.Parse(dr["DefaultChannelID"].ToString()));
-                        if (textChannel != null)
-                        {
-                            IUser bot = guild.Users.Where(s => s.IsBot && s.Username.Contains("BigBirdBot")).FirstOrDefault();
-                            if (bot != null)
-                            {
-                                var user = textChannel.Users.Where(s => s.Id == bot.Id).FirstOrDefault();
-                                if (user != null)
-                                {
-                                    var permissions = user.GetPermissions(textChannel as IGuildChannel);
-                                    if (permissions.SendMessages)
-                                    {
-                                        serverList.Add(guild.Name);
-                                        await textChannel.SendMessageAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Announcement", message, "", "BigBirdBot", Discord.Color.Gold, imageUrl).Build()).ConfigureAwait(false);
-                                    }
-                                    else
-                                        serverListNoPerms.Add(guild.Name);
-                                }
-                            }
-                        }
-                    }
-                }
-                string delimiter = ", ";
-                string result = string.Join(delimiter, serverList);
-                await FollowupAsync($"Announcement sent to **{result}**.\nNot Sent: {string.Join(delimiter, serverListNoPerms)}").ConfigureAwait(false);
-            }
-            catch (Exception e)
-            {
-                EmbedHelper embedHelper = new EmbedHelper();
-                await FollowupAsync(embed: embedHelper.BuildErrorEmbed("", e.Message, Context.User.Username).Build());
-            }
-        }
 
         [SlashCommand("pronoun", "Select a list of available pronouns.")]
         [EnabledInDm(false)]
@@ -225,25 +164,6 @@ namespace DiscordBot.SlashCommands
             });
 
             await FollowupAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Role Added to Role Selection", "Role was added successfully.", "", Context.User.Username, Discord.Color.Blue).Build()).ConfigureAwait(false);
-        }
-
-        [SlashCommand("schedulelist", "Get list of all users scheduled times.")]
-        [EnabledInDm(false)]
-        [Discord.Interactions.RequireOwner]
-        public async Task HandleServerList()
-        {
-            await DeferAsync();
-            StoredProcedure stored = new StoredProcedure();
-
-            DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "GetScheduledEventUsers", new List<SqlParameter>());
-            EmbedHelper embedHelper = new EmbedHelper();
-            string description = "";
-
-            if (dt.Rows.Count > 0)
-                foreach (DataRow dr in dt.Rows)
-                    description += "- " + dr["Username"].ToString() + " - " + dr["ScheduledEventTable"].ToString() + " - " + DateTime.Parse(dr["EventDateTime"].ToString()).ToString("MM/dd hh:mm tt") + "\n";
-
-            await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Scheduled List", description, "", Context.User.Username, Discord.Color.Blue).Build()).ConfigureAwait(false);
         }
     }
 }

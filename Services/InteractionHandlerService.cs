@@ -11,6 +11,7 @@ using Lavalink4NET.Players.Queued;
 using Lavalink4NET.Players;
 using Lavalink4NET;
 using Lavalink4NET.DiscordNet;
+using Discord.Net.Extensions.Interactions;
 
 namespace DiscordBot.Services
 {
@@ -48,6 +49,8 @@ namespace DiscordBot.Services
             var commands =
             //await _handler.RegisterCommandsToGuildAsync(_configuration.GetValue<ulong>("testGuild"));
             await _handler.RegisterCommandsGloballyAsync();
+
+            await _handler.RegisterCommandsAsync();
 
             foreach (var command in commands)
                 _ = _services.GetRequiredService<LoggingService>().DebugAsync($"Name:{command.Name} Type.{command.Type} loaded");
