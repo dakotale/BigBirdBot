@@ -50,7 +50,11 @@ internal class Program
 
         _ = loggingService.InfoAsync("Starting Bot");
 
+#if DEBUG
+        await client.LoginAsync(TokenType.Bot, Constants.devBotToken);
+#else
         await client.LoginAsync(TokenType.Bot, Constants.botToken);
+#endif
         await client.StartAsync();
 
         client.ReactionAdded += HandleReactionAsync;
@@ -285,10 +289,10 @@ internal class Program
             else
             {
                 dt = stored.Select(connStr, "GetPronounUsersByID", new List<SqlParameter>
-            {
-                new SqlParameter("@UserID", Int64.Parse(component.User.Id.ToString())),
-                new SqlParameter("@PronounID", int.Parse(component.Data.CustomId))
-            });
+                {
+                    new SqlParameter("@UserID", Int64.Parse(component.User.Id.ToString())),
+                    new SqlParameter("@PronounID", int.Parse(component.Data.CustomId))
+                });
 
                 DataTable dtPronouns = new DataTable();
                 dtPronouns = stored.Select(connStr, "GetPronouns", new List<SqlParameter>());
@@ -716,7 +720,7 @@ internal class Program
                         }
 
                         // Todo, check all the commands eventually but for now let's stop the accidently double triggering.
-                        if (!message.StartsWith(prefix) && !message.StartsWith("$"))
+                        if (!message.StartsWith(prefix))
                         {
                             var channel = msg.Channel as SocketGuildChannel;
                             StoredProcedure storedProcedure = new StoredProcedure();
@@ -813,8 +817,6 @@ internal class Program
                 }
             }
         }
-
-        Console.WriteLine(message);
     }
     #endregion
 

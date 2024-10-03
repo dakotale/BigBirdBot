@@ -142,31 +142,33 @@ namespace DiscordBot.Services
 
         private static Task LogAsync(LogMessage log)
         {
-            Console.ForegroundColor = log.Exception != null ? (ConsoleColor)Severity.Error : ConsoleColor.Cyan;
-            Console.Write($"{DateTime.Now.ToLongTimeString()} [{log.Source}] ");
-            Console.ForegroundColor = ConsoleColor.White;
+            string fileName = "ExceptionLog_" + DateTime.Now.Date.ToString("yyyy_MM_dd") + ".txt";
+            string severity = "", source = "", message = "", exception = "", output = "";
 
             if (!string.IsNullOrEmpty(log.Message))
-                Console.WriteLine($"{log.Message}");
+                message = log.Message;
+
             if (log.Exception != null)
             {
-                Console.WriteLine(log.Exception.ToString());
+                severity = log.Severity.ToString() ?? "";
+                source = string.IsNullOrEmpty(log.Source) ? "" : log.Source;
+                message = string.IsNullOrEmpty(log.Message) ? "" : log.Message;
+                exception = log.Exception.ToString() ?? "";
 
-                StoredProcedure stored = new StoredProcedure();
-                string connStr = Constants.Constants.discordBotConnStr;
-                List<SqlParameter> parameters = new List<SqlParameter>();
+                output = DateTime.Now.ToString("HH:mm:ss") + ": " + message;
+                output += Environment.NewLine + exception + Environment.NewLine + Environment.NewLine;
+            }
 
-                string severity = log.Severity.ToString() ?? "";
-                string source = string.IsNullOrEmpty(log.Source) ? "" : log.Source;
-                string message = string.IsNullOrEmpty(log.Message) ? "" : log.Message;
-                string exception = log.Exception.ToString() ?? "";
-
-                parameters.Add(new SqlParameter("@Severity", severity));
-                parameters.Add(new SqlParameter("@Source", source));
-                parameters.Add(new SqlParameter("@Message", message));
-                parameters.Add(new SqlParameter("@Exception", exception));
-
-                stored.UpdateCreate(connStr, "AddLog", parameters);
+            if (!File.Exists(fileName))
+            {
+                using (StreamWriter sw = File.CreateText(fileName))
+                {
+                    sw.WriteLine($"Bot Exceptions for {DateTime.Now.ToString("yyyy-MM-dd")}");
+                }
+            }
+            using (StreamWriter sw = File.AppendText(fileName))
+            {
+                sw.WriteLine(output);
             }
 
             return Task.CompletedTask;
