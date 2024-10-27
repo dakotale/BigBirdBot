@@ -658,10 +658,10 @@ namespace DiscordBot.SlashCommands
             }
         }
 
-        [SlashCommand("addmultievent", "Adds a scheduled job to send a photo for a user.")]
+        [SlashCommand("addmultieventadmin", "Adds a scheduled job to send a photo for a user.")]
         [EnabledInDm(false)]
         [RequireUserPermission(ChannelPermission.ManageMessages)]
-        public async Task HandleThirstEventAdd(SocketGuildUser user, [MinLength(1)] string keyword)
+        public async Task HandleThirstEventAdminAdd(SocketGuildUser user, [MinLength(1)] string keyword)
         {
             await DeferAsync();
 
@@ -675,14 +675,50 @@ namespace DiscordBot.SlashCommands
                 DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "AddEventScheduledTime", new List<SqlParameter>
                 {
                     new SqlParameter("@UserID", Int64.Parse(user.Id.ToString())),
-                    new SqlParameter("@TableName", tableName.Trim())
+                    new SqlParameter("@TableName", tableName)
                 });
 
                 if (dt.Rows.Count > 0)
                 {
                     foreach (DataRow dr in dt.Rows)
                     {
-                        var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Multiple Keyword User Added", $"{tableName.Trim()} was successfully added and **{user.Username}** will start receiving this on {DateTime.Parse(dr["ScheduleTime"].ToString()).ToString("MM/dd/yyyy hh:mm t")} ET.\nThe current list of multi people/characters for this user are; *{dr["ScheduledEventTable"].ToString()}*", "", Context.User.Username, Color.Blue, "");
+                        var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Multiple Keyword User Added", $"{tableName} was successfully added and **{user.Username}** will start receiving this on {DateTime.Parse(dr["ScheduleTime"].ToString()).ToString("MM/dd/yyyy hh:mm t")} ET.\nThe current list of multi people/characters for this user are; *{dr["ScheduledEventTable"].ToString()}*", "", Context.User.Username, Color.Blue, "");
+                        await FollowupAsync(embed: embed.Build());
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                EmbedHelper embedHelper = new EmbedHelper();
+                var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", e.Message, Constants.Constants.errorImageUrl, "", Color.Red, "");
+                await FollowupAsync(embed: embed.Build());
+            }
+        }
+
+        [SlashCommand("addmultievent", "Adds a scheduled job based on the current channel you're in.")]
+        [EnabledInDm(false)]
+        public async Task HandleThirstEventAdd()
+        {
+            await DeferAsync();
+
+            try
+            {
+                StoredProcedure stored = new StoredProcedure();
+                EmbedHelper embedHelper = new EmbedHelper();
+
+                var tableName = Context.Channel.Name.Trim();
+
+                DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "AddEventScheduledTime", new List<SqlParameter>
+                {
+                    new SqlParameter("@UserID", Int64.Parse(Context.User.Id.ToString())),
+                    new SqlParameter("@TableName", tableName)
+                });
+
+                if (dt.Rows.Count > 0)
+                {
+                    foreach (DataRow dr in dt.Rows)
+                    {
+                        var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Multiple Keyword User Added", $"{tableName} was successfully added and **{Context.User.Username}** will start receiving this on {DateTime.Parse(dr["ScheduleTime"].ToString()).ToString("MM/dd/yyyy hh:mm t")} ET.\nThe current list of multi people/characters for you are; *{dr["ScheduledEventTable"].ToString()}*", "", Context.User.Username, Color.Blue, "");
                         await FollowupAsync(embed: embed.Build());
                     }
                 }

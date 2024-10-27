@@ -75,6 +75,7 @@ namespace DiscordBot.SlashCommands
             }
 
             DeletePlayerConnected(Int64.Parse(Context.Guild.Id.ToString()));
+            DeleteMusicQueue(string.Empty, Int64.Parse(Context.Guild.Id.ToString()), true);
 
             var embed = new EmbedBuilder
             {
@@ -267,6 +268,7 @@ namespace DiscordBot.SlashCommands
             }
             
             DeletePlayerConnected(Int64.Parse(Context.Guild.Id.ToString()));
+            DeleteMusicQueue(string.Empty, Int64.Parse(Context.Guild.Id.ToString()), true);
             var result = new EmbedBuilder
             {
                 Title = $"BigBirdBot Music - Leave",
@@ -581,6 +583,8 @@ namespace DiscordBot.SlashCommands
                 return;
             }
 
+            DeleteMusicQueue(string.Empty, Int64.Parse(Context.Guild.Id.ToString()), true);
+
             if (player.Queue.Count > 1)
             {
                 await player.Queue.ClearAsync();
@@ -613,7 +617,7 @@ namespace DiscordBot.SlashCommands
                 element--;
                 var track = player.Queue.ElementAt(element);
                 var item = player.Queue.RemoveAtAsync(element);
-
+                DeleteMusicQueue(track.Track.Uri.ToString(), Int64.Parse(Context.Guild.Id.ToString()), false);
                 var embed = BuildMusicEmbed("Remove", $"Removed **{track.Track.Title}** from the queue");
                 await FollowupAsync(embed: embed.Build()).ConfigureAwait(false);
             }
@@ -775,6 +779,27 @@ namespace DiscordBot.SlashCommands
             {
                 new SqlParameter("@ServerID", Int64.Parse(serverId.ToString()))
             });
+        }
+
+        private void DeleteMusicQueue(string url, long serverId, bool isClearQueue)
+        {
+            StoredProcedure stored = new StoredProcedure();
+
+            if (isClearQueue)
+            {
+                stored.UpdateCreate(Constants.Constants.discordBotConnStr, "DeleteMusicQueueAll", new List<SqlParameter>
+                {
+                    new SqlParameter("@ServerID", Int64.Parse(serverId.ToString()))
+                });
+            }
+            else
+            {
+                stored.UpdateCreate(Constants.Constants.discordBotConnStr, "DeleteMusicQueue", new List<SqlParameter>
+                {
+                    new SqlParameter("@URL", url)
+                });
+            }
+            
         }
 
         // For Single Tracks and Searches

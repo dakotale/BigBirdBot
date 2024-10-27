@@ -8,7 +8,7 @@ using Discord.Net.Extensions.Interactions;
 
 namespace DiscordBot.SlashCommands
 {
-    [GuildModule(1057033598940745728)]
+    //[GuildModule(1057033598940745728)]
     public class GuildSpecific : InteractionModuleBase<SocketInteractionContext>
     {
         [SlashCommand("fireapologized", "Fire continuing the apology arc")]
@@ -20,10 +20,17 @@ namespace DiscordBot.SlashCommands
             string connStr = Constants.Constants.discordBotConnStr;
             StoredProcedure stored = new StoredProcedure();
             DataTable dt = new DataTable();
+            int count = 0;
+
+            if (additionalCount.HasValue)
+                count = additionalCount.Value;
 
             if (additionalCount > 1)
-                for (int i = 0; i < additionalCount; i++)
+                for (int i = 0; i < count; i++)
                     dt = stored.Select(connStr, "AddFireApologized", new List<SqlParameter> { new SqlParameter("@CreatedBy", Context.User.Username) });
+            else if (additionalCount < 0)
+                for (int i = count; i < 0; i++)
+                    dt = stored.Select(connStr, "DeleteFireApologized", new List<SqlParameter> { new SqlParameter("@CreatedBy", Context.User.Username) });
             else
                 dt = stored.Select(connStr, "AddFireApologized", new List<SqlParameter> { new SqlParameter("@CreatedBy", Context.User.Username) });
 
@@ -53,10 +60,17 @@ namespace DiscordBot.SlashCommands
             string connStr = Constants.Constants.discordBotConnStr;
             StoredProcedure stored = new StoredProcedure();
             DataTable dt = new DataTable();
+            int count = 0;
+
+            if (additionalCount.HasValue)
+                count = additionalCount.Value;
 
             if (additionalCount > 1)
                 for (int i = 0; i < additionalCount; i++)
                     dt = stored.Select(connStr, "AddLowLevel", new List<SqlParameter> { new SqlParameter("@CreatedBy", Context.User.Username) });
+            else if (additionalCount < 0)
+                for (int i = count; i < 0; i++)
+                    dt = stored.Select(connStr, "DeleteLowLevel", new List<SqlParameter> { new SqlParameter("@CreatedBy", Context.User.Username) });
             else
                 dt = stored.Select(connStr, "AddLowLevel", new List<SqlParameter> { new SqlParameter("@CreatedBy", Context.User.Username) });
 
@@ -84,10 +98,17 @@ namespace DiscordBot.SlashCommands
             string connStr = Constants.Constants.discordBotConnStr;
             StoredProcedure stored = new StoredProcedure();
             DataTable dt = new DataTable();
+            int count = 0;
+
+            if (additionalCount.HasValue)
+                count = additionalCount.Value;
 
             if (additionalCount > 1)
                 for (int i = 0; i < additionalCount; i++)
                     dt = stored.Select(connStr, "AddKaylaNormal", new List<SqlParameter> { new SqlParameter("@CreatedBy", Context.User.Username) });
+            else if (additionalCount < 0)
+                for (int i = count; i < 0; i++)
+                    dt = stored.Select(connStr, "DeleteKaylaNormal", new List<SqlParameter> { new SqlParameter("@CreatedBy", Context.User.Username) });
             else
                 dt = stored.Select(connStr, "AddKaylaNormal", new List<SqlParameter> { new SqlParameter("@CreatedBy", Context.User.Username) });
 
@@ -114,12 +135,19 @@ namespace DiscordBot.SlashCommands
             await DeferAsync();
             string connStr = Constants.Constants.discordBotConnStr;
             StoredProcedure stored = new StoredProcedure();
+            int count = 0;
+
+            if (additionalCount.HasValue)
+                count = additionalCount.Value;
 
             DataTable dt = new DataTable();
 
             if (additionalCount > 1)
                 for(int i = 0; i < additionalCount; i++)
                     dt = stored.Select(connStr, "AddBurnNormal", new List<SqlParameter> { new SqlParameter("@CreatedBy", Context.User.Username)});
+            else if (additionalCount < 0)
+                for (int i = count; i < 0; i++)
+                    dt = stored.Select(connStr, "DeleteBurnNormal", new List<SqlParameter> { new SqlParameter("@CreatedBy", Context.User.Username) });
             else
                 dt = stored.Select(connStr, "AddBurnNormal", new List<SqlParameter> { new SqlParameter("@CreatedBy", Context.User.Username)});
 
