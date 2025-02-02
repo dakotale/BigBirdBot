@@ -12,8 +12,6 @@ using Lavalink4NET.Players;
 using Lavalink4NET;
 using Lavalink4NET.DiscordNet;
 using Discord.Net.Extensions.Interactions;
-using Lavalink4NET.Rest.Entities.Tracks;
-using System.Numerics;
 
 namespace DiscordBot.Services
 {
@@ -86,50 +84,9 @@ namespace DiscordBot.Services
                                     options.TextChannel = textChannel;
                                     var retrieveOptions = new PlayerRetrieveOptions(ChannelBehavior: channelBehavior);
 
-                                    var player = await _audioService.Players.JoinAsync<CustomPlayer, CustomPlayerOptions>(voiceChannel, CreatePlayerAsync, options);
-
-                                    dt = stored.Select(Constants.Constants.discordBotConnStr, "GetMusicQueue", new List<SqlParameter>
-                                    {
-                                        new SqlParameter("@ServerID", Int64.Parse(guild.Id.ToString()))
-                                    });
-
-                                    if (dt.Rows.Count > 0)
-                                    {
-                                        foreach (DataRow dr in dt.Rows)
-                                        {
-                                            string url = dr["URL"].ToString();
-                                            var tracks = await _audioService.Tracks.LoadTracksAsync(url, TrackSearchMode.YouTube);
-                                            if (!tracks.IsFailed)
-                                            {
-                                                var track = tracks.Track;
-
-                                                // This could be a playlist so we handle it differently
-                                                if (Uri.IsWellFormedUriString(url, UriKind.Absolute))
-                                                {
-                                                    if (tracks.Count == 1)
-                                                    {
-                                                        await player.PlayAsync(track).ConfigureAwait(false);
-                                                        await player.SetVolumeAsync(GetVolume(Int64.Parse(guild.Id.ToString())) / 100f).ConfigureAwait(false);
-                                                    }
-                                                    else
-                                                    {
-                                                        foreach (var t in tracks.Tracks)
-                                                            await player.PlayAsync(t).ConfigureAwait(false);
-
-                                                        await player.SetVolumeAsync(GetVolume(Int64.Parse(guild.Id.ToString())) / 100f).ConfigureAwait(false);
-                                                    }
-                                                }
-                                                // If it's a direct search, we're not loading a playlist so only get the first track
-                                                else
-                                                {
-                                                    await player.PlayAsync(track).ConfigureAwait(false);
-                                                    await player.SetVolumeAsync(GetVolume(Int64.Parse(guild.Id.ToString())) / 100f).ConfigureAwait(false);
-                                                }
-                                            }
-                                        }
-                                    }
+                                    await _audioService.Players.JoinAsync<CustomPlayer, CustomPlayerOptions>(voiceChannel, CreatePlayerAsync, options);
                                 });
-                                
+
                                 Console.WriteLine($"{guild.Name} Player joined successfully");
                             }
                             else
@@ -228,22 +185,6 @@ namespace DiscordBot.Services
             ArgumentNullException.ThrowIfNull(properties);
 
             return ValueTask.FromResult(new CustomPlayer(properties));
-        }
-
-        private int GetVolume(long guildId)
-        {
-            StoredProcedure procedure = new StoredProcedure();
-            int volume = 50;
-
-            DataTable dt = procedure.Select(Constants.Constants.discordBotConnStr, "GetVolume", new List<SqlParameter>
-            {
-                new SqlParameter("@ServerUID", guildId)
-            });
-
-            foreach (DataRow dr in dt.Rows)
-                volume = int.Parse(dr["Volume"].ToString());
-
-            return volume;
         }
     }
 }

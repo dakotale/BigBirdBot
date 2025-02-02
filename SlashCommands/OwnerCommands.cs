@@ -7,7 +7,7 @@ using System.Data.SqlClient;
 using System.Data;
 using Discord.WebSocket;
 
-namespace DiscordBot.SlashCommands 
+namespace DiscordBot.SlashCommands
 {
     [GuildModule(880569055856185354)]
     public class OwnerCommands : InteractionModuleBase<SocketInteractionContext>

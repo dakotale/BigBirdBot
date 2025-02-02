@@ -88,8 +88,8 @@ namespace DiscordBot.Services
                 audit.InsertAudit(command.Value.Name, context.User.Id.ToString(), Constants.Constants.discordBotConnStr, context.Guild.Id.ToString());
                 return;
             }
-                
-            
+
+
             if (result.ErrorReason.Contains("The input text has too few parameters"))
             {
                 EmbedHelper embedHelper = new EmbedHelper();

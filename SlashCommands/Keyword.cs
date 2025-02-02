@@ -7,6 +7,7 @@ using System.Data;
 using System.Net;
 using Discord.WebSocket;
 using Microsoft.Extensions.Primitives;
+using System;
 
 namespace DiscordBot.SlashCommands
 {
@@ -910,7 +911,7 @@ namespace DiscordBot.SlashCommands
             DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "GetUserKeywordTyped", new List<SqlParameter>
             {
                 new SqlParameter("@UserID", userId),
-                new SqlParameter("@Keyword", keyword), 
+                new SqlParameter("@Keyword", keyword),
                 new SqlParameter("@ServerUID", serverId)
             });
 
@@ -922,6 +923,198 @@ namespace DiscordBot.SlashCommands
                 string value = dr["TotalTimesTyped"].ToString();
                 await FollowupAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Keyword Source Added", $"{Context.User.Mention} typed keyword (**{keyword}) {value}** times!", "", Context.User.Username, Discord.Color.Blue).Build());
             }
+        }
+
+        [SlashCommand("addkeywordlink", "Add the same link to multiple comma-separated keywords in your server.")]
+        [EnabledInDm(false)]
+        public async Task HandleMultipleLink([MinLength(1)] string keyword, string url)
+        {
+            await DeferAsync();
+
+            StoredProcedure stored = new StoredProcedure();
+            string connStr = Constants.Constants.discordBotConnStr;
+            List<string> multipleKeywords = new List<string>();
+
+            if (keyword.Contains(","))
+                multipleKeywords = keyword.Split(',', StringSplitOptions.TrimEntries).ToList();
+            else
+                multipleKeywords.Add(keyword);
+
+            foreach (var m in multipleKeywords)
+            {
+                if (url.Contains("https://twitter.com"))
+                    url = url.Replace("twitter", "fxtwitter");
+                if (url.Contains("https://x.com"))
+                    url = url.Replace("x.com", "fxtwitter.com");
+                if (url.Contains("https://tiktok.com"))
+                    url = url.Replace("tiktok.com", "vxtiktok.com");
+                if (url.Contains("https://instagram.com") || url.Contains("https://www.instagram.com"))
+                    url = url.Replace("instagram.com", "ddinstagram.com");
+                if (url.Contains("https://bsky.app"))
+                    url = url.Replace("bsky.app", "bskyx.app");
+
+                // Check if it's in the ThirstMap and run the add command
+                List<SqlParameter> parameters = new List<SqlParameter>();
+                parameters.Add(new SqlParameter("@AddKeyword", "add" + m));
+
+                DataTable dt = stored.Select(connStr, "GetThirstTableByMap", parameters);
+                if (dt.Rows.Count > 0)
+                {
+                    bool multiUrl = false;
+
+                    if (url.Contains(","))
+                        multiUrl = true;
+
+                    if (multiUrl)
+                    {
+                        string[] urls = url.Split(",", StringSplitOptions.TrimEntries);
+                        foreach (var u in urls)
+                        {
+                            bool result = u.Trim().StartsWith("http");
+
+                            if (result)
+                            {
+                                // Check if link exists for thirst table
+                                DataTable dtExists = stored.Select(connStr, "CheckIfThirstURLExists", new List<SqlParameter>
+                                {
+                                    new SqlParameter("@FilePath", u),
+                                    new SqlParameter("@TableName", dt.Rows[0]["TableName"].ToString())
+                                });
+
+                                if (dtExists.Rows.Count == 0)
+                                {
+                                    string userId = Context.User.Id.ToString();
+                                    foreach (DataRow dr in dt.Rows)
+                                    {
+                                        stored.UpdateCreate(connStr, "AddThirstByMap", new List<System.Data.SqlClient.SqlParameter>
+                                        {
+                                            new SqlParameter("@FilePath", u),
+                                            new SqlParameter("@TableName", dr["TableName"].ToString()),
+                                            new SqlParameter("@UserID", userId)
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        Uri uriResult;
+                        bool result = Uri.TryCreate(url, UriKind.Absolute, out uriResult)
+                            && (uriResult.Scheme == Uri.UriSchemeHttp || uriResult.Scheme == Uri.UriSchemeHttps);
+
+                        if (result)
+                        {
+                            // Check if link exists for thirst table
+                            DataTable dtExists = stored.Select(connStr, "CheckIfThirstURLExists", new List<SqlParameter>
+                            {
+                                new SqlParameter("@FilePath", url),
+                                new SqlParameter("@TableName", dt.Rows[0]["TableName"].ToString())
+                            });
+
+                            if (dtExists.Rows.Count == 0)
+                            {
+                                string userId = Context.User.Id.ToString();
+                                foreach (DataRow dr in dt.Rows)
+                                {
+                                    stored.UpdateCreate(connStr, "AddThirstByMap", new List<System.Data.SqlClient.SqlParameter>
+                                    {
+                                        new SqlParameter("@FilePath", url),
+                                        new SqlParameter("@TableName", dr["TableName"].ToString()),
+                                        new SqlParameter("@UserID", userId)
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            var embed = new EmbedBuilder
+            {
+                Title = "BigBirdBot - Added Links",
+                Color = Color.Blue,
+                Description = $"Added link(s) successfully for **{keyword}**."
+            };
+
+            await FollowupAsync(embed: embed.Build());
+        }
+
+        [SlashCommand("addkeywordimage", "Add the same attachment to multiple comma-separated keywords in your server.")]
+        [EnabledInDm(false)]
+        public async Task HandleMultipleImage([MinLength(1)] string keyword, IAttachment attachment, IAttachment? attachment2 = null, IAttachment? attachment3 = null, IAttachment? attachment4 = null, IAttachment? attachment5 = null, IAttachment? attachment6 = null, IAttachment? attachment7 = null, IAttachment? attachment8 = null, IAttachment? attachment9 = null, IAttachment? attachment10 = null)
+        {
+            await DeferAsync();
+            StoredProcedure stored = new StoredProcedure();
+            string connStr = Constants.Constants.discordBotConnStr;
+            List<string> multipleKeywords = new List<string>();
+
+            List<IAttachment?> attachments = new List<IAttachment>();
+            attachments.Add(attachment);
+            attachments.Add(attachment2);
+            attachments.Add(attachment3);
+            attachments.Add(attachment4);
+            attachments.Add(attachment5);
+            attachments.Add(attachment6);
+            attachments.Add(attachment7);
+            attachments.Add(attachment8);
+            attachments.Add(attachment9);
+            attachments.Add(attachment10);
+
+            attachments = attachments.Where(s => s != null).ToList();
+
+            if (keyword.Contains(","))
+                multipleKeywords = keyword.Split(',', StringSplitOptions.TrimEntries).ToList();
+            else
+                multipleKeywords.Add(keyword);
+
+            foreach (var m in multipleKeywords)
+            {
+                // Check if it's in the ThirstMap and run the add command
+                List<SqlParameter> parameters = new List<SqlParameter>();
+                parameters.Add(new SqlParameter("@AddKeyword", "add" + m));
+
+                DataTable dt = stored.Select(connStr, "GetThirstTableByMap", parameters);
+                if (dt.Rows.Count > 0)
+                {
+                    string userId = Context.User.Id.ToString();
+                    foreach (DataRow dr in dt.Rows)
+                    {
+                        foreach (var a in attachments)
+                        {
+                            string tablename = dr["TableName"].ToString();
+                            tablename = tablename.Replace("KeywordMulti.", "");
+                            string attachmentName = a.Filename;
+                            string withoutExt = attachmentName.Split(".", StringSplitOptions.TrimEntries)[0];
+                            string withExt = attachmentName.Split(".", StringSplitOptions.TrimEntries)[1];
+                            withoutExt = withoutExt + "_" + DateTime.Now.ToString("yyyyMMdd_HHmmssfffff");
+
+                            string path = @"C:\Temp\DiscordBot\" + tablename + @"\" + withoutExt + "." + withExt;
+
+                            using (WebClient client = new WebClient())
+                            {
+                                client.DownloadFileAsync(new Uri(attachment.Url), path);
+                            }
+
+                            stored.UpdateCreate(connStr, "AddThirstByMap", new List<System.Data.SqlClient.SqlParameter>
+                            {
+                                new SqlParameter("@FilePath", path),
+                                new SqlParameter("@TableName", dr["TableName"].ToString()),
+                                new SqlParameter("@UserID", userId)
+                            });
+                        }
+                    }
+                }
+            }
+
+            var embed = new EmbedBuilder
+            {
+                Title = "BigBirdBot - Added Image",
+                Color = Color.Blue,
+                Description = $"Added attachment(s) successfully for **{keyword}**."
+            };
+
+            await FollowupAsync(embed: embed.Build());
         }
     }
 }

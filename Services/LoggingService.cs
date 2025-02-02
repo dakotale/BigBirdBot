@@ -142,7 +142,7 @@ namespace DiscordBot.Services
 
         private static Task LogAsync(LogMessage log)
         {
-            string fileName = @"C:\Temp\DiscordBot\ExceptionLogs\ExceptionLog_" + DateTime.Now.Date.ToString("yyyy_MM_dd") + ".txt";
+            string fileName = "ExceptionLog_" + DateTime.Now.Date.ToString("yyyy_MM_dd") + ".txt";
             string severity = "", source = "", message = "", exception = "", output = "";
 
             if (!string.IsNullOrEmpty(log.Message))

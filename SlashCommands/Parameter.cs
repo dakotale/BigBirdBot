@@ -13,7 +13,7 @@ namespace DiscordBot.SlashCommands
     {
         [SlashCommand("random", "Randomize a number from the range provided.")]
         [EnabledInDm(true)]
-        public async Task GenerateRandomNumber([MinValue(1), MaxValue(int.MaxValue)]int number)
+        public async Task GenerateRandomNumber([MinValue(1), MaxValue(int.MaxValue)] int number)
         {
             await DeferAsync();
             Random r = new Random();

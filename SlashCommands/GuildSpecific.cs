@@ -8,7 +8,7 @@ using Discord.Net.Extensions.Interactions;
 
 namespace DiscordBot.SlashCommands
 {
-    //[GuildModule(1057033598940745728)]
+    [GuildModule(1057033598940745728)]
     public class GuildSpecific : InteractionModuleBase<SocketInteractionContext>
     {
         [SlashCommand("fireapologized", "Fire continuing the apology arc")]
@@ -143,13 +143,13 @@ namespace DiscordBot.SlashCommands
             DataTable dt = new DataTable();
 
             if (additionalCount > 1)
-                for(int i = 0; i < additionalCount; i++)
-                    dt = stored.Select(connStr, "AddBurnNormal", new List<SqlParameter> { new SqlParameter("@CreatedBy", Context.User.Username)});
+                for (int i = 0; i < additionalCount; i++)
+                    dt = stored.Select(connStr, "AddBurnNormal", new List<SqlParameter> { new SqlParameter("@CreatedBy", Context.User.Username) });
             else if (additionalCount < 0)
                 for (int i = count; i < 0; i++)
                     dt = stored.Select(connStr, "DeleteBurnNormal", new List<SqlParameter> { new SqlParameter("@CreatedBy", Context.User.Username) });
             else
-                dt = stored.Select(connStr, "AddBurnNormal", new List<SqlParameter> { new SqlParameter("@CreatedBy", Context.User.Username)});
+                dt = stored.Select(connStr, "AddBurnNormal", new List<SqlParameter> { new SqlParameter("@CreatedBy", Context.User.Username) });
 
             string counterHistory = "Here are the most recent times Burn was a bad speller and awesome.\n";
             string currentCounter = "";

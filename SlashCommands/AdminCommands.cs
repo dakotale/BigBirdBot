@@ -29,7 +29,7 @@ namespace DiscordBot.SlashCommands
 
             dt = stored.Select(connStr, "GetPronouns", new List<SqlParameter>());
 
-            foreach(DataRow dr in dt.Rows)
+            foreach (DataRow dr in dt.Rows)
                 builder.WithButton(dr["Pronoun"].ToString(), dr["ID"].ToString());
 
             await FollowupAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Pronoun Selection", "Please select from the list of available pronouns.", "", Context.User.Username, Discord.Color.Blue).Build(), components: builder.Build()).ConfigureAwait(false);
@@ -133,7 +133,7 @@ namespace DiscordBot.SlashCommands
             var guild = Context.Client.GetGuild(ulong.Parse(serverId.ToString()));
 
             var categoryIdList = guild.CategoryChannels.Where(s => s.Name.ToLower() == "thirsting" || s.Name.ToLower() == "stanning" || s.Name.ToLower() == "keyword multi").ToList();
-            if (categoryIdList.Count > 0) 
+            if (categoryIdList.Count > 0)
             {
                 stored.UpdateCreate(connStr, "DeleteRoles", new List<SqlParameter>
                 {
