@@ -123,14 +123,14 @@ namespace DiscordBot.SlashCommands
                 {
                     // Can't get Trivia
                     EmbedHelper errorEmbed = new EmbedHelper();
-                    await FollowupAsync(embed: errorEmbed.BuildMessageEmbed("BigBirdBot - Error", "Unable to retrieve Token", Constants.Constants.errorImageUrl, "", Color.Red, "").Build());
+                    await FollowupAsync(embed: errorEmbed.BuildErrorEmbed("", "Unable to retrieve token", Context.User.Username).Build());
                 }
             }
             else
             {
                 // Can't get token
                 EmbedHelper errorEmbed = new EmbedHelper();
-                await FollowupAsync(embed: errorEmbed.BuildMessageEmbed("BigBirdBot - Error", "Unable to retrieve Token", Constants.Constants.errorImageUrl, "", Color.Red, "").Build());
+                await FollowupAsync(embed: errorEmbed.BuildErrorEmbed("", "Uanble to retrieve token", Context.User.Username).Build());
             }
         }
     }

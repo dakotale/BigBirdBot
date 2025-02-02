@@ -1,6 +1,9 @@
 ﻿using Discord;
+using DiscordBot.Constants;
 using Lavalink4NET.Players;
 using Lavalink4NET.Players.Queued;
+using Lavalink4NET.Protocol.Payloads.Events;
+using System.Data.SqlClient;
 
 namespace DiscordBot.Helper
 {
@@ -37,6 +40,21 @@ namespace DiscordBot.Helper
             await _textChannel
                 .SendMessageAsync(embed: embed.Build())
                 .ConfigureAwait(false);
+        }
+
+        protected override ValueTask NotifyTrackEndedAsync(ITrackQueueItem queueItem, TrackEndReason endReason, CancellationToken cancellationToken = default)
+        {
+            StoredProcedure stored = new StoredProcedure();
+
+            if (queueItem != null && queueItem.Track != null)
+            {
+                stored.UpdateCreate(Constants.Constants.discordBotConnStr, "DeleteMusicQueue", new List<SqlParameter>
+                {
+                    new SqlParameter("@URL", (queueItem.Track.Uri != null) ? queueItem.Track.Uri.OriginalString : "")
+                });
+            }
+
+            return base.NotifyTrackEndedAsync(queueItem, endReason, cancellationToken);
         }
 
         private EmbedBuilder BuildMusicEmbed(string title, string description, string artwork = "")

@@ -27,5 +27,21 @@ namespace DiscordBot.Helper
 
             return embed;
         }
+
+        public EmbedBuilder BuildErrorEmbed(string module, string description, string commandFrom)
+        {
+            var embed = new EmbedBuilder
+            {
+                Title = $"BigBirdBot - Error Module: {module}",
+                Color = Color.Red,
+                Description = $"{description}",
+                ThumbnailUrl = Constants.Constants.errorImageUrl,
+            };
+
+            embed.WithFooter(footer => footer.Text = commandFrom)
+                                    .WithCurrentTimestamp();
+
+            return embed;
+        }
     }
 }

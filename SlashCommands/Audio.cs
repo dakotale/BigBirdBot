@@ -12,8 +12,6 @@ using Lavalink4NET.Rest.Entities.Tracks;
 using DiscordBot.Helper;
 using Fergun.Interactive.Pagination;
 using Lavalink4NET.Tracks;
-using Microsoft.Extensions.Options;
-using Flurl;
 
 namespace DiscordBot.SlashCommands
 {
@@ -267,7 +265,7 @@ namespace DiscordBot.SlashCommands
                 await player.StopAsync().ConfigureAwait(false);
                 await player.DisconnectAsync().ConfigureAwait(false);
             }
-            
+
             DeletePlayerConnected(Int64.Parse(Context.Guild.Id.ToString()));
             var result = new EmbedBuilder
             {
@@ -453,7 +451,7 @@ namespace DiscordBot.SlashCommands
             }
 
             var track = player.CurrentTrack;
-            
+
             for (int i = 0; i < times; i++)
                 await player.PlayAsync(track);
 
