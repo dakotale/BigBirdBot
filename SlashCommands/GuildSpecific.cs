@@ -168,7 +168,87 @@ namespace DiscordBot.SlashCommands
             await FollowupAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Mary Apologized", $"**The Mary apology counter was updated to {currentCounter} on {currentDateTime}**\n**Average Per Day: {averagePerDay}**\n{counterHistory}", "", Context.User.Username, Discord.Color.Green).Build());
         }
 
-        [SlashCommand("whatever", "Times Mary said whatever...")]
+        [SlashCommand("maryapologized", "Mary continuing the apology arc")]
+        [EnabledInDm(false)]
+        [RequireUserPermission(ChannelPermission.ManageMessages)]
+        public async Task HandleMaryApology(int? additionalCount = null)
+        {
+            await DeferAsync();
+            string connStr = Constants.Constants.discordBotConnStr;
+            StoredProcedure stored = new StoredProcedure();
+            DataTable dt = new DataTable();
+            int count = 0;
+
+            if (additionalCount.HasValue)
+                count = additionalCount.Value;
+
+            if (additionalCount > 1)
+                for (int i = 0; i < count; i++)
+                    dt = stored.Select(connStr, "AddMaryApologized", new List<SqlParameter> { new SqlParameter("@CreatedBy", Context.User.Username) });
+            else if (additionalCount < 0)
+                for (int i = count; i < 0; i++)
+                    dt = stored.Select(connStr, "DeleteMaryApologized", new List<SqlParameter> { new SqlParameter("@CreatedBy", Context.User.Username) });
+            else
+                dt = stored.Select(connStr, "AddMaryApologized", new List<SqlParameter> { new SqlParameter("@CreatedBy", Context.User.Username) });
+
+            string counterHistory = "Here are the most recent times *Mary apologized*.\n";
+            string currentCounter = "";
+            string currentDateTime = "";
+            string averagePerDay = "";
+
+            foreach (DataRow dr in dt.Rows)
+            {
+                currentCounter = dr["CurrentCounter"].ToString();
+                currentDateTime = DateTime.Parse(dr["CurrentDateTime"].ToString()).ToString("MM/dd/yyyy HH:mm:ss ET");
+                counterHistory += $"{dr["UpdatedCounter"].ToString()} - {DateTime.Parse(dr["TimeStamp"].ToString()).ToString("MM/dd/yyyy HH:mm:ss ET")}\n";
+                averagePerDay = dr["AveragePerDay"].ToString();
+            }
+
+            EmbedHelper embed = new EmbedHelper();
+            await FollowupAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Mary Apologized", $"**The Mary apology counter was updated to {currentCounter} on {currentDateTime}**\n**Average Per Day: {averagePerDay}**\n{counterHistory}", "", Context.User.Username, Discord.Color.Green).Build());
+        }
+
+        [SlashCommand("fireapologized", "Fire continuing the apology arc")]
+        [EnabledInDm(false)]
+        [RequireUserPermission(ChannelPermission.ManageMessages)]
+        public async Task HandleFireApology(int? additionalCount = null)
+        {
+            await DeferAsync();
+            string connStr = Constants.Constants.discordBotConnStr;
+            StoredProcedure stored = new StoredProcedure();
+            DataTable dt = new DataTable();
+            int count = 0;
+
+            if (additionalCount.HasValue)
+                count = additionalCount.Value;
+
+            if (additionalCount > 1)
+                for (int i = 0; i < count; i++)
+                    dt = stored.Select(connStr, "AddFireApologized", new List<SqlParameter> { new SqlParameter("@CreatedBy", Context.User.Username) });
+            else if (additionalCount < 0)
+                for (int i = count; i < 0; i++)
+                    dt = stored.Select(connStr, "DeleteFireApologized", new List<SqlParameter> { new SqlParameter("@CreatedBy", Context.User.Username) });
+            else
+                dt = stored.Select(connStr, "AddFireApologized", new List<SqlParameter> { new SqlParameter("@CreatedBy", Context.User.Username) });
+
+            string counterHistory = "Here are the most recent times *Fire apologized*.\n";
+            string currentCounter = "";
+            string currentDateTime = "";
+            string averagePerDay = "";
+
+            foreach (DataRow dr in dt.Rows)
+            {
+                currentCounter = dr["CurrentCounter"].ToString();
+                currentDateTime = DateTime.Parse(dr["CurrentDateTime"].ToString()).ToString("MM/dd/yyyy HH:mm:ss ET");
+                counterHistory += $"{dr["UpdatedCounter"].ToString()} - {DateTime.Parse(dr["TimeStamp"].ToString()).ToString("MM/dd/yyyy HH:mm:ss ET")}\n";
+                averagePerDay = dr["AveragePerDay"].ToString();
+            }
+
+            EmbedHelper embed = new EmbedHelper();
+            await FollowupAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Fire Apologized", $"**The Fire apology counter was updated to {currentCounter} on {currentDateTime}**\n**Average Per Day: {averagePerDay}**\n{counterHistory}", "", Context.User.Username, Discord.Color.Green).Build());
+        }
+
+        [SlashCommand("whatever", "Times fire said whatever...")]
         [EnabledInDm(false)]
         [RequireUserPermission(ChannelPermission.ManageMessages)]
         public async Task HandleWhatever(int? additionalCount = null)
