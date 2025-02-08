@@ -433,54 +433,333 @@ internal class Program
             var msgChannel = msg.Channel as SocketGuildChannel;
             var serverId = msgChannel.Guild.Id.ToString();
             bool isActive = false;
+            bool isServerActive = false;
             int totalActive = 0;
             StoredProcedure stored = new StoredProcedure();
 
-            DataTable dtActive = stored.Select(connStr, "CheckIfKeywordsAreActivePerServer", new List<SqlParameter>
+            DataTable serverActive = stored.Select(connStr, "GetServerPrefixByServerID", new List<SqlParameter>
             {
                 new SqlParameter("ServerUID", Int64.Parse(serverId))
             });
 
-            if (dtActive.Rows.Count > 0)
+            foreach (DataRow dr in serverActive.Rows)
             {
-                foreach (DataRow row in dtActive.Rows)
-                {
-                    totalActive = int.Parse(row["TotalActive"].ToString());
-                    if (totalActive > 0)
-                        isActive = true;
-                }
+                isServerActive = bool.Parse(dr["IsActive"].ToString());
             }
 
-            if (isActive)
+            if (isServerActive)
             {
-                // This should be okay
-                if ((message.Contains("https://twitter.com") || message.Contains("https://x.com") || message.Contains("https://tiktok.com") || message.Contains("https://instagram.com") || message.Contains("https://www.instagram.com") || message.Contains("https://bsky.app")))
+                DataTable dtActive = stored.Select(connStr, "CheckIfKeywordsAreActivePerServer", new List<SqlParameter>
                 {
-                    DataTable dtTwitter = stored.Select(connStr, "GetTwitterBroken", new List<SqlParameter> { new SqlParameter("@ServerID", Int64.Parse(serverId)) });
-                    bool isTwitterBroken = false;
-                    foreach (DataRow dr in dtTwitter.Rows)
-                        isTwitterBroken = bool.Parse(dr["TwitterBroken"].ToString());
+                    new SqlParameter("ServerUID", Int64.Parse(serverId))
+                });
 
-                    if (isTwitterBroken)
+                if (dtActive.Rows.Count > 0)
+                {
+                    foreach (DataRow row in dtActive.Rows)
                     {
-                        if (message.Contains("https://twitter.com"))
-                            message = message.Replace("twitter", "fxtwitter");
-                        if (message.Contains("https://x.com"))
-                            message = message.Replace("x.com", "fxtwitter.com");
-                        if (message.Contains("https://tiktok.com"))
-                            message = message.Replace("tiktok.com", "vxtiktok.com");
-                        if (message.Contains("https://instagram.com") || message.Contains("https://www.instagram.com"))
-                            message = message.Replace("instagram.com", "ddinstagram.com");
-                        if (message.Contains("https://bsky.app"))
-                            message = message.Replace("bsky.app", "bskyx.app");
+                        totalActive = int.Parse(row["TotalActive"].ToString());
+                        if (totalActive > 0)
+                            isActive = true;
+                    }
+                }
 
-                        message = message.Split("https://")[1];
+                if (isActive)
+                {
+                    string prefix = "";
+                    DataTable dtPrefix = stored.Select(Constants.discordBotConnStr, "GetServerPrefixByServerID", new List<SqlParameter> { new SqlParameter("@ServerUID", Int64.Parse(serverId)) });
+                    foreach (DataRow dr in dtPrefix.Rows)
+                    {
+                        prefix = dr["Prefix"].ToString();
+                    }
 
-                        if (message.Split(' ').Count() > 1)
-                            message = message.Split(' ')[0];
+                    // This should be okay
+                    if ((message.Contains("https://twitter.com") || message.Contains("https://x.com") || message.Contains("https://tiktok.com") || message.Contains("https://instagram.com") || message.Contains("https://www.instagram.com")) && !message.Contains(prefix))
+                    {
+                        DataTable dtTwitter = stored.Select(connStr, "GetTwitterBroken", new List<SqlParameter> { new SqlParameter("@ServerID", Int64.Parse(serverId)) });
+                        bool isTwitterBroken = false;
+                        foreach (DataRow dr in dtTwitter.Rows)
+                            isTwitterBroken = bool.Parse(dr["TwitterBroken"].ToString());
 
-                        message = "https://" + message;
-                        await msg.Channel.SendMessageAsync(message);
+                        if (isTwitterBroken)
+                        {
+                            if (message.Contains("https://twitter.com"))
+                                message = message.Replace("twitter", "fxtwitter");
+                            if (message.Contains("https://x.com"))
+                                message = message.Replace("x.com", "fxtwitter.com");
+                            if (message.Contains("https://tiktok.com"))
+                                message = message.Replace("tiktok.com", "vxtiktok.com");
+                            if (message.Contains("https://instagram.com") || message.Contains("https://www.instagram.com"))
+                                message = message.Replace("instagram.com", "ddinstagram.com");
+
+                            message = message.Split("https://")[1];
+
+                            if (message.Split(' ').Count() > 1)
+                                message = message.Split(' ')[0];
+
+                            message = "https://" + message;
+                            await msg.Channel.SendMessageAsync(message);
+                        }
+                    }
+                    else
+                    {
+                        if (message.StartsWith(prefix))
+                        {
+                            string keyword = "";
+                            if (message.Split(' ').Count() == 1)
+                                keyword = message.Replace(prefix, "");
+                            if (message.Split(' ').Count() > 1)
+                                keyword = message.Split(' ')[0].Replace(prefix, "");
+
+                            // Check if it's in the ThirstMap and run the add command
+                            List<SqlParameter> parameters = new List<SqlParameter>();
+                            parameters.Add(new SqlParameter("@AddKeyword", keyword));
+
+                            DataTable dt = stored.Select(connStr, "GetThirstTableByMap", parameters);
+                            if (dt.Rows.Count > 0)
+                            {
+                                if (msg.Attachments.Count > 0)
+                                {
+                                    string userId = msg.Author.Id.ToString();
+                                    foreach (DataRow dr in dt.Rows)
+                                    {
+                                        var attachments = msg.Attachments;
+                                        foreach (var attachment in attachments)
+                                        {
+                                            string tablename = dr["TableName"].ToString();
+                                            tablename = tablename.Replace("KeywordMulti.", "");
+                                            string attachmentName = attachment.Filename;
+                                            string withoutExt = attachmentName.Split(".", StringSplitOptions.TrimEntries)[0];
+                                            string withExt = attachmentName.Split(".", StringSplitOptions.TrimEntries)[1];
+                                            withoutExt = withoutExt + "_" + DateTime.Now.ToString("yyyyMMdd_HHmmssfffff");
+
+                                            string path = @"C:\Temp\DiscordBot\" + tablename + @"\" + withoutExt + "." + withExt;
+
+                                            using (WebClient client = new WebClient())
+                                            {
+                                                client.DownloadFileAsync(new Uri(attachment.Url), path);
+                                            }
+
+                                            stored.UpdateCreate(connStr, "AddThirstByMap", new List<System.Data.SqlClient.SqlParameter>
+                                            {
+                                                new SqlParameter("@FilePath", path),
+                                                new SqlParameter("@TableName", dr["TableName"].ToString()),
+                                                new SqlParameter("@UserID", userId)
+                                            });
+                                        }
+                                        var embed = new EmbedBuilder
+                                        {
+                                            Title = "BigBirdBot - Added Image",
+                                            Color = Color.Blue,
+                                            Description = "Added attachment(s) successfully."
+                                        };
+
+                                        await msg.Channel.SendMessageAsync(embed: embed.Build());
+                                    }
+                                }
+                                if (message.Split(' ').Count() > 1)
+                                {
+                                    string content = message.Replace("-" + keyword, "").Trim();
+                                    bool multiUrl = false;
+
+                                    if (content.Contains(","))
+                                        multiUrl = true;
+
+                                    if (multiUrl)
+                                    {
+                                        string[] urls = content.Split(",", StringSplitOptions.TrimEntries);
+                                        foreach (var u in urls)
+                                        {
+                                            bool result = u.Trim().StartsWith("http");
+
+                                            if (!result)
+                                            {
+                                                var embed = new EmbedBuilder
+                                                {
+                                                    Title = "BigBirdBot - Error",
+                                                    Color = Color.Red,
+                                                    Description = $"The URL provided (*{u}*) for this command is invalid."
+                                                }.WithCurrentTimestamp();
+
+                                                await msg.Channel.SendMessageAsync(embed: embed.Build());
+                                            }
+                                            else
+                                            {
+                                                content = u;
+
+                                                if (u.Contains("https://fxtwitter.com"))
+                                                    content = content.Replace("fxtwitter.com", "dl.fxtwitter.com");
+                                                if (u.Contains("https://vxtwitter.com"))
+                                                    content = content.Replace("vxtwitter.com", "dl.vxtwitter.com");
+                                                if (u.Contains("https://twitter.com"))
+                                                    content = content.Replace("twitter.com", "dl.fxtwitter.com");
+                                                if (u.Contains("https://x.com"))
+                                                    content = content.Replace("x.com", "dl.fxtwitter.com");
+                                                if (u.Contains("https://tiktok.com"))
+                                                    content = content.Replace("tiktok.com", "vxtiktok.com");
+                                                if (u.Contains("https://instagram.com") || u.Contains("https://www.instagram.com"))
+                                                    content = content.Replace("instagram.com", "ddinstagram.com");
+
+                                                // Check if link exists for thirst table
+                                                DataTable dtExists = stored.Select(connStr, "CheckIfThirstURLExists", new List<SqlParameter>
+                                                {
+                                                    new SqlParameter("@FilePath", content),
+                                                    new SqlParameter("@TableName", dt.Rows[0]["TableName"].ToString())
+                                                });
+
+                                                if (dtExists.Rows.Count > 0)
+                                                {
+                                                    var embed = new EmbedBuilder
+                                                    {
+                                                        Title = "BigBirdBot - Error",
+                                                        Color = Color.Red,
+                                                        Description = $"The URL provided (*{content}*) was already added for this Multi-Keyword Command."
+                                                    }.WithCurrentTimestamp();
+
+                                                    await msg.Channel.SendMessageAsync(embed: embed.Build());
+                                                }
+                                                else
+                                                {
+                                                    string userId = msg.Author.Id.ToString();
+                                                    foreach (DataRow dr in dt.Rows)
+                                                    {
+                                                        stored.UpdateCreate(connStr, "AddThirstByMap", new List<System.Data.SqlClient.SqlParameter>
+                                                            {
+                                                                new SqlParameter("@FilePath", content),
+                                                                new SqlParameter("@TableName", dr["TableName"].ToString()),
+                                                                new SqlParameter("@UserID", userId)
+                                                            });
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        var embedSuccess = new EmbedBuilder
+                                        {
+                                            Title = "BigBirdBot - Added Image",
+                                            Color = Color.Blue,
+                                            Description = "Added link(s) successfully."
+                                        };
+
+                                        await msg.Channel.SendMessageAsync(embed: embedSuccess.Build());
+                                    }
+                                    else
+                                    {
+                                        Uri uriResult;
+                                        bool result = Uri.TryCreate(content, UriKind.Absolute, out uriResult)
+                                            && (uriResult.Scheme == Uri.UriSchemeHttp || uriResult.Scheme == Uri.UriSchemeHttps);
+
+                                        if (!result)
+                                        {
+                                            var embed = new EmbedBuilder
+                                            {
+                                                Title = "BigBirdBot - Error",
+                                                Color = Color.Red,
+                                                Description = $"The URL provided for this command is invalid."
+                                            }.WithCurrentTimestamp();
+
+                                            await msg.Channel.SendMessageAsync(embed: embed.Build());
+                                        }
+                                        else
+                                        {
+                                            if (message.Contains("https://fxtwitter.com"))
+                                                content = content.Replace("fxtwitter.com", "dl.fxtwitter.com");
+                                            if (message.Contains("https://vxtwitter.com"))
+                                                content = content.Replace("vxtwitter.com", "dl.vxtwitter.com");
+                                            if (message.Contains("https://twitter.com"))
+                                                content = content.Replace("twitter.com", "dl.fxtwitter.com");
+                                            if (message.Contains("https://x.com"))
+                                                content = content.Replace("x.com", "dl.fxtwitter.com");
+                                            if (message.Contains("https://tiktok.com"))
+                                                content = content.Replace("tiktok.com", "vxtiktok.com");
+                                            if (message.Contains("https://instagram.com") || message.Contains("https://www.instagram.com"))
+                                                content = content.Replace("instagram.com", "ddinstagram.com");
+
+                                            // Check if link exists for thirst table
+                                            DataTable dtExists = stored.Select(connStr, "CheckIfThirstURLExists", new List<SqlParameter>
+                                            {
+                                                new SqlParameter("@FilePath", content),
+                                                new SqlParameter("@TableName", dt.Rows[0]["TableName"].ToString())
+                                            });
+
+                                            if (dtExists.Rows.Count > 0)
+                                            {
+                                                var embed = new EmbedBuilder
+                                                {
+                                                    Title = "BigBirdBot - Error",
+                                                    Color = Color.Red,
+                                                    Description = $"The URL provided was already added for this Multi-Keyword Command."
+                                                }.WithCurrentTimestamp();
+
+                                                await msg.Channel.SendMessageAsync(embed: embed.Build());
+                                            }
+                                            else
+                                            {
+                                                string userId = msg.Author.Id.ToString();
+                                                foreach (DataRow dr in dt.Rows)
+                                                {
+                                                    stored.UpdateCreate(connStr, "AddThirstByMap", new List<System.Data.SqlClient.SqlParameter>
+                                                    {
+                                                        new SqlParameter("@FilePath", content),
+                                                        new SqlParameter("@TableName", dr["TableName"].ToString()),
+                                                        new SqlParameter("@UserID", userId)
+                                                    });
+
+                                                    var embed = new EmbedBuilder
+                                                    {
+                                                        Title = "BigBirdBot - Added Image",
+                                                        Color = Color.Blue,
+                                                        Description = "Added link(s) successfully."
+                                                    };
+
+                                                    await msg.Channel.SendMessageAsync(embed: embed.Build());
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Todo, check all the commands eventually but for now let's stop the accidently double triggering.
+                        if (!message.StartsWith(prefix) && !message.StartsWith("$"))
+                        if (!message.StartsWith(prefix))
+                        {
+                            var channel = msg.Channel as SocketGuildChannel;
+                            StoredProcedure storedProcedure = new StoredProcedure();
+                            List<SqlParameter> parameters = new List<SqlParameter>();
+                            parameters.Add(new SqlParameter("@ServerID", Int64.Parse(channel.Guild.Id.ToString())));
+                            parameters.Add(new SqlParameter("@Message", message));
+                            DataTable dt = storedProcedure.Select(connStr, "GetChatAction", parameters);
+
+                            var sender = client.GetChannel(channel.Id) as IMessageChannel;
+
+                            _ = Task.Run(async () =>
+                            {
+                                if (dt.Rows.Count > 0 && sender != null)
+                                {
+                                    foreach (DataRow dr in dt.Rows)
+                                    {
+                                        string chatAction = dr["ChatAction"].ToString();
+
+                                        if (!string.IsNullOrEmpty(chatAction))
+                                        {
+                                            await msg.Channel.TriggerTypingAsync(new RequestOptions { Timeout = 30 });
+                                            if (chatAction.Contains("C:\\"))
+                                                await msg.Channel.SendFileAsync(dr["ChatAction"].ToString()).ConfigureAwait(false);
+                                            else
+                                                await sender.SendMessageAsync(dr["ChatAction"].ToString()).ConfigureAwait(false);
+
+                                            parameters.Clear();
+                                            parameters.Add(new SqlParameter("@ChatKeywordID", int.Parse(dr["ChatKeywordID"].ToString())));
+                                            parameters.Add(new SqlParameter("@MessageText", message));
+                                            parameters.Add(new SqlParameter("@CreatedBy", msg.Author.Id.ToString()));
+                                            parameters.Add(new SqlParameter("@ServerID", Int64.Parse(serverId)));
+                                            storedProcedure.UpdateCreate(connStr, "AddAuditKeyword", parameters);
+                                        }
+                                    }
+                                }
+                            });
+                        }
                     }
                 }
             }
