@@ -13,7 +13,6 @@ namespace DiscordBot.SlashCommands
     {
         [SlashCommand("brendancounter", "Low level content")]
         [EnabledInDm(false)]
-        [RequireUserPermission(ChannelPermission.ManageMessages)]
         public async Task HandleLowLevel(int? additionalCount = null)
         {
             await DeferAsync();
@@ -51,7 +50,6 @@ namespace DiscordBot.SlashCommands
 
         [SlashCommand("kaylacounter", "Being normal for 5 seconds")]
         [EnabledInDm(false)]
-        [RequireUserPermission(ChannelPermission.ManageMessages)]
         public async Task HandleNormal(int? additionalCount = null)
         {
             await DeferAsync();
@@ -89,7 +87,6 @@ namespace DiscordBot.SlashCommands
 
         [SlashCommand("burncounter", "Bad speller and awesome")]
         [EnabledInDm(false)]
-        [RequireUserPermission(ChannelPermission.ManageMessages)]
         public async Task HandleBurn(int? additionalCount = null)
         {
             await DeferAsync();
@@ -130,7 +127,6 @@ namespace DiscordBot.SlashCommands
 
         [SlashCommand("maryapologized", "Mary continuing the apology arc")]
         [EnabledInDm(false)]
-        [RequireUserPermission(ChannelPermission.ManageMessages)]
         public async Task HandleApology(int? additionalCount = null)
         {
             await DeferAsync();
@@ -170,7 +166,6 @@ namespace DiscordBot.SlashCommands
         
         [SlashCommand("fireapologized", "Fire continuing the apology arc")]
         [EnabledInDm(false)]
-        [RequireUserPermission(ChannelPermission.ManageMessages)]
         public async Task HandleFireApology(int? additionalCount = null)
         {
             await DeferAsync();
@@ -210,7 +205,6 @@ namespace DiscordBot.SlashCommands
 
         [SlashCommand("whatever", "Times fire said whatever...")]
         [EnabledInDm(false)]
-        [RequireUserPermission(ChannelPermission.ManageMessages)]
         public async Task HandleWhatever(int? additionalCount = null)
         {
             await DeferAsync();

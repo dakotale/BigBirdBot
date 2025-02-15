@@ -644,75 +644,57 @@ internal class Program
                                     }
                                     else
                                     {
-                                        Uri uriResult;
-                                        bool result = Uri.TryCreate(content, UriKind.Absolute, out uriResult)
-                                            && (uriResult.Scheme == Uri.UriSchemeHttp || uriResult.Scheme == Uri.UriSchemeHttps);
+                                        if (message.Contains("https://fxtwitter.com"))
+                                            content = content.Replace("fxtwitter.com", "dl.fxtwitter.com");
+                                        if (message.Contains("https://vxtwitter.com"))
+                                            content = content.Replace("vxtwitter.com", "dl.vxtwitter.com");
+                                        if (message.Contains("https://twitter.com"))
+                                            content = content.Replace("twitter.com", "dl.fxtwitter.com");
+                                        if (message.Contains("https://x.com"))
+                                            content = content.Replace("x.com", "dl.fxtwitter.com");
+                                        if (message.Contains("https://tiktok.com"))
+                                            content = content.Replace("tiktok.com", "vxtiktok.com");
+                                        if (message.Contains("https://instagram.com") || message.Contains("https://www.instagram.com"))
+                                            content = content.Replace("instagram.com", "ddinstagram.com");
 
-                                        if (!result)
+                                        // Check if link exists for thirst table
+                                        DataTable dtExists = stored.Select(connStr, "CheckIfThirstURLExists", new List<SqlParameter>
+                                        {
+                                            new SqlParameter("@FilePath", content),
+                                            new SqlParameter("@TableName", dt.Rows[0]["TableName"].ToString())
+                                        });
+
+                                        if (dtExists.Rows.Count > 0)
                                         {
                                             var embed = new EmbedBuilder
                                             {
                                                 Title = "BigBirdBot - Error",
                                                 Color = Color.Red,
-                                                Description = $"The URL provided for this command is invalid."
+                                                Description = $"The URL provided was already added for this Multi-Keyword Command."
                                             }.WithCurrentTimestamp();
 
                                             await msg.Channel.SendMessageAsync(embed: embed.Build());
                                         }
                                         else
                                         {
-                                            if (message.Contains("https://fxtwitter.com"))
-                                                content = content.Replace("fxtwitter.com", "dl.fxtwitter.com");
-                                            if (message.Contains("https://vxtwitter.com"))
-                                                content = content.Replace("vxtwitter.com", "dl.vxtwitter.com");
-                                            if (message.Contains("https://twitter.com"))
-                                                content = content.Replace("twitter.com", "dl.fxtwitter.com");
-                                            if (message.Contains("https://x.com"))
-                                                content = content.Replace("x.com", "dl.fxtwitter.com");
-                                            if (message.Contains("https://tiktok.com"))
-                                                content = content.Replace("tiktok.com", "vxtiktok.com");
-                                            if (message.Contains("https://instagram.com") || message.Contains("https://www.instagram.com"))
-                                                content = content.Replace("instagram.com", "ddinstagram.com");
-
-                                            // Check if link exists for thirst table
-                                            DataTable dtExists = stored.Select(connStr, "CheckIfThirstURLExists", new List<SqlParameter>
+                                            string userId = msg.Author.Id.ToString();
+                                            foreach (DataRow dr in dt.Rows)
                                             {
-                                                new SqlParameter("@FilePath", content),
-                                                new SqlParameter("@TableName", dt.Rows[0]["TableName"].ToString())
-                                            });
+                                                stored.UpdateCreate(connStr, "AddThirstByMap", new List<System.Data.SqlClient.SqlParameter>
+                                                {
+                                                    new SqlParameter("@FilePath", content),
+                                                    new SqlParameter("@TableName", dr["TableName"].ToString()),
+                                                    new SqlParameter("@UserID", userId)
+                                                });
 
-                                            if (dtExists.Rows.Count > 0)
-                                            {
                                                 var embed = new EmbedBuilder
                                                 {
-                                                    Title = "BigBirdBot - Error",
-                                                    Color = Color.Red,
-                                                    Description = $"The URL provided was already added for this Multi-Keyword Command."
-                                                }.WithCurrentTimestamp();
+                                                    Title = "BigBirdBot - Added Image",
+                                                    Color = Color.Blue,
+                                                    Description = "Added link(s) successfully."
+                                                };
 
                                                 await msg.Channel.SendMessageAsync(embed: embed.Build());
-                                            }
-                                            else
-                                            {
-                                                string userId = msg.Author.Id.ToString();
-                                                foreach (DataRow dr in dt.Rows)
-                                                {
-                                                    stored.UpdateCreate(connStr, "AddThirstByMap", new List<System.Data.SqlClient.SqlParameter>
-                                                    {
-                                                        new SqlParameter("@FilePath", content),
-                                                        new SqlParameter("@TableName", dr["TableName"].ToString()),
-                                                        new SqlParameter("@UserID", userId)
-                                                    });
-
-                                                    var embed = new EmbedBuilder
-                                                    {
-                                                        Title = "BigBirdBot - Added Image",
-                                                        Color = Color.Blue,
-                                                        Description = "Added link(s) successfully."
-                                                    };
-
-                                                    await msg.Channel.SendMessageAsync(embed: embed.Build());
-                                                }
                                             }
                                         }
                                     }
