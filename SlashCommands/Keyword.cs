@@ -1116,5 +1116,57 @@ namespace DiscordBot.SlashCommands
 
             await FollowupAsync(embed: embed.Build());
         }
+    
+        [SlashCommand("excludefromkeyword", "Exclude from keywords activating when typing.")]
+        [EnabledInDm(false)]
+        public async Task HandleExcludeFromKeyword()
+        {
+            await DeferAsync();
+            StoredProcedure stored = new StoredProcedure();
+            string connStr = Constants.Constants.discordBotConnStr;
+            string userId = Context.User.Id.ToString();
+            var serverId = Int64.Parse(Context.Guild.Id.ToString());
+
+            stored.UpdateCreate(connStr, "AddChatKeywordExclusion", new List<SqlParameter>
+            {
+                new SqlParameter("@UserID", userId),
+                new SqlParameter("@ServerID", serverId)
+            });
+
+            var embed = new EmbedBuilder
+            {
+                Title = "BigBirdBot - Exclude from Keyword",
+                Color = Color.Blue,
+                Description = $"You have been excluded from keywords."
+            };
+
+            await FollowupAsync(embed: embed.Build());
+        }
+
+        [SlashCommand("deleteexcludefromkeyword", "Delete from exclude from keywords activating when typing.")]
+        [EnabledInDm(false)]
+        public async Task HandleDeleteExcludeFromKeyword()
+        {
+            await DeferAsync();
+            StoredProcedure stored = new StoredProcedure();
+            string connStr = Constants.Constants.discordBotConnStr;
+            string userId = Context.User.Id.ToString();
+            var serverId = Int64.Parse(Context.Guild.Id.ToString());
+
+            stored.UpdateCreate(connStr, "DeleteChatKeywordExclusion", new List<SqlParameter>
+            {
+                new SqlParameter("@UserID", userId),
+                new SqlParameter("@ServerID", serverId)
+            });
+
+            var embed = new EmbedBuilder
+            {
+                Title = "BigBirdBot - Exclude from Keyword",
+                Color = Color.Blue,
+                Description = $"You are removed from being excluded on keywords."
+            };
+
+            await FollowupAsync(embed: embed.Build());
+        }
     }
 }

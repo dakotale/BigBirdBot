@@ -709,38 +709,46 @@ internal class Program
                             var channel = msg.Channel as SocketGuildChannel;
                             StoredProcedure storedProcedure = new StoredProcedure();
                             List<SqlParameter> parameters = new List<SqlParameter>();
+                            parameters.Add(new SqlParameter("@UserID", msg.Author.Id.ToString()));
                             parameters.Add(new SqlParameter("@ServerID", Int64.Parse(channel.Guild.Id.ToString())));
-                            parameters.Add(new SqlParameter("@Message", message));
-                            DataTable dt = storedProcedure.Select(connStr, "GetChatAction", parameters);
+                            DataTable dt = storedProcedure.Select(connStr, "GetChatKeywordExclusion", parameters);
 
-                            var sender = client.GetChannel(channel.Id) as IMessageChannel;
-
-                            _ = Task.Run(async () =>
+                            if (dt.Rows.Count == 0)
                             {
-                                if (dt.Rows.Count > 0 && sender != null)
+                                parameters = new List<SqlParameter>();
+                                parameters.Add(new SqlParameter("@ServerID", Int64.Parse(channel.Guild.Id.ToString())));
+                                parameters.Add(new SqlParameter("@Message", message));
+                                dt = storedProcedure.Select(connStr, "GetChatAction", parameters);
+
+                                var sender = client.GetChannel(channel.Id) as IMessageChannel;
+
+                                _ = Task.Run(async () =>
                                 {
-                                    foreach (DataRow dr in dt.Rows)
+                                    if (dt.Rows.Count > 0 && sender != null)
                                     {
-                                        string chatAction = dr["ChatAction"].ToString();
-
-                                        if (!string.IsNullOrEmpty(chatAction))
+                                        foreach (DataRow dr in dt.Rows)
                                         {
-                                            await msg.Channel.TriggerTypingAsync(new RequestOptions { Timeout = 30 });
-                                            if (chatAction.Contains("C:\\"))
-                                                await msg.Channel.SendFileAsync(dr["ChatAction"].ToString()).ConfigureAwait(false);
-                                            else
-                                                await sender.SendMessageAsync(dr["ChatAction"].ToString()).ConfigureAwait(false);
+                                            string chatAction = dr["ChatAction"].ToString();
 
-                                            parameters.Clear();
-                                            parameters.Add(new SqlParameter("@ChatKeywordID", int.Parse(dr["ChatKeywordID"].ToString())));
-                                            parameters.Add(new SqlParameter("@MessageText", message));
-                                            parameters.Add(new SqlParameter("@CreatedBy", msg.Author.Id.ToString()));
-                                            parameters.Add(new SqlParameter("@ServerID", Int64.Parse(serverId)));
-                                            storedProcedure.UpdateCreate(connStr, "AddAuditKeyword", parameters);
+                                            if (!string.IsNullOrEmpty(chatAction))
+                                            {
+                                                await msg.Channel.TriggerTypingAsync(new RequestOptions { Timeout = 30 });
+                                                if (chatAction.Contains("C:\\"))
+                                                    await msg.Channel.SendFileAsync(dr["ChatAction"].ToString()).ConfigureAwait(false);
+                                                else
+                                                    await sender.SendMessageAsync(dr["ChatAction"].ToString()).ConfigureAwait(false);
+
+                                                parameters.Clear();
+                                                parameters.Add(new SqlParameter("@ChatKeywordID", int.Parse(dr["ChatKeywordID"].ToString())));
+                                                parameters.Add(new SqlParameter("@MessageText", message));
+                                                parameters.Add(new SqlParameter("@CreatedBy", msg.Author.Id.ToString()));
+                                                parameters.Add(new SqlParameter("@ServerID", Int64.Parse(serverId)));
+                                                storedProcedure.UpdateCreate(connStr, "AddAuditKeyword", parameters);
+                                            }
                                         }
                                     }
-                                }
-                            });
+                                });
+                            }
                         }
                     }
                 }
