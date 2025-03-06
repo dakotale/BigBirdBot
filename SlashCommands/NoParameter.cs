@@ -1,34 +1,15 @@
 ﻿using Discord;
-using Discord.Commands;
 using Discord.Interactions;
-using Discord.WebSocket;
 using DiscordBot.Constants;
 using DiscordBot.Helper;
 using System.Data;
 using System.Data.SqlClient;
 using RequireBotPermissionAttribute = Discord.Interactions.RequireBotPermissionAttribute;
-using RequireContextAttribute = Discord.Interactions.RequireContextAttribute;
-using RequireUserPermissionAttribute = Discord.Interactions.RequireUserPermissionAttribute;
 
 namespace DiscordBot.SlashCommands
 {
     public class NoParameter : InteractionModuleBase<SocketInteractionContext>
     {
-        // Ban a user
-        [SlashCommand("ban", "Bans a user but the bot and user using the command must have permission.")]
-        [EnabledInDm(false)]
-        [RequireContext(Discord.Interactions.ContextType.Guild)]
-        // make sure the user invoking the command can ban
-        [RequireUserPermission(GuildPermission.BanMembers)]
-        // make sure the bot itself can ban
-        [RequireBotPermission(GuildPermission.BanMembers)]
-        public async Task BanUserAsync(IGuildUser user, string reason)
-        {
-            await DeferAsync();
-            await user.Guild.AddBanAsync(user, reason: reason);
-            await FollowupAsync($"{user.Username} was banned successfully.");
-        }
-
         [SlashCommand("info", "Shows information of the current server.")]
         [EnabledInDm(false)]
         [RequireBotPermission(GuildPermission.EmbedLinks)]
@@ -62,7 +43,7 @@ namespace DiscordBot.SlashCommands
             await FollowupAsync(embed: embed.Build());
         }
 
-        [SlashCommand("fixembed", "Let the bot fix embeds for Twitter, Reddit, Tiktok, and Instagram links.")]
+        [SlashCommand("fixembed", "Let the bot fix embeds for Twitter, Reddit, Tiktok, and Bsky links.")]
         [EnabledInDm(false)]
         public async Task HandleTwitterEmbeds()
         {

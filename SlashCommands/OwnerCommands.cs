@@ -12,7 +12,7 @@ namespace DiscordBot.SlashCommands
     [GuildModule(880569055856185354)]
     public class OwnerCommands : InteractionModuleBase<SocketInteractionContext>
     {
-        [SlashCommand("announcement", "ONLY THE BOT OWNER CAN RUN THIS - Broadcast a message to all server.")]
+        [SlashCommand("announcement", "Broadcast a message to all servers.")]
         [EnabledInDm(false)]
         [Discord.Interactions.RequireOwner]
         public async Task HandleAnnouncement([MinValue(1), MaxLength(4000)] string message, Attachment attachment = null)
@@ -88,31 +88,6 @@ namespace DiscordBot.SlashCommands
                     description += "- " + dr["Username"].ToString() + " - " + dr["ScheduledEventTable"].ToString() + " - " + DateTime.Parse(dr["EventDateTime"].ToString()).ToString("MM/dd hh:mm tt") + "\n";
 
             await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Scheduled List", description, "", Context.User.Username, Discord.Color.Blue).Build()).ConfigureAwait(false);
-        }
-
-        [SlashCommand("log", "Most recent error message in the bot.")]
-        [EnabledInDm(false)]
-        [Discord.Interactions.RequireOwner]
-        public async Task HandleLog()
-        {
-            await DeferAsync();
-            string connStr = Constants.Constants.discordBotConnStr;
-            StoredProcedure stored = new StoredProcedure();
-            string output = "";
-
-            DataTable dt = stored.Select(connStr, "GetLog", new List<SqlParameter>());
-            EmbedHelper embedHelper = new EmbedHelper();
-
-            if (dt.Rows.Count > 0)
-            {
-                foreach (DataRow dr in dt.Rows)
-                {
-                    output += $"__Most Recent Error Message Reported__\nDate Logged: {dr["CreatedOn"].ToString()}\nSource: {dr["Source"].ToString()}\nSeverity: {dr["Severity"].ToString()}\nMessage: {dr["Message"].ToString()}\nException: {dr["Exception"].ToString()}";
-                }
-                await FollowupAsync(embed: embedHelper.BuildErrorEmbed("Log", output, Context.User.Username).Build());
-            }
-            else
-                await FollowupAsync(embed: embedHelper.BuildErrorEmbed("Log", "No recent exceptions found.", Context.User.Username).Build());
         }
 
         [SlashCommand("connplayers", "List of all connected players in voice channels.")]

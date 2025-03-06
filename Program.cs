@@ -187,7 +187,6 @@ internal class Program
             }
         }
     }
-
     private async Task ButtonHandler(SocketMessageComponent component)
     {
         // To prevent the Queue buttons from being picked up by the Handler
@@ -423,7 +422,6 @@ internal class Program
             }
         }
     }
-
     private async Task MessageReceived(SocketMessage msg)
     {
         if (msg != null && !msg.Author.IsBot && !msg.Author.IsWebhook && msg.Channel as SocketGuildChannel != null)
@@ -436,6 +434,7 @@ internal class Program
             bool isServerActive = false;
             int totalActive = 0;
             StoredProcedure stored = new StoredProcedure();
+            URLCleanup cleanup = new URLCleanup();
 
             DataTable serverActive = stored.Select(connStr, "GetServerPrefixByServerID", new List<SqlParameter>
             {
@@ -482,24 +481,7 @@ internal class Program
                             isTwitterBroken = bool.Parse(dr["TwitterBroken"].ToString());
 
                         if (isTwitterBroken)
-                        {
-                            if (message.Contains("https://twitter.com"))
-                                message = message.Replace("twitter", "fxtwitter");
-                            if (message.Contains("https://x.com"))
-                                message = message.Replace("x.com", "fxtwitter.com");
-                            if (message.Contains("https://tiktok.com"))
-                                message = message.Replace("tiktok.com", "vxtiktok.com");
-                            if (message.Contains("https://instagram.com") || message.Contains("https://www.instagram.com"))
-                                message = message.Replace("instagram.com", "ddinstagram.com");
-
-                            message = message.Split("https://")[1];
-
-                            if (message.Split(' ').Count() > 1)
-                                message = message.Split(' ')[0];
-
-                            message = "https://" + message;
-                            await msg.Channel.SendMessageAsync(message);
-                        }
+                            await msg.Channel.SendMessageAsync(cleanup.CleanURLEmbed(message));
                     }
                     else
                     {
@@ -562,7 +544,7 @@ internal class Program
                                     string content = message.Replace("-" + keyword, "").Trim();
                                     bool multiUrl = false;
 
-                                    if (content.Contains(","))
+                                    if (content.Contains(",") && content.Contains("http"))
                                         multiUrl = true;
 
                                     if (multiUrl)
@@ -585,20 +567,7 @@ internal class Program
                                             }
                                             else
                                             {
-                                                content = u;
-
-                                                if (u.Contains("https://fxtwitter.com"))
-                                                    content = content.Replace("fxtwitter.com", "dl.fxtwitter.com");
-                                                if (u.Contains("https://vxtwitter.com"))
-                                                    content = content.Replace("vxtwitter.com", "dl.vxtwitter.com");
-                                                if (u.Contains("https://twitter.com"))
-                                                    content = content.Replace("twitter.com", "dl.fxtwitter.com");
-                                                if (u.Contains("https://x.com"))
-                                                    content = content.Replace("x.com", "dl.fxtwitter.com");
-                                                if (u.Contains("https://tiktok.com"))
-                                                    content = content.Replace("tiktok.com", "vxtiktok.com");
-                                                if (u.Contains("https://instagram.com") || u.Contains("https://www.instagram.com"))
-                                                    content = content.Replace("instagram.com", "ddinstagram.com");
+                                                content = cleanup.CleanURLEmbed(u);
 
                                                 // Check if link exists for thirst table
                                                 DataTable dtExists = stored.Select(connStr, "CheckIfThirstURLExists", new List<SqlParameter>
@@ -644,18 +613,7 @@ internal class Program
                                     }
                                     else
                                     {
-                                        if (message.Contains("https://fxtwitter.com"))
-                                            content = content.Replace("fxtwitter.com", "dl.fxtwitter.com");
-                                        if (message.Contains("https://vxtwitter.com"))
-                                            content = content.Replace("vxtwitter.com", "dl.vxtwitter.com");
-                                        if (message.Contains("https://twitter.com"))
-                                            content = content.Replace("twitter.com", "dl.fxtwitter.com");
-                                        if (message.Contains("https://x.com"))
-                                            content = content.Replace("x.com", "dl.fxtwitter.com");
-                                        if (message.Contains("https://tiktok.com"))
-                                            content = content.Replace("tiktok.com", "vxtiktok.com");
-                                        if (message.Contains("https://instagram.com") || message.Contains("https://www.instagram.com"))
-                                            content = content.Replace("instagram.com", "ddinstagram.com");
+                                        content = cleanup.CleanURLEmbed(message);
 
                                         // Check if link exists for thirst table
                                         DataTable dtExists = stored.Select(connStr, "CheckIfThirstURLExists", new List<SqlParameter>
@@ -703,7 +661,6 @@ internal class Program
                         }
 
                         // Todo, check all the commands eventually but for now let's stop the accidently double triggering.
-                        if (!message.StartsWith(prefix) && !message.StartsWith("$"))
                         if (!message.StartsWith(prefix))
                         {
                             var channel = msg.Channel as SocketGuildChannel;

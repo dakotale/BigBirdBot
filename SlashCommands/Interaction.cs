@@ -2,12 +2,7 @@
 using Discord.Interactions;
 using DiscordBot.Constants;
 using DiscordBot.Helper;
-using System;
-using System.Collections.Generic;
 using System.Data;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Web;
 
 namespace DiscordBot.SlashCommands
