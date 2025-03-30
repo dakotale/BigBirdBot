@@ -5,10 +5,6 @@ using Discord;
 using Microsoft.Extensions.DependencyInjection;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using DiscordBot.Constants;
-using System.Data.SqlClient;
-using System;
-using DiscordBot.Helper;
 using System.Text;
 
 namespace DiscordBot.Services
@@ -142,7 +138,7 @@ namespace DiscordBot.Services
 
         private static Task LogAsync(LogMessage log)
         {
-            string fileName = "ExceptionLog_" + DateTime.Now.Date.ToString("yyyy_MM_dd") + ".txt";
+            string fileName = @"Logs\ExceptionLog_" + DateTime.Now.Date.ToString("yyyy_MM_dd") + ".txt";
             string severity = "", source = "", message = "", exception = "", output = "";
 
             if (!string.IsNullOrEmpty(log.Message))

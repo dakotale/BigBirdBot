@@ -800,8 +800,15 @@ namespace DiscordBot.SlashCommands
                         albumName = keyValue.Value;
                 }
 
+            // For some reason Artist and Album are hiding, need to figure out why....
             if (track.AdditionalInformation.Count > 0)
-                msg = $"Track Name: **{track?.Title}**\nArtist: **{artist.ToString()}**\nAlbum: **{albumName.ToString()}**\nURL: {track?.Uri}\nDuration: **{duration}**\nSource: **{track?.SourceName}**\nVolume: **{GetVolume(long.Parse(Context.Guild.Id.ToString()))}%**";
+                msg = $"Track Name: **{track?.Title}**" +
+                    $"\nArtist: {artist.ToString()}" +
+                    $"\nAlbum: **{albumName.ToString()}**" +
+                    $"\nURL: {track?.Uri}" +
+                    $"\nDuration: **{duration}**" +
+                    $"\nSource: **{track?.SourceName}**" +
+                    $"\nVolume: **{GetVolume(long.Parse(Context.Guild.Id.ToString()))}%**";
             else
                 msg = $"Track Name: **{track?.Title}**\nArtist: **{(string.IsNullOrEmpty(track.Author) ? "" : track.Author)}**\nURL: {track?.Uri}\nDuration: **{duration}**\nSource: **{track?.SourceName}**\nVolume: **{GetVolume(long.Parse(Context.Guild.Id.ToString()))}%**";
 

@@ -16,8 +16,6 @@ using Discord.Interactions;
 using Microsoft.Extensions.Logging;
 using Lavalink4NET.Extensions;
 using Lavalink4NET;
-using Lavalink4NET.DiscordNet;
-using System;
 
 internal class Program
 {
