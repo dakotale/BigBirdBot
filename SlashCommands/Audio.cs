@@ -581,6 +581,12 @@ namespace DiscordBot.SlashCommands
                 return;
             }
 
+            StoredProcedure stored = new StoredProcedure();
+            stored.UpdateCreate(Constants.Constants.discordBotConnStr, "DeleteMusicQueueAll", new List<SqlParameter>
+            {
+                new SqlParameter("@ServerID", Int64.Parse(Context.Guild.Id.ToString()))
+            });
+
             if (player.Queue.Count > 1)
             {
                 await player.Queue.ClearAsync();
@@ -772,6 +778,11 @@ namespace DiscordBot.SlashCommands
         {
             StoredProcedure stored = new StoredProcedure();
             stored.UpdateCreate(Constants.Constants.discordBotConnStr, "DeletePlayerConnected", new List<SqlParameter>
+            {
+                new SqlParameter("@ServerID", Int64.Parse(serverId.ToString()))
+            });
+
+            stored.UpdateCreate(Constants.Constants.discordBotConnStr, "DeleteMusicQueueAll", new List<SqlParameter>
             {
                 new SqlParameter("@ServerID", Int64.Parse(serverId.ToString()))
             });

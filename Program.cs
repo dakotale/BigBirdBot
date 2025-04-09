@@ -16,6 +16,8 @@ using Discord.Interactions;
 using Microsoft.Extensions.Logging;
 using Lavalink4NET.Extensions;
 using Lavalink4NET;
+using System.Net.WebSockets;
+using Discord.Net;
 
 internal class Program
 {
@@ -45,16 +47,72 @@ internal class Program
     }
     public async Task MainAsync()
     {
-        await services.GetRequiredService<InteractionHandlerService>().InitializeAsync();
+        try
+        {
+            await services.GetRequiredService<InteractionHandlerService>().InitializeAsync();
 
+            await HandleLogin(client);
+        }
+        catch (WebSocketException wse)
+        {
+            await loggingService.InfoAsync("WebSocketException: " + wse.Message);
+            await client.LogoutAsync();
+            client = new DiscordSocketClient();
+            client = services.GetRequiredService<DiscordSocketClient>();
+            await HandleLogin(client);
+        }
+        catch (WebSocketClosedException wsce)
+        {
+            await loggingService.InfoAsync("WebSocketClosedException: " + wsce.Message);
+            await client.LogoutAsync();
+            client = new DiscordSocketClient();
+            client = services.GetRequiredService<DiscordSocketClient>();
+            await HandleLogin(client);
+        }
+        catch (GatewayReconnectException gre)
+        {
+            await loggingService.InfoAsync("GatewayReconnectException: " + gre.Message);
+            await client.LogoutAsync();
+            client = new DiscordSocketClient();
+            client = services.GetRequiredService<DiscordSocketClient>();
+            await HandleLogin(client);
+        }
+        catch (Exception ex)
+        {
+            await loggingService.InfoAsync("Exception: " + ex.Message);
+            await client.LogoutAsync();
+            client = new DiscordSocketClient();
+            client = services.GetRequiredService<DiscordSocketClient>();
+            await HandleLogin(client);
+        }
+    }
+
+    public async Task HandleLogin(DiscordSocketClient client)
+    {
         _ = loggingService.InfoAsync("Starting Bot");
 
 #if DEBUG
         await client.LoginAsync(TokenType.Bot, Constants.devBotToken);
 #else
-        await client.LoginAsync(TokenType.Bot, Constants.botToken);
+            await client.LoginAsync(TokenType.Bot, Constants.botToken);
 #endif
-        await client.StartAsync();
+
+        client.Disconnected += async (e) =>
+        {
+            await loggingService.InfoAsync("Bot disconnected");
+
+            if (client.ConnectionState == Discord.ConnectionState.Connecting)
+                await loggingService.InfoAsync("Bot connecting");
+        };
+
+        client.Connected += async () =>
+        {
+            await loggingService.InfoAsync("Bot is connected");
+            await client.SetGameAsync("/reportbug");
+        };
+
+        if (client.ConnectionState != Discord.ConnectionState.Connected && client.ConnectionState != Discord.ConnectionState.Connecting)
+            await client.StartAsync();
 
         client.ReactionAdded += HandleReactionAsync;
         client.JoinedGuild += JoinedGuild;
@@ -64,8 +122,6 @@ internal class Program
         client.MessageReceived += MessageReceived;
         client.UserVoiceStateUpdated += UserVoiceStateUpdated;
         client.Log += LogMessage;
-
-        await client.SetGameAsync("/reportbug");
 
         await Task.Delay(Timeout.Infinite);
     }
@@ -738,6 +794,11 @@ internal class Program
 
                 StoredProcedure stored = new StoredProcedure();
                 stored.UpdateCreate(Constants.discordBotConnStr, "DeletePlayerConnected", new List<SqlParameter>
+                {
+                    new SqlParameter("@ServerID", Int64.Parse(before.VoiceChannel.Guild.Id.ToString()))
+                });
+
+                stored.UpdateCreate(Constants.discordBotConnStr, "DeleteMusicQueueAll", new List<SqlParameter>
                 {
                     new SqlParameter("@ServerID", Int64.Parse(before.VoiceChannel.Guild.Id.ToString()))
                 });
