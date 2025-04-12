@@ -1,11 +1,11 @@
-﻿using Discord;
+﻿using System.Data;
+using System.Data.SqlClient;
+using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 using DiscordBot.Constants;
 using DiscordBot.Helper;
 using DiscordBot.Misc;
-using System.Data;
-using System.Data.SqlClient;
 
 namespace DiscordBot.SlashCommands
 {

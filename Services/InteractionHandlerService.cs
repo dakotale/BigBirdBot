@@ -1,17 +1,16 @@
-﻿using Discord.Interactions;
-using Discord.WebSocket;
-using Discord;
-using Microsoft.Extensions.DependencyInjection;
-using System.Reflection;
-using DiscordBot.Constants;
+﻿using System.Data;
 using System.Data.SqlClient;
-using System.Data;
+using System.Reflection;
+using Discord;
+using Discord.Interactions;
+using Discord.Net.Extensions.Interactions;
+using Discord.WebSocket;
+using DiscordBot.Constants;
 using DiscordBot.Helper;
-using Lavalink4NET.Players.Queued;
-using Lavalink4NET.Players;
 using Lavalink4NET;
 using Lavalink4NET.DiscordNet;
-using Discord.Net.Extensions.Interactions;
+using Lavalink4NET.Players;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace DiscordBot.Services
 {

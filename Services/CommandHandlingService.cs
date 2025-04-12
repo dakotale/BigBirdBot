@@ -1,12 +1,12 @@
-﻿using Discord.Commands;
-using Discord.WebSocket;
-using Discord;
-using Microsoft.Extensions.DependencyInjection;
-using System.Reflection;
-using DiscordBot.Helper;
-using DiscordBot.Constants;
-using System.Data;
+﻿using System.Data;
 using System.Data.SqlClient;
+using System.Reflection;
+using Discord;
+using Discord.Commands;
+using Discord.WebSocket;
+using DiscordBot.Constants;
+using DiscordBot.Helper;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace DiscordBot.Services
 {

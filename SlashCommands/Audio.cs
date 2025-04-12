@@ -1,16 +1,16 @@
-﻿using System.Data.SqlClient;
-using System.Data;
+﻿using System.Data;
+using System.Data.SqlClient;
 using Discord;
 using Discord.Interactions;
 using DiscordBot.Constants;
+using DiscordBot.Helper;
 using Fergun.Interactive;
+using Fergun.Interactive.Pagination;
 using Lavalink4NET;
 using Lavalink4NET.DiscordNet;
 using Lavalink4NET.Players;
 using Lavalink4NET.Players.Queued;
 using Lavalink4NET.Rest.Entities.Tracks;
-using DiscordBot.Helper;
-using Fergun.Interactive.Pagination;
 using Lavalink4NET.Tracks;
 
 namespace DiscordBot.SlashCommands

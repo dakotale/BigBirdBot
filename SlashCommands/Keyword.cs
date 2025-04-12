@@ -1,11 +1,11 @@
-﻿using Discord;
+﻿using System.Data;
+using System.Data.SqlClient;
+using System.Net;
+using Discord;
 using Discord.Interactions;
+using Discord.WebSocket;
 using DiscordBot.Constants;
 using DiscordBot.Helper;
-using System.Data.SqlClient;
-using System.Data;
-using System.Net;
-using Discord.WebSocket;
 
 namespace DiscordBot.SlashCommands
 {
@@ -139,7 +139,7 @@ namespace DiscordBot.SlashCommands
                 await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Discord.Color.Red, imageUrl).Build());
             }
         }
-        
+
         [SlashCommand("addmultikeyword", "Adds a keyword that can access multiple actions.")]
         [EnabledInDm(false)]
         [RequireUserPermission(ChannelPermission.ManageMessages)]
@@ -254,7 +254,7 @@ namespace DiscordBot.SlashCommands
                 await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, "", createdByMsg, Color.Red).Build());
             }
         }
-        
+
         [SlashCommand("addmultieventadmin", "Adds a scheduled job to send a photo for a user.")]
         [EnabledInDm(false)]
         [RequireUserPermission(ChannelPermission.ManageMessages)]
@@ -291,7 +291,7 @@ namespace DiscordBot.SlashCommands
                 await FollowupAsync(embed: embed.Build());
             }
         }
-        
+
         [SlashCommand("addmultievent", "Adds a scheduled job based on the current channel you're in.")]
         [EnabledInDm(false)]
         public async Task HandleThirstEventAdd()
@@ -327,7 +327,7 @@ namespace DiscordBot.SlashCommands
                 await FollowupAsync(embed: embed.Build());
             }
         }
-        
+
         [SlashCommand("addkeywordurl", "Add the same link to multiple comma-separated keywords in your server.")]
         [EnabledInDm(false)]
         public async Task HandleMultipleLink([MinLength(1)] string keyword, string url)
@@ -813,7 +813,7 @@ namespace DiscordBot.SlashCommands
             EmbedHelper embed = new EmbedHelper();
             await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Green, imageUrl).Build());
         }
-        
+
         [SlashCommand("deletekeyword", "Deletes a keyword from the server.")]
         [EnabledInDm(false)]
         [RequireUserPermission(ChannelPermission.ManageMessages)]
@@ -932,7 +932,7 @@ namespace DiscordBot.SlashCommands
             }
         }
 
-                [SlashCommand("deletemultievent", "Removes a user's scheduled event for a user.")]
+        [SlashCommand("deletemultievent", "Removes a user's scheduled event for a user.")]
         [EnabledInDm(false)]
         [RequireOwner]
         public async Task HandleThirstEventDelete(SocketGuildUser user, string chatName = null)
@@ -963,7 +963,7 @@ namespace DiscordBot.SlashCommands
                 await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Multi-Keyword User Removed", dr["Message"].ToString(), "", Context.User.Username, Discord.Color.Blue).Build());
             }
         }
-        
+
         [SlashCommand("deleteexcludefromkeyword", "Delete from exclude from keywords activating when typing.")]
         [EnabledInDm(false)]
         public async Task HandleDeleteExcludeFromKeyword()

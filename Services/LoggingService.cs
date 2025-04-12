@@ -1,11 +1,11 @@
-﻿using Discord.Commands;
-using Discord.Interactions;
-using Discord.WebSocket;
-using Discord;
-using Microsoft.Extensions.DependencyInjection;
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text;
+using Discord;
+using Discord.Commands;
+using Discord.Interactions;
+using Discord.WebSocket;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace DiscordBot.Services
 {

@@ -1,23 +1,23 @@
 ﻿// There is no need to implement IDisposable like before as we are
 // using dependency injection, which handles calling Dispose for us.
-using Discord.WebSocket;
+using System.Data;
+using System.Data.SqlClient;
+using System.Net;
+using System.Net.WebSockets;
 using Discord;
 using Discord.Commands;
-using DiscordBot.Services;
-using DiscordBot.Constants;
-using Microsoft.Extensions.DependencyInjection;
-using System.Data.SqlClient;
-using System.Data;
-using System.Net;
-using DiscordBot.Helper;
-using KillersLibrary.Services;
-using Fergun.Interactive;
 using Discord.Interactions;
-using Microsoft.Extensions.Logging;
-using Lavalink4NET.Extensions;
-using Lavalink4NET;
-using System.Net.WebSockets;
 using Discord.Net;
+using Discord.WebSocket;
+using DiscordBot.Constants;
+using DiscordBot.Helper;
+using DiscordBot.Services;
+using Fergun.Interactive;
+using KillersLibrary.Services;
+using Lavalink4NET;
+using Lavalink4NET.Extensions;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 internal class Program
 {
@@ -38,7 +38,7 @@ internal class Program
     static void Main(string[] args)
     {
         System.Timers.Timer eventTimer;
-        eventTimer = new System.Timers.Timer(55000); // Check every 55 seconds
+        eventTimer = new System.Timers.Timer(59000); // Check every 55 seconds
         eventTimer.Elapsed += OnTimedEvent;
         eventTimer.AutoReset = true;
         eventTimer.Enabled = true;
@@ -47,11 +47,49 @@ internal class Program
     }
     public async Task MainAsync()
     {
+        await services.GetRequiredService<InteractionHandlerService>().InitializeAsync();
+        await HandleLogin(client);
+    }
+
+    public async Task HandleLogin(DiscordSocketClient client)
+    {
         try
         {
-            await services.GetRequiredService<InteractionHandlerService>().InitializeAsync();
+            _ = loggingService.InfoAsync("Starting Bot");
 
-            await HandleLogin(client);
+#if DEBUG
+            await client.LoginAsync(TokenType.Bot, Constants.devBotToken);
+#else
+            await client.LoginAsync(TokenType.Bot, Constants.botToken);
+#endif
+
+            client.Disconnected += async (e) =>
+            {
+                await loggingService.InfoAsync("Bot disconnected");
+
+                if (client.ConnectionState == Discord.ConnectionState.Connecting)
+                    await loggingService.InfoAsync("Bot connecting");
+            };
+
+            client.Connected += async () =>
+            {
+                await loggingService.InfoAsync("Bot connected");
+                await client.SetGameAsync("/reportbug");
+            };
+
+            if (client.ConnectionState != Discord.ConnectionState.Connected && client.ConnectionState != Discord.ConnectionState.Connecting)
+                await client.StartAsync();
+
+            client.ReactionAdded += HandleReactionAsync;
+            client.JoinedGuild += JoinedGuild;
+            client.UserJoined += UserJoined;
+            client.UserLeft += UserLeft;
+            client.ButtonExecuted += ButtonHandler;
+            client.MessageReceived += MessageReceived;
+            client.UserVoiceStateUpdated += UserVoiceStateUpdated;
+            client.Log += LogMessage;
+
+            await Task.Delay(Timeout.Infinite);
         }
         catch (WebSocketException wse)
         {
@@ -85,45 +123,6 @@ internal class Program
             client = services.GetRequiredService<DiscordSocketClient>();
             await HandleLogin(client);
         }
-    }
-
-    public async Task HandleLogin(DiscordSocketClient client)
-    {
-        _ = loggingService.InfoAsync("Starting Bot");
-
-#if DEBUG
-        await client.LoginAsync(TokenType.Bot, Constants.devBotToken);
-#else
-            await client.LoginAsync(TokenType.Bot, Constants.botToken);
-#endif
-
-        client.Disconnected += async (e) =>
-        {
-            await loggingService.InfoAsync("Bot disconnected");
-
-            if (client.ConnectionState == Discord.ConnectionState.Connecting)
-                await loggingService.InfoAsync("Bot connecting");
-        };
-
-        client.Connected += async () =>
-        {
-            await loggingService.InfoAsync("Bot is connected");
-            await client.SetGameAsync("/reportbug");
-        };
-
-        if (client.ConnectionState != Discord.ConnectionState.Connected && client.ConnectionState != Discord.ConnectionState.Connecting)
-            await client.StartAsync();
-
-        client.ReactionAdded += HandleReactionAsync;
-        client.JoinedGuild += JoinedGuild;
-        client.UserJoined += UserJoined;
-        client.UserLeft += UserLeft;
-        client.ButtonExecuted += ButtonHandler;
-        client.MessageReceived += MessageReceived;
-        client.UserVoiceStateUpdated += UserVoiceStateUpdated;
-        client.Log += LogMessage;
-
-        await Task.Delay(Timeout.Infinite);
     }
 
     #region DiscordSocketClient Events

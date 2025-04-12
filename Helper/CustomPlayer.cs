@@ -1,9 +1,9 @@
-﻿using Discord;
+﻿using System.Data.SqlClient;
+using Discord;
 using DiscordBot.Constants;
 using Lavalink4NET.Players;
 using Lavalink4NET.Players.Queued;
 using Lavalink4NET.Protocol.Payloads.Events;
-using System.Data.SqlClient;
 
 namespace DiscordBot.Helper
 {

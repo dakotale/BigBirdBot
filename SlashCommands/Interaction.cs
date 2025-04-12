@@ -1,9 +1,9 @@
-﻿using Discord;
+﻿using System.Data;
+using System.Web;
+using Discord;
 using Discord.Interactions;
 using DiscordBot.Constants;
 using DiscordBot.Helper;
-using System.Data;
-using System.Web;
 
 namespace DiscordBot.SlashCommands
 {

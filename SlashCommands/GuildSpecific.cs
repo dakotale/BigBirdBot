@@ -1,10 +1,9 @@
-﻿using Discord;
+﻿using System.Data;
+using System.Data.SqlClient;
 using Discord.Interactions;
+using Discord.Net.Extensions.Interactions;
 using DiscordBot.Constants;
 using DiscordBot.Helper;
-using System.Data.SqlClient;
-using System.Data;
-using Discord.Net.Extensions.Interactions;
 
 namespace DiscordBot.SlashCommands
 {
@@ -163,7 +162,7 @@ namespace DiscordBot.SlashCommands
             EmbedHelper embed = new EmbedHelper();
             await FollowupAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Mary Apologized", $"**The Mary apology counter was updated to {currentCounter} on {currentDateTime}**\n**Average Per Day: {averagePerDay}**\n{counterHistory}", "", Context.User.Username, Discord.Color.Green).Build());
         }
-        
+
         [SlashCommand("fireapologized", "Fire continuing the apology arc")]
         [EnabledInDm(false)]
         public async Task HandleFireApology(int? additionalCount = null)
