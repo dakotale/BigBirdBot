@@ -4,48 +4,17 @@ namespace DiscordBot.Json
 {
     public class Trivia
     {
-        private string categoryName = null;
-        private string typeName = null;
-        private string difficulty = null;
-        private string question = null;
-        private string correctAnswer = null;
-        private List<string> incorrectAnswer = null;
+        public string CategoryName { get; set; } = null;
 
-        public string CategoryName
-        {
-            get { return categoryName; }
-            set { categoryName = value; }
-        }
+        public string TypeName { get; set; } = null;
 
-        public string TypeName
-        {
-            get { return typeName; }
-            set { typeName = value; }
-        }
+        public string Difficulty { get; set; } = null;
 
-        public string Difficulty
-        {
-            get { return difficulty; }
-            set { difficulty = value; }
-        }
+        public string Question { get; set; } = null;
 
-        public string Question
-        {
-            get { return question; }
-            set { question = value; }
-        }
+        public string CorrectAnswer { get; set; } = null;
 
-        public string CorrectAnswer
-        {
-            get { return correctAnswer; }
-            set { correctAnswer = value; }
-        }
-
-        public List<string> IncorrectAnswers
-        {
-            get { return incorrectAnswer; }
-            set { incorrectAnswer = value; }
-        }
+        public List<string> IncorrectAnswers { get; set; } = null;
         public Trivia() { }
 
         public Trivia(string trivia)
@@ -65,32 +34,32 @@ namespace DiscordBot.Json
                             {
                                 if (p.Name.Equals("category"))
                                 {
-                                    categoryName = (string)p.Value;
+                                    CategoryName = (string)p.Value;
                                 }
                                 if (p.Name.Equals("type"))
                                 {
-                                    typeName = System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(p.Value.ToString().ToLower());
+                                    TypeName = System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(p.Value.ToString().ToLower());
                                 }
                                 if (p.Name.Equals("difficulty"))
                                 {
-                                    difficulty = System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(p.Value.ToString().ToLower());
+                                    Difficulty = System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(p.Value.ToString().ToLower());
                                 }
                                 if (p.Name.Equals("question"))
                                 {
-                                    question = System.Net.WebUtility.HtmlDecode((string)p.Value);
+                                    Question = System.Net.WebUtility.HtmlDecode((string)p.Value);
                                 }
                                 if (p.Name.Equals("correct_answer"))
                                 {
-                                    correctAnswer = System.Net.WebUtility.HtmlDecode((string)p.Value);
+                                    CorrectAnswer = System.Net.WebUtility.HtmlDecode((string)p.Value);
                                 }
                                 if (p.Name.Equals("incorrect_answers"))
                                 {
                                     List<string> badAnswers = new List<string>();
-                                    foreach (var ans in p.Value)
+                                    foreach (JToken ans in p.Value)
                                     {
                                         badAnswers.Add(System.Net.WebUtility.HtmlDecode(ans.ToString()));
                                     }
-                                    incorrectAnswer = badAnswers;
+                                    IncorrectAnswers = badAnswers;
                                 }
                             }
                         }

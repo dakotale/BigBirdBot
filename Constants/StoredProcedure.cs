@@ -22,7 +22,7 @@ namespace DiscordBot.Constants
                 cmd.CommandType = CommandType.StoredProcedure;
 
                 // 3. add parameter to command, which will be passed to the stored procedure
-                foreach (var param in parameters)
+                foreach (SqlParameter param in parameters)
                 {
                     cmd.Parameters.Add(param);
                 }
@@ -42,12 +42,12 @@ namespace DiscordBot.Constants
         public void UpdateCreate(string connStr, string spName, List<SqlParameter> parameters)
         {
             using (SqlConnection conn = new SqlConnection(connStr))
-            using (var cmd = new SqlCommand(spName, conn))
+            using (SqlCommand cmd = new SqlCommand(spName, conn))
             {
                 cmd.CommandType = CommandType.StoredProcedure;
 
                 // 3. add parameter to command, which will be passed to the stored procedure
-                foreach (var param in parameters)
+                foreach (SqlParameter param in parameters)
                 {
                     cmd.Parameters.Add(param);
                 }

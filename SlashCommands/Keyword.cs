@@ -38,7 +38,7 @@ namespace DiscordBot.SlashCommands
 
                             string word = keyword.Trim();
                             string createdBy = Context.User.Username;
-                            var serverId = Int64.Parse(Context.Guild.Id.ToString());
+                            long serverId = Int64.Parse(Context.Guild.Id.ToString());
 
                             StoredProcedure procedure = new StoredProcedure();
 
@@ -69,7 +69,7 @@ namespace DiscordBot.SlashCommands
                                 string word = keyword.Trim();
                                 action = action.Trim();
                                 string createdBy = Context.User.Username;
-                                var serverId = Int64.Parse(Context.Guild.Id.ToString());
+                                long serverId = Int64.Parse(Context.Guild.Id.ToString());
 
                                 StoredProcedure procedure = new StoredProcedure();
 
@@ -155,7 +155,7 @@ namespace DiscordBot.SlashCommands
                 createChannel = createChannel.Trim();
 
                 string createdBy = Context.User.Username;
-                var serverId = Int64.Parse(Context.Guild.Id.ToString());
+                long serverId = Int64.Parse(Context.Guild.Id.ToString());
                 EmbedHelper embed = new EmbedHelper();
                 string title = "";
                 string desc = $"Added Command Successfully.";
@@ -164,13 +164,13 @@ namespace DiscordBot.SlashCommands
                 // Create text channel in a specific category
                 string textChannelName = chatName;
 
-                var guild = Context.Client.GetGuild(ulong.Parse(serverId.ToString()));
-                var categoryIdList = guild.CategoryChannels.Where(s => s.Name.ToLower() == "thirsting" || s.Name.ToLower() == "stanning" || s.Name.ToLower() == "keyword multi").ToList();
+                SocketGuild guild = Context.Client.GetGuild(ulong.Parse(serverId.ToString()));
+                List<SocketCategoryChannel> categoryIdList = guild.CategoryChannels.Where(s => s.Name.ToLower() == "thirsting" || s.Name.ToLower() == "stanning" || s.Name.ToLower() == "keyword multi").ToList();
                 ulong categoryId = default(ulong);
 
                 if (categoryIdList.Any())
                 {
-                    foreach (var category in categoryIdList)
+                    foreach (SocketCategoryChannel? category in categoryIdList)
                     {
                         categoryId = category.Id;
                     }
@@ -267,7 +267,7 @@ namespace DiscordBot.SlashCommands
                 StoredProcedure stored = new StoredProcedure();
                 EmbedHelper embedHelper = new EmbedHelper();
 
-                var tableName = keyword.Trim();
+                string tableName = keyword.Trim();
 
                 DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "AddEventScheduledTime", new List<SqlParameter>
                 {
@@ -279,7 +279,7 @@ namespace DiscordBot.SlashCommands
                 {
                     foreach (DataRow dr in dt.Rows)
                     {
-                        var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Multiple Keyword User Added", $"{tableName} was successfully added and **{user.Username}** will start receiving this on {DateTime.Parse(dr["ScheduleTime"].ToString()).ToString("MM/dd/yyyy hh:mm t")} ET.\nThe current list of multi people/characters for this user are; *{dr["ScheduledEventTable"].ToString()}*", "", Context.User.Username, Color.Blue, "");
+                        EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Multiple Keyword User Added", $"{tableName} was successfully added and **{user.Username}** will start receiving this on {DateTime.Parse(dr["ScheduleTime"].ToString()).ToString("MM/dd/yyyy hh:mm t")} ET.\nThe current list of multi people/characters for this user are; *{dr["ScheduledEventTable"].ToString()}*", "", Context.User.Username, Color.Blue, "");
                         await FollowupAsync(embed: embed.Build());
                     }
                 }
@@ -287,7 +287,7 @@ namespace DiscordBot.SlashCommands
             catch (Exception e)
             {
                 EmbedHelper embedHelper = new EmbedHelper();
-                var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", e.Message, Constants.Constants.errorImageUrl, "", Color.Red, "");
+                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", e.Message, Constants.Constants.errorImageUrl, "", Color.Red, "");
                 await FollowupAsync(embed: embed.Build());
             }
         }
@@ -303,7 +303,7 @@ namespace DiscordBot.SlashCommands
                 StoredProcedure stored = new StoredProcedure();
                 EmbedHelper embedHelper = new EmbedHelper();
 
-                var tableName = Context.Channel.Name.Trim();
+                string tableName = Context.Channel.Name.Trim();
 
                 DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "AddEventScheduledTime", new List<SqlParameter>
                 {
@@ -315,7 +315,7 @@ namespace DiscordBot.SlashCommands
                 {
                     foreach (DataRow dr in dt.Rows)
                     {
-                        var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Multiple Keyword User Added", $"{tableName} was successfully added and **{Context.User.Username}** will start receiving this on {DateTime.Parse(dr["ScheduleTime"].ToString()).ToString("MM/dd/yyyy hh:mm t")} ET.\nThe current list of multi people/characters for you are; *{dr["ScheduledEventTable"].ToString()}*", "", Context.User.Username, Color.Blue, "");
+                        EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Multiple Keyword User Added", $"{tableName} was successfully added and **{Context.User.Username}** will start receiving this on {DateTime.Parse(dr["ScheduleTime"].ToString()).ToString("MM/dd/yyyy hh:mm t")} ET.\nThe current list of multi people/characters for you are; *{dr["ScheduledEventTable"].ToString()}*", "", Context.User.Username, Color.Blue, "");
                         await FollowupAsync(embed: embed.Build());
                     }
                 }
@@ -323,7 +323,7 @@ namespace DiscordBot.SlashCommands
             catch (Exception e)
             {
                 EmbedHelper embedHelper = new EmbedHelper();
-                var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", e.Message, Constants.Constants.errorImageUrl, "", Color.Red, "");
+                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", e.Message, Constants.Constants.errorImageUrl, "", Color.Red, "");
                 await FollowupAsync(embed: embed.Build());
             }
         }
@@ -344,7 +344,7 @@ namespace DiscordBot.SlashCommands
             else
                 multipleKeywords.Add(keyword);
 
-            foreach (var m in multipleKeywords)
+            foreach (string m in multipleKeywords)
             {
                 url = cleanup.CleanURLEmbed(url);
 
@@ -363,7 +363,7 @@ namespace DiscordBot.SlashCommands
                     if (multiUrl)
                     {
                         string[] urls = url.Split(",", StringSplitOptions.TrimEntries);
-                        foreach (var u in urls)
+                        foreach (string u in urls)
                         {
                             bool result = u.Trim().StartsWith("http");
 
@@ -394,8 +394,7 @@ namespace DiscordBot.SlashCommands
                     }
                     else
                     {
-                        Uri uriResult;
-                        bool result = Uri.TryCreate(url, UriKind.Absolute, out uriResult)
+                        bool result = Uri.TryCreate(url, UriKind.Absolute, out Uri uriResult)
                             && (uriResult.Scheme == Uri.UriSchemeHttp || uriResult.Scheme == Uri.UriSchemeHttps);
 
                         if (result)
@@ -425,7 +424,7 @@ namespace DiscordBot.SlashCommands
                 }
             }
 
-            var embed = new EmbedBuilder
+            EmbedBuilder embed = new EmbedBuilder
             {
                 Title = "BigBirdBot - Added Links",
                 Color = Color.Blue,
@@ -463,7 +462,7 @@ namespace DiscordBot.SlashCommands
             else
                 multipleKeywords.Add(keyword);
 
-            foreach (var m in multipleKeywords)
+            foreach (string m in multipleKeywords)
             {
                 // Check if it's in the ThirstMap and run the add command
                 List<SqlParameter> parameters = new List<SqlParameter>();
@@ -475,7 +474,7 @@ namespace DiscordBot.SlashCommands
                     string userId = Context.User.Id.ToString();
                     foreach (DataRow dr in dt.Rows)
                     {
-                        foreach (var a in attachments)
+                        foreach (IAttachment? a in attachments)
                         {
                             string tablename = dr["TableName"].ToString();
                             tablename = tablename.Replace("KeywordMulti.", "");
@@ -502,7 +501,7 @@ namespace DiscordBot.SlashCommands
                 }
             }
 
-            var embed = new EmbedBuilder
+            EmbedBuilder embed = new EmbedBuilder
             {
                 Title = "BigBirdBot - Added Image",
                 Color = Color.Blue,
@@ -520,7 +519,7 @@ namespace DiscordBot.SlashCommands
         {
             await DeferAsync();
             string connStr = Constants.Constants.discordBotConnStr;
-            var serverId = Int64.Parse(Context.Guild.Id.ToString());
+            long serverId = Int64.Parse(Context.Guild.Id.ToString());
             int i = 1;
 
             StoredProcedure stored = new StoredProcedure();
@@ -585,7 +584,7 @@ namespace DiscordBot.SlashCommands
                     {
                         string word = keyword.Trim();
                         string createdBy = Context.User.Username;
-                        var serverId = Int64.Parse(Context.Guild.Id.ToString());
+                        long serverId = Int64.Parse(Context.Guild.Id.ToString());
 
                         StoredProcedure procedure = new StoredProcedure();
 
@@ -647,7 +646,7 @@ namespace DiscordBot.SlashCommands
                                 string word = keyword.Trim();
                                 action = action.Trim();
                                 string createdBy = Context.User.Username;
-                                var serverId = Int64.Parse(Context.Guild.Id.ToString());
+                                long serverId = Int64.Parse(Context.Guild.Id.ToString());
 
                                 StoredProcedure procedure = new StoredProcedure();
 
@@ -716,7 +715,7 @@ namespace DiscordBot.SlashCommands
                 {
                     string word = keyword.Trim();
                     string createdBy = Context.User.Username;
-                    var serverId = Int64.Parse(Context.Guild.Id.ToString());
+                    long serverId = Int64.Parse(Context.Guild.Id.ToString());
 
                     StoredProcedure procedure = new StoredProcedure();
 
@@ -790,7 +789,7 @@ namespace DiscordBot.SlashCommands
         {
             await DeferAsync();
             StoredProcedure procedure = new StoredProcedure();
-            var serverId = Int64.Parse(Context.Guild.Id.ToString());
+            long serverId = Int64.Parse(Context.Guild.Id.ToString());
             string result = "";
 
             DataTable dt = procedure.Select(Constants.Constants.discordBotConnStr, "TurnAllOnOffKeywordsByServer", new List<SqlParameter>
@@ -820,7 +819,7 @@ namespace DiscordBot.SlashCommands
         public async Task HandleKeywordDelete([MinLength(1)] string keyword)
         {
             await DeferAsync();
-            var serverId = Int64.Parse(Context.Guild.Id.ToString());
+            long serverId = Int64.Parse(Context.Guild.Id.ToString());
 
             StoredProcedure procedure = new StoredProcedure();
 
@@ -886,12 +885,12 @@ namespace DiscordBot.SlashCommands
                         new SqlParameter("TableName", tableName)
                     });
 
-                var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Delete Successful", $"URL {url} was successfully deleted from the {tableName} table.", "", Context.User.Username, Color.Blue, "");
+                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Delete Successful", $"URL {url} was successfully deleted from the {tableName} table.", "", Context.User.Username, Color.Blue, "");
                 await FollowupAsync(embed: embed.Build());
             }
             else
             {
-                var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "The URL doesn't exist in the table provided or the table doesn't exist.", Constants.Constants.errorImageUrl, Context.User.Username, Color.Red, "");
+                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "The URL doesn't exist in the table provided or the table doesn't exist.", Constants.Constants.errorImageUrl, Context.User.Username, Color.Red, "");
                 await FollowupAsync(embed: embed.Build());
             }
         }
@@ -921,13 +920,13 @@ namespace DiscordBot.SlashCommands
                         new SqlParameter("@TableName", dr["TableName"].ToString())
                     });
 
-                    var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Delete Successful", "The multi-keyword provided was removed successfully.", "", "", Color.Blue, "");
+                    EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Delete Successful", "The multi-keyword provided was removed successfully.", "", "", Color.Blue, "");
                     await FollowupAsync(embed: embed.Build());
                 }
             }
             else
             {
-                var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "The multi-keyword entered does not exist.", Constants.Constants.errorImageUrl, "", Color.Red, "");
+                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "The multi-keyword entered does not exist.", Constants.Constants.errorImageUrl, "", Color.Red, "");
                 await FollowupAsync(embed: embed.Build());
             }
         }
@@ -972,7 +971,7 @@ namespace DiscordBot.SlashCommands
             StoredProcedure stored = new StoredProcedure();
             string connStr = Constants.Constants.discordBotConnStr;
             string userId = Context.User.Id.ToString();
-            var serverId = Int64.Parse(Context.Guild.Id.ToString());
+            long serverId = Int64.Parse(Context.Guild.Id.ToString());
 
             stored.UpdateCreate(connStr, "DeleteChatKeywordExclusion", new List<SqlParameter>
             {
@@ -980,7 +979,7 @@ namespace DiscordBot.SlashCommands
                 new SqlParameter("@ServerID", serverId)
             });
 
-            var embed = new EmbedBuilder
+            EmbedBuilder embed = new EmbedBuilder
             {
                 Title = "BigBirdBot - Exclude from Keyword",
                 Color = Color.Blue,
@@ -1020,7 +1019,7 @@ namespace DiscordBot.SlashCommands
             StoredProcedure stored = new StoredProcedure();
             string connStr = Constants.Constants.discordBotConnStr;
             string userId = Context.User.Id.ToString();
-            var serverId = Int64.Parse(Context.Guild.Id.ToString());
+            long serverId = Int64.Parse(Context.Guild.Id.ToString());
 
             stored.UpdateCreate(connStr, "AddChatKeywordExclusion", new List<SqlParameter>
             {
@@ -1028,7 +1027,7 @@ namespace DiscordBot.SlashCommands
                 new SqlParameter("@ServerID", serverId)
             });
 
-            var embed = new EmbedBuilder
+            EmbedBuilder embed = new EmbedBuilder
             {
                 Title = "BigBirdBot - Exclude from Keyword",
                 Color = Color.Blue,

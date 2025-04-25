@@ -37,17 +37,17 @@ namespace DiscordBot.SlashCommands
                     // Need to check if Guild exists
                     if (Context.Client.GetGuild(ulong.Parse(dr["ServerUID"].ToString())) != null)
                     {
-                        var guild = Context.Client.GetGuild(ulong.Parse(dr["ServerUID"].ToString()));
-                        var textChannel = guild.GetTextChannel(ulong.Parse(dr["DefaultChannelID"].ToString()));
+                        SocketGuild guild = Context.Client.GetGuild(ulong.Parse(dr["ServerUID"].ToString()));
+                        SocketTextChannel textChannel = guild.GetTextChannel(ulong.Parse(dr["DefaultChannelID"].ToString()));
                         if (textChannel != null)
                         {
                             IUser bot = guild.Users.Where(s => s.IsBot && s.Username.Contains("BigBirdBot")).FirstOrDefault();
                             if (bot != null)
                             {
-                                var user = textChannel.Users.Where(s => s.Id == bot.Id).FirstOrDefault();
+                                SocketGuildUser? user = textChannel.Users.Where(s => s.Id == bot.Id).FirstOrDefault();
                                 if (user != null)
                                 {
-                                    var permissions = user.GetPermissions(textChannel as IGuildChannel);
+                                    ChannelPermissions permissions = user.GetPermissions(textChannel);
                                     if (permissions.SendMessages)
                                     {
                                         serverList.Add(guild.Name);
@@ -141,10 +141,10 @@ namespace DiscordBot.SlashCommands
                     // Need to check if Guild exists
                     if (Context.Client.GetGuild(ulong.Parse(dr["ServerUID"].ToString())) != null)
                     {
-                        var users = Context.Client.GetGuild(ulong.Parse(dr["ServerUID"].ToString())).Users.Where(s => s.IsBot == false && s.IsWebhook == false).ToList() ?? new List<SocketGuildUser>();
+                        List<SocketGuildUser> users = Context.Client.GetGuild(ulong.Parse(dr["ServerUID"].ToString())).Users.Where(s => s.IsBot == false && s.IsWebhook == false).ToList() ?? new List<SocketGuildUser>();
                         if (users.Count > 0)
                         {
-                            foreach (var u in users)
+                            foreach (SocketGuildUser? u in users)
                             {
                                 stored.UpdateCreate(Constants.Constants.discordBotConnStr, "AddUser", new List<SqlParameter>
                                 {
@@ -203,12 +203,12 @@ namespace DiscordBot.SlashCommands
                     new SqlParameter("TableName", tableName)
                 });
 
-                var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Delete Successful", $"Image {fileName} was successfully deleted from the {tableName} table.", "", Context.User.Username, Color.Blue, "");
+                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Delete Successful", $"Image {fileName} was successfully deleted from the {tableName} table.", "", Context.User.Username, Color.Blue, "");
                 await FollowupAsync(embed: embed.Build());
             }
             else
             {
-                var embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "The image doesn't exist in the table provided or the table doesn't exist.", Constants.Constants.errorImageUrl, Context.User.Username, Color.Red, "");
+                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "The image doesn't exist in the table provided or the table doesn't exist.", Constants.Constants.errorImageUrl, Context.User.Username, Color.Red, "");
                 await FollowupAsync(embed: embed.Build());
             }
         }

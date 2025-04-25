@@ -18,19 +18,25 @@ namespace DiscordBot.SlashCommands
             string connStr = Constants.Constants.discordBotConnStr;
             StoredProcedure stored = new StoredProcedure();
             DataTable dt = new DataTable();
-            int count = 0;
 
             if (additionalCount.HasValue)
-                count = additionalCount.Value;
-
-            if (additionalCount > 1)
-                for (int i = 0; i < additionalCount; i++)
-                    dt = stored.Select(connStr, "AddLowLevel", new List<SqlParameter> { new SqlParameter("@CreatedBy", Context.User.Username) });
-            else if (additionalCount < 0)
-                for (int i = count; i < 0; i++)
-                    dt = stored.Select(connStr, "DeleteLowLevel", new List<SqlParameter> { new SqlParameter("@CreatedBy", Context.User.Username) });
+            {
+                dt = stored.Select(connStr, "AddToCounter", new List<SqlParameter>
+                {
+                    new SqlParameter("@CreatedBy", Context.User.Username),
+                    new SqlParameter("@Counter", additionalCount.Value),
+                    new SqlParameter("@CounterName", "LowLevel")
+                });
+            }
             else
-                dt = stored.Select(connStr, "AddLowLevel", new List<SqlParameter> { new SqlParameter("@CreatedBy", Context.User.Username) });
+            {
+                dt = stored.Select(connStr, "AddToCounter", new List<SqlParameter>
+                {
+                    new SqlParameter("@CreatedBy", Context.User.Username),
+                    new SqlParameter("@Counter", 1),
+                    new SqlParameter("@CounterName", "LowLevel")
+                });
+            }
 
             string counterHistory = "Here are the most recent times Brendan let everyone know about the disdain towards low level content or Dark Knight in the critically acclaimed game Final Fantasy 14 Online.\n";
             string currentCounter = "";
@@ -55,19 +61,25 @@ namespace DiscordBot.SlashCommands
             string connStr = Constants.Constants.discordBotConnStr;
             StoredProcedure stored = new StoredProcedure();
             DataTable dt = new DataTable();
-            int count = 0;
 
             if (additionalCount.HasValue)
-                count = additionalCount.Value;
-
-            if (additionalCount > 1)
-                for (int i = 0; i < additionalCount; i++)
-                    dt = stored.Select(connStr, "AddKaylaNormal", new List<SqlParameter> { new SqlParameter("@CreatedBy", Context.User.Username) });
-            else if (additionalCount < 0)
-                for (int i = count; i < 0; i++)
-                    dt = stored.Select(connStr, "DeleteKaylaNormal", new List<SqlParameter> { new SqlParameter("@CreatedBy", Context.User.Username) });
+            {
+                dt = stored.Select(connStr, "AddToCounter", new List<SqlParameter>
+                {
+                    new SqlParameter("@CreatedBy", Context.User.Username),
+                    new SqlParameter("@Counter", additionalCount.Value),
+                    new SqlParameter("@CounterName", "KaylaNormal")
+                });
+            }
             else
-                dt = stored.Select(connStr, "AddKaylaNormal", new List<SqlParameter> { new SqlParameter("@CreatedBy", Context.User.Username) });
+            {
+                dt = stored.Select(connStr, "AddToCounter", new List<SqlParameter>
+                {
+                    new SqlParameter("@CreatedBy", Context.User.Username),
+                    new SqlParameter("@Counter", 1),
+                    new SqlParameter("@CounterName", "KaylaNormal")
+                });
+            }
 
             string counterHistory = "Here are the most recent times Kayla was not normal for 5 seconds.\n";
             string currentCounter = "";
@@ -91,21 +103,26 @@ namespace DiscordBot.SlashCommands
             await DeferAsync();
             string connStr = Constants.Constants.discordBotConnStr;
             StoredProcedure stored = new StoredProcedure();
-            int count = 0;
-
-            if (additionalCount.HasValue)
-                count = additionalCount.Value;
-
             DataTable dt = new DataTable();
 
-            if (additionalCount > 1)
-                for (int i = 0; i < additionalCount; i++)
-                    dt = stored.Select(connStr, "AddBurnNormal", new List<SqlParameter> { new SqlParameter("@CreatedBy", Context.User.Username) });
-            else if (additionalCount < 0)
-                for (int i = count; i < 0; i++)
-                    dt = stored.Select(connStr, "DeleteBurnNormal", new List<SqlParameter> { new SqlParameter("@CreatedBy", Context.User.Username) });
+            if (additionalCount.HasValue)
+            {
+                dt = stored.Select(connStr, "AddToCounter", new List<SqlParameter>
+                {
+                    new SqlParameter("@CreatedBy", Context.User.Username),
+                    new SqlParameter("@Counter", additionalCount.Value),
+                    new SqlParameter("@CounterName", "MaryTypo")
+                });
+            }
             else
-                dt = stored.Select(connStr, "AddBurnNormal", new List<SqlParameter> { new SqlParameter("@CreatedBy", Context.User.Username) });
+            {
+                dt = stored.Select(connStr, "AddToCounter", new List<SqlParameter>
+                {
+                    new SqlParameter("@CreatedBy", Context.User.Username),
+                    new SqlParameter("@Counter", 1),
+                    new SqlParameter("@CounterName", "MaryTypo")
+                });
+            }
 
             string counterHistory = "Here are the most recent times Burn was a bad speller and awesome.\n";
             string currentCounter = "";
@@ -132,19 +149,25 @@ namespace DiscordBot.SlashCommands
             string connStr = Constants.Constants.discordBotConnStr;
             StoredProcedure stored = new StoredProcedure();
             DataTable dt = new DataTable();
-            int count = 0;
 
             if (additionalCount.HasValue)
-                count = additionalCount.Value;
-
-            if (additionalCount > 1)
-                for (int i = 0; i < count; i++)
-                    dt = stored.Select(connStr, "AddMaryApologized", new List<SqlParameter> { new SqlParameter("@CreatedBy", Context.User.Username) });
-            else if (additionalCount < 0)
-                for (int i = count; i < 0; i++)
-                    dt = stored.Select(connStr, "DeleteMaryApologized", new List<SqlParameter> { new SqlParameter("@CreatedBy", Context.User.Username) });
+            {
+                dt = stored.Select(connStr, "AddToCounter", new List<SqlParameter>
+                {
+                    new SqlParameter("@CreatedBy", Context.User.Username),
+                    new SqlParameter("@Counter", additionalCount.Value),
+                    new SqlParameter("@CounterName", "MaryApologized")
+                });
+            }
             else
-                dt = stored.Select(connStr, "AddMaryApologized", new List<SqlParameter> { new SqlParameter("@CreatedBy", Context.User.Username) });
+            {
+                dt = stored.Select(connStr, "AddToCounter", new List<SqlParameter>
+                {
+                    new SqlParameter("@CreatedBy", Context.User.Username),
+                    new SqlParameter("@Counter", 1),
+                    new SqlParameter("@CounterName", "MaryApologized")
+                });
+            }
 
             string counterHistory = "Here are the most recent times *Mary apologized*.\n";
             string currentCounter = "";
@@ -171,19 +194,25 @@ namespace DiscordBot.SlashCommands
             string connStr = Constants.Constants.discordBotConnStr;
             StoredProcedure stored = new StoredProcedure();
             DataTable dt = new DataTable();
-            int count = 0;
 
             if (additionalCount.HasValue)
-                count = additionalCount.Value;
-
-            if (additionalCount > 1)
-                for (int i = 0; i < count; i++)
-                    dt = stored.Select(connStr, "AddFireApologized", new List<SqlParameter> { new SqlParameter("@CreatedBy", Context.User.Username) });
-            else if (additionalCount < 0)
-                for (int i = count; i < 0; i++)
-                    dt = stored.Select(connStr, "DeleteFireApologized", new List<SqlParameter> { new SqlParameter("@CreatedBy", Context.User.Username) });
+            {
+                dt = stored.Select(connStr, "AddToCounter", new List<SqlParameter>
+                {
+                    new SqlParameter("@CreatedBy", Context.User.Username),
+                    new SqlParameter("@Counter", additionalCount.Value),
+                    new SqlParameter("@CounterName", "FireApologized")
+                });
+            }
             else
-                dt = stored.Select(connStr, "AddFireApologized", new List<SqlParameter> { new SqlParameter("@CreatedBy", Context.User.Username) });
+            {
+                dt = stored.Select(connStr, "AddToCounter", new List<SqlParameter>
+                {
+                    new SqlParameter("@CreatedBy", Context.User.Username),
+                    new SqlParameter("@Counter", 1),
+                    new SqlParameter("@CounterName", "FireApologized")
+                });
+            }
 
             string counterHistory = "Here are the most recent times *Fire apologized*.\n";
             string currentCounter = "";
@@ -210,19 +239,25 @@ namespace DiscordBot.SlashCommands
             string connStr = Constants.Constants.discordBotConnStr;
             StoredProcedure stored = new StoredProcedure();
             DataTable dt = new DataTable();
-            int count = 0;
 
             if (additionalCount.HasValue)
-                count = additionalCount.Value;
-
-            if (additionalCount > 1)
-                for (int i = 0; i < count; i++)
-                    dt = stored.Select(connStr, "AddWhatever", new List<SqlParameter> { new SqlParameter("@CreatedBy", Context.User.Username) });
-            else if (additionalCount < 0)
-                for (int i = count; i < 0; i++)
-                    dt = stored.Select(connStr, "DeleteWhatever", new List<SqlParameter> { new SqlParameter("@CreatedBy", Context.User.Username) });
+            {
+                dt = stored.Select(connStr, "AddToCounter", new List<SqlParameter>
+                {
+                    new SqlParameter("@CreatedBy", Context.User.Username),
+                    new SqlParameter("@Counter", additionalCount.Value),
+                    new SqlParameter("@CounterName", "Whatever")
+                });
+            }
             else
-                dt = stored.Select(connStr, "AddWhatever", new List<SqlParameter> { new SqlParameter("@CreatedBy", Context.User.Username) });
+            {
+                dt = stored.Select(connStr, "AddToCounter", new List<SqlParameter>
+                {
+                    new SqlParameter("@CreatedBy", Context.User.Username),
+                    new SqlParameter("@Counter", 1),
+                    new SqlParameter("@CounterName", "Whatever")
+                });
+            }
 
             string counterHistory = "The most recent *whatevers...*.\n";
             string currentCounter = "";

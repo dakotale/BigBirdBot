@@ -2,28 +2,17 @@
 {
     public class EmojiText
     {
-        private string emojiStr = null;
-        private string emoji = null;
+        public string EmojiStr { get; set; } = null;
 
-        public string EmojiStr
-        {
-            get { return emojiStr; }
-            set { emojiStr = value; }
-        }
-
-        public string Emoji
-        {
-            get { return emoji; }
-            set { emoji = value; }
-        }
+        public string Emoji { get; set; } = null;
 
         public EmojiText() { }
 
         public string GetEmojiString(string emojiSentence)
         {
             string result = "";
-            emojiStr = emojiSentence;
-            foreach (var i in emojiStr.ToLower())
+            EmojiStr = emojiSentence;
+            foreach (char i in EmojiStr.ToLower())
             {
                 switch (i)
                 {

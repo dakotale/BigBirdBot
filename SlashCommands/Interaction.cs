@@ -29,7 +29,6 @@ namespace DiscordBot.SlashCommands
                 if (dtTrivia.Rows.Count > 0)
                 {
                     List<string> answers = new List<string>();
-                    string answerList = "";
                     foreach (DataRow dr in dtTrivia.Rows)
                     {
                         EmbedHelper embedHelper = new EmbedHelper();
@@ -79,8 +78,8 @@ namespace DiscordBot.SlashCommands
                             embed.AddField("D. ", answers[3]);
                         }
 
-                        var message = await FollowupAsync(embed: embed.Build());
-                        var messageId = Int64.Parse(message.Id.ToString());
+                        IUserMessage message = await FollowupAsync(embed: embed.Build());
+                        long messageId = Int64.Parse(message.Id.ToString());
                         stored.UpdateCreate(Constants.Constants.discordBotConnStr, "AddTriviaMessage", new List<System.Data.SqlClient.SqlParameter>
                         {
                             new System.Data.SqlClient.SqlParameter("@TriviaMessageID", messageId),

@@ -62,8 +62,8 @@ namespace DiscordBot.SlashCommands
         [Discord.Interactions.RequireUserPermission(Discord.ChannelPermission.ManageMessages)]
         public async Task HandleDelete([MinValue(1), MaxValue(20)] int numToDelete)
         {
-            var channel = Context.Channel as SocketTextChannel;
-            var messages = await channel.GetMessagesAsync(numToDelete + 1).FlattenAsync();
+            SocketTextChannel? channel = Context.Channel as SocketTextChannel;
+            IEnumerable<IMessage> messages = await channel.GetMessagesAsync(numToDelete + 1).FlattenAsync();
             await channel.DeleteMessagesAsync(messages);
         }
 
@@ -110,15 +110,15 @@ namespace DiscordBot.SlashCommands
             try
             {
                 EmbedHelper embedHelper = new EmbedHelper();
-                var serverId = Int64.Parse(Context.Guild.Id.ToString());
-                var guild = Context.Client.GetGuild(ulong.Parse(serverId.ToString()));
+                long serverId = Int64.Parse(Context.Guild.Id.ToString());
+                SocketGuild guild = Context.Client.GetGuild(ulong.Parse(serverId.ToString()));
 
                 if (guild.Roles.Where(s => s.Name.Contains("birthday")).Count() == 0)
                 {
                     // Create the birthday role and add all the users in the server
                     await guild.CreateRoleAsync("birthday", null, Discord.Color.Purple, false, true, null);
 
-                    var embed = new EmbedBuilder
+                    EmbedBuilder embed = new EmbedBuilder
                     {
                         Title = "BigBirdBot - Birthday",
                         Color = Color.Gold,
@@ -158,7 +158,7 @@ namespace DiscordBot.SlashCommands
                 if (user == null)
                     user = Context.User as SocketGuildUser;
 
-                var embed = new EmbedBuilder
+                EmbedBuilder embed = new EmbedBuilder
                 {
                     Title = $"BigBirdBot - {user.Username}'s Avatar",
                     Color = Color.Blue,
@@ -226,37 +226,37 @@ namespace DiscordBot.SlashCommands
                 await msg.AddReactionAsync(emojis[i]);
         }
 
-        [SlashCommand("setrolecolor", "Set the color of your role by hex code")]
+        [SlashCommand("setrolecolor", "Set the color of your role by hex code, include the #")]
         [EnabledInDm(false)]
-        public async Task HandleColor([MinLength(1), MaxLength(9)] string hexCode)
+        public async Task HandleColor([MinLength(1), MaxLength(9)] string hexCode, SocketGuildUser userName = null)
         {
             await DeferAsync();
             EmbedHelper embedHelper = new EmbedHelper();
             try
             {
-                var color = System.Drawing.ColorTranslator.FromHtml(hexCode);
-                var serverId = Int64.Parse(Context.Guild.Id.ToString());
-                var guild = Context.Client.GetGuild(ulong.Parse(serverId.ToString()));
-                var user = Context.User;
+                System.Drawing.Color color = System.Drawing.ColorTranslator.FromHtml(hexCode);
+                long serverId = Int64.Parse(Context.Guild.Id.ToString());
+                SocketGuild guild = Context.Client.GetGuild(ulong.Parse(serverId.ToString()));
+                SocketUser user = userName ?? Context.User;
 
                 if (color != System.Drawing.Color.Empty)
                 {
                     Color roleColor = new Color(color.R, color.G, color.B);
 
-                    if (guild.Roles.Any(s => s.Name.Equals(Context.User.Username)))
+                    if (guild.Roles.Any(s => s.Name.Equals(user)))
                     {
-                        var role = guild.Roles.First(s => s.Name.Equals(Context.User.Username));
+                        SocketRole role = guild.Roles.First(s => s.Name.Equals(user));
                         await role.ModifyAsync(f => f.Color = roleColor).ConfigureAwait(false);
                     }
                     else
                     {
-                        var botRole = guild.Roles.First(s => s.Name.Equals("BigBirdBot"));
-                        var botPos = botRole.Position;
+                        SocketRole botRole = guild.Roles.First(s => s.Name.Equals("BigBirdBot"));
+                        int botPos = botRole.Position;
 
-                        var role = await guild.CreateRoleAsync(Context.User.Username, null, roleColor, false, true);
+                        Discord.Rest.RestRole role = await guild.CreateRoleAsync(Context.User.Username, null, roleColor, false, true);
 
                         // Should be 1 under the bot to prevent a missing permissions error
-                        await role.ModifyAsync(f => f.Position = (botPos - 1)).ConfigureAwait(false);
+                        await role.ModifyAsync(f => f.Position = botPos - 1).ConfigureAwait(false);
                         await (user as IGuildUser).AddRoleAsync(role).ConfigureAwait(false);
                     }
 

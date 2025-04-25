@@ -14,7 +14,7 @@ namespace DiscordBot.Helper
 
         public override async Task<PreconditionResult> CheckRequirementsAsync(IInteractionContext context, ICommandInfo commandInfo, IServiceProvider services)
         {
-            var guildUser = context.User as IGuildUser;
+            IGuildUser? guildUser = context.User as IGuildUser;
             if (guildUser == null || !User_Ids.Contains(guildUser.Id))
                 return PreconditionResult.FromError("This command cannot be executed by this user.");
             else

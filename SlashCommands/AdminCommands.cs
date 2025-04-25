@@ -25,7 +25,7 @@ namespace DiscordBot.SlashCommands
             await DeferAsync();
 
             // We will need to implement clickable buttons with the pronouns returned from the DB as a modal
-            var builder = new ComponentBuilder();
+            ComponentBuilder builder = new ComponentBuilder();
 
             dt = stored.Select(connStr, "GetPronouns", new List<SqlParameter>());
 
@@ -51,7 +51,7 @@ namespace DiscordBot.SlashCommands
             if (dt.Rows.Count > 0)
             {
                 // We will need to implement clickable buttons with the pronouns returned from the DB as a modal
-                var builder = new ComponentBuilder();
+                ComponentBuilder builder = new ComponentBuilder();
 
                 foreach (DataRow dr in dt.Rows)
                     builder.WithButton(dr["RoleName"].ToString(), dr["RoleID"].ToString());
@@ -72,8 +72,8 @@ namespace DiscordBot.SlashCommands
             EmbedHelper embed = new EmbedHelper();
             DataTable dt = new DataTable();
             string connStr = Constants.Constants.discordBotConnStr;
-            var serverId = Int64.Parse(Context.Guild.Id.ToString());
-            var guild = Context.Client.GetGuild(ulong.Parse(serverId.ToString()));
+            long serverId = Int64.Parse(Context.Guild.Id.ToString());
+            SocketGuild guild = Context.Client.GetGuild(ulong.Parse(serverId.ToString()));
 
             dt = stored.Select(connStr, "GetRoles", new List<SqlParameter> { new SqlParameter("@ServerID", serverId) });
 
@@ -83,20 +83,19 @@ namespace DiscordBot.SlashCommands
                 return;
             }
 
-            var categoryIdList = guild.CategoryChannels.Where(s => s.Name.ToLower() == "thirsting" || s.Name.ToLower() == "stanning" || s.Name.ToLower() == "keyword multi").ToList(); // prod: thirsting
-            ulong categoryId = default(ulong);
+            List<SocketCategoryChannel> categoryIdList = guild.CategoryChannels.Where(s => s.Name.ToLower() == "thirsting" || s.Name.ToLower() == "stanning" || s.Name.ToLower() == "keyword multi").ToList(); // prod: thirsting
 
             if (categoryIdList.Any())
             {
-                foreach (var c in categoryIdList)
+                foreach (SocketCategoryChannel? c in categoryIdList)
                 {
-                    foreach (var t in c.Channels)
+                    foreach (SocketGuildChannel? t in c.Channels)
                     {
                         // Check if the role exists for channel
                         // If it doesn't exist, create one
                         if (guild.Roles.Where(s => s.Name.Equals(t.Name)).Count() == 0)
                         {
-                            var role = await guild.CreateRoleAsync(t.Name);
+                            Discord.Rest.RestRole role = await guild.CreateRoleAsync(t.Name);
 
                             if (role != null)
                             {
@@ -108,7 +107,7 @@ namespace DiscordBot.SlashCommands
                                 });
 
                                 // Map the role to the channel as a permission
-                                var permissionOverrides = new OverwritePermissions(viewChannel: PermValue.Allow);
+                                OverwritePermissions permissionOverrides = new OverwritePermissions(viewChannel: PermValue.Allow);
                                 await t.AddPermissionOverwriteAsync(role, permissionOverrides).ConfigureAwait(false);
                             }
                         }
@@ -129,10 +128,10 @@ namespace DiscordBot.SlashCommands
             EmbedHelper embed = new EmbedHelper();
             DataTable dt = new DataTable();
             string connStr = Constants.Constants.discordBotConnStr;
-            var serverId = Int64.Parse(Context.Guild.Id.ToString());
-            var guild = Context.Client.GetGuild(ulong.Parse(serverId.ToString()));
+            long serverId = Int64.Parse(Context.Guild.Id.ToString());
+            SocketGuild guild = Context.Client.GetGuild(ulong.Parse(serverId.ToString()));
 
-            var categoryIdList = guild.CategoryChannels.Where(s => s.Name.ToLower() == "thirsting" || s.Name.ToLower() == "stanning" || s.Name.ToLower() == "keyword multi").ToList();
+            List<SocketCategoryChannel> categoryIdList = guild.CategoryChannels.Where(s => s.Name.ToLower() == "thirsting" || s.Name.ToLower() == "stanning" || s.Name.ToLower() == "keyword multi").ToList();
             if (categoryIdList.Count > 0)
             {
                 stored.UpdateCreate(connStr, "DeleteRoles", new List<SqlParameter>

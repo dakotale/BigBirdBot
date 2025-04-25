@@ -21,10 +21,10 @@ using Microsoft.Extensions.Logging;
 
 internal class Program
 {
-    static DiscordSocketClient client = new DiscordSocketClient();
+    private static DiscordSocketClient client = new DiscordSocketClient();
     internal readonly LoggingService loggingService;
     internal readonly IServiceProvider services;
-    IAudioService audioService;
+    private readonly IAudioService audioService;
 
     public Program()
     {
@@ -35,7 +35,7 @@ internal class Program
         //lavaNode = services.GetRequiredService<LavaNode>();
         loggingService.InfoAsync("Services Initialized");
     }
-    static void Main(string[] args)
+    private static void Main(string[] args)
     {
         System.Timers.Timer eventTimer;
         eventTimer = new System.Timers.Timer(59000); // Check every 55 seconds
@@ -48,10 +48,10 @@ internal class Program
     public async Task MainAsync()
     {
         await services.GetRequiredService<InteractionHandlerService>().InitializeAsync();
-        await HandleLogin(client);
+        await RunBot(client);
     }
 
-    public async Task HandleLogin(DiscordSocketClient client)
+    public async Task RunBot(DiscordSocketClient client)
     {
         try
         {
@@ -97,7 +97,7 @@ internal class Program
             await client.LogoutAsync();
             client = new DiscordSocketClient();
             client = services.GetRequiredService<DiscordSocketClient>();
-            await HandleLogin(client);
+            await RunBot(client);
         }
         catch (WebSocketClosedException wsce)
         {
@@ -105,7 +105,7 @@ internal class Program
             await client.LogoutAsync();
             client = new DiscordSocketClient();
             client = services.GetRequiredService<DiscordSocketClient>();
-            await HandleLogin(client);
+            await RunBot(client);
         }
         catch (GatewayReconnectException gre)
         {
@@ -113,7 +113,7 @@ internal class Program
             await client.LogoutAsync();
             client = new DiscordSocketClient();
             client = services.GetRequiredService<DiscordSocketClient>();
-            await HandleLogin(client);
+            await RunBot(client);
         }
         catch (Exception ex)
         {
@@ -121,7 +121,7 @@ internal class Program
             await client.LogoutAsync();
             client = new DiscordSocketClient();
             client = services.GetRequiredService<DiscordSocketClient>();
-            await HandleLogin(client);
+            await RunBot(client);
         }
     }
 
@@ -146,9 +146,9 @@ internal class Program
             // Let's pull the first channel and hope for the best.....
             if (arg1.DefaultChannel != null)
             {
-                var textChannels = arg1.DefaultChannel.Id;
-                var firstTextChannel = arg1.GetTextChannel(textChannels);
-                var channel = client.GetChannel(firstTextChannel.Id) as SocketTextChannel;
+                ulong textChannels = arg1.DefaultChannel.Id;
+                SocketTextChannel firstTextChannel = arg1.GetTextChannel(textChannels);
+                SocketTextChannel? channel = client.GetChannel(firstTextChannel.Id) as SocketTextChannel;
 
                 EmbedHelper embed = new EmbedHelper();
                 if (channel != null && !arg2.IsBot)
@@ -156,9 +156,9 @@ internal class Program
             }
             else
             {
-                var textChannels = arg1.TextChannels.Where(s => s.Name.Contains("general") || s.Name.Contains("no-mic")).ToList();
-                var firstTextChannel = arg1.GetTextChannel(textChannels[0].Id);
-                var channel = client.GetChannel(firstTextChannel.Id) as SocketTextChannel;
+                List<SocketTextChannel> textChannels = arg1.TextChannels.Where(s => s.Name.Contains("general") || s.Name.Contains("no-mic")).ToList();
+                SocketTextChannel firstTextChannel = arg1.GetTextChannel(textChannels[0].Id);
+                SocketTextChannel? channel = client.GetChannel(firstTextChannel.Id) as SocketTextChannel;
 
                 EmbedHelper embed = new EmbedHelper();
                 if (channel != null && !arg2.IsBot)
@@ -219,7 +219,7 @@ internal class Program
 
                         if (firstTextChannel != null)
                         {
-                            var channel = client.GetChannel(firstTextChannel.Id) as SocketTextChannel;
+                            SocketTextChannel? channel = client.GetChannel(firstTextChannel.Id) as SocketTextChannel;
 
                             EmbedHelper embed = new EmbedHelper();
                             if (channel != null && !arg.IsBot)
@@ -227,8 +227,8 @@ internal class Program
                         }
 
                         string userId = arg.Id.ToString();
-                        var getUser = await client.GetUserAsync(ulong.Parse(userId));
-                        var dmChannel = await getUser.CreateDMChannelAsync();
+                        IUser getUser = await client.GetUserAsync(ulong.Parse(userId));
+                        IDMChannel dmChannel = await getUser.CreateDMChannelAsync();
 
                         EmbedHelper helper = new EmbedHelper();
                         string output = "Welcome to the server, I'm BigBirdBot!\nI wanted to give you a proper welcome and hope you have a great time!\nFeel free to type -help in the server to get more information on what I can offer!";
@@ -250,8 +250,8 @@ internal class Program
             DataTable dt = new DataTable();
             EmbedHelper embed = new EmbedHelper();
 
-            var customId = component.Data.CustomId;
-            var guildId = component.GuildId.Value.ToString() ?? "";
+            string customId = component.Data.CustomId;
+            string guildId = component.GuildId.Value.ToString() ?? "";
             // Need to check if it's a role, if not default to a pronoun for now
             dt = stored.Select(connStr, "GetRolesByID", new List<SqlParameter>
             {
@@ -288,10 +288,10 @@ internal class Program
                         }
                     }
 
-                    var role = client.GetGuild(component.GuildId.Value).Roles.FirstOrDefault(s => s.Id.ToString().Equals(roleIdSelected));
+                    SocketRole? role = client.GetGuild(component.GuildId.Value).Roles.FirstOrDefault(s => s.Id.ToString().Equals(roleIdSelected));
 
-                    var guild = client.GetGuild(component.GuildId.Value);
-                    var guildUser = guild.GetUser(component.User.Id);
+                    SocketGuild guild = client.GetGuild(component.GuildId.Value);
+                    SocketGuildUser guildUser = guild.GetUser(component.User.Id);
 
                     await (guildUser as IGuildUser).RemoveRoleAsync(role);
 
@@ -321,10 +321,10 @@ internal class Program
                         }
                     }
 
-                    var role = client.GetGuild(component.GuildId.Value).Roles.FirstOrDefault(s => s.Id.ToString().Equals(roleIdSelected));
+                    SocketRole? role = client.GetGuild(component.GuildId.Value).Roles.FirstOrDefault(s => s.Id.ToString().Equals(roleIdSelected));
 
-                    var guild = client.GetGuild(component.GuildId.Value);
-                    var guildUser = guild.GetUser(component.User.Id);
+                    SocketGuild guild = client.GetGuild(component.GuildId.Value);
+                    SocketGuildUser guildUser = guild.GetUser(component.User.Id);
 
                     await (guildUser as IGuildUser).AddRoleAsync(role);
 
@@ -369,10 +369,10 @@ internal class Program
                             pronounSelected = pronounName;
                     }
 
-                    var role = client.GetGuild(component.GuildId.Value).Roles.FirstOrDefault(s => s.Name.Equals(pronounSelected));
+                    SocketRole? role = client.GetGuild(component.GuildId.Value).Roles.FirstOrDefault(s => s.Name.Equals(pronounSelected));
 
-                    var guild = client.GetGuild(component.GuildId.Value);
-                    var guildUser = guild.GetUser(component.User.Id);
+                    SocketGuild guild = client.GetGuild(component.GuildId.Value);
+                    SocketGuildUser guildUser = guild.GetUser(component.User.Id);
 
                     await (guildUser as IGuildUser).RemoveRoleAsync(role);
 
@@ -405,10 +405,10 @@ internal class Program
                     }
 
                     // Add them to the role
-                    var role = client.GetGuild(component.GuildId.Value).Roles.FirstOrDefault(s => s.Name.Equals(pronounSelected));
+                    SocketRole? role = client.GetGuild(component.GuildId.Value).Roles.FirstOrDefault(s => s.Name.Equals(pronounSelected));
 
-                    var guild = client.GetGuild(component.GuildId.Value);
-                    var guildUser = guild.GetUser(component.User.Id);
+                    SocketGuild guild = client.GetGuild(component.GuildId.Value);
+                    SocketGuildUser guildUser = guild.GetUser(component.User.Id);
 
                     await (guildUser as IGuildUser).AddRoleAsync(role);
 
@@ -451,7 +451,7 @@ internal class Program
             await arg.DownloadUsersAsync().ConfigureAwait(false);
             if (arg.Users.Count > 0)
             {
-                foreach (var user in arg.Users)
+                foreach (SocketGuildUser? user in arg.Users)
                 {
                     if (!user.IsBot && !user.IsWebhook)
                     {
@@ -477,12 +477,12 @@ internal class Program
     }
     private async Task MessageReceived(SocketMessage msg)
     {
-        if (msg != null && !msg.Author.IsBot && !msg.Author.IsWebhook && msg.Channel as SocketGuildChannel != null)
+        if (msg != null && !msg.Author.IsBot && !msg.Author.IsWebhook && (msg.Channel as SocketGuildChannel) != null)
         {
             string message = msg.Content.Trim().ToLower();
             string connStr = Constants.discordBotConnStr;
-            var msgChannel = msg.Channel as SocketGuildChannel;
-            var serverId = msgChannel.Guild.Id.ToString();
+            SocketGuildChannel? msgChannel = msg.Channel as SocketGuildChannel;
+            string serverId = msgChannel.Guild.Id.ToString();
             bool isActive = false;
             bool isServerActive = false;
             int totalActive = 0;
@@ -525,8 +525,7 @@ internal class Program
                         prefix = dr["Prefix"].ToString();
                     }
 
-                    // This should be okay
-                    if ((message.Contains("https://twitter.com") || message.Contains("https://x.com") || message.Contains("https://tiktok.com") || message.Contains("https://instagram.com") || message.Contains("https://www.instagram.com")) && !message.Contains(prefix))
+                    if ((message.Contains("https://twitter.com") || message.Contains("https://x.com") || message.Contains("https://tiktok.com") || message.Contains("https://instagram.com")) && !message.Contains(prefix))
                     {
                         DataTable dtTwitter = stored.Select(connStr, "GetTwitterBroken", new List<SqlParameter> { new SqlParameter("@ServerID", Int64.Parse(serverId)) });
                         bool isTwitterBroken = false;
@@ -558,8 +557,8 @@ internal class Program
                                     string userId = msg.Author.Id.ToString();
                                     foreach (DataRow dr in dt.Rows)
                                     {
-                                        var attachments = msg.Attachments;
-                                        foreach (var attachment in attachments)
+                                        IReadOnlyCollection<Attachment> attachments = msg.Attachments;
+                                        foreach (Attachment? attachment in attachments)
                                         {
                                             string tablename = dr["TableName"].ToString();
                                             tablename = tablename.Replace("KeywordMulti.", "");
@@ -582,7 +581,7 @@ internal class Program
                                                 new SqlParameter("@UserID", userId)
                                             });
                                         }
-                                        var embed = new EmbedBuilder
+                                        EmbedBuilder embed = new EmbedBuilder
                                         {
                                             Title = "BigBirdBot - Added Image",
                                             Color = Color.Blue,
@@ -603,13 +602,13 @@ internal class Program
                                     if (multiUrl)
                                     {
                                         string[] urls = content.Split(",", StringSplitOptions.TrimEntries);
-                                        foreach (var u in urls)
+                                        foreach (string u in urls)
                                         {
                                             bool result = u.Trim().StartsWith("http");
 
                                             if (!result)
                                             {
-                                                var embed = new EmbedBuilder
+                                                EmbedBuilder embed = new EmbedBuilder
                                                 {
                                                     Title = "BigBirdBot - Error",
                                                     Color = Color.Red,
@@ -631,7 +630,7 @@ internal class Program
 
                                                 if (dtExists.Rows.Count > 0)
                                                 {
-                                                    var embed = new EmbedBuilder
+                                                    EmbedBuilder embed = new EmbedBuilder
                                                     {
                                                         Title = "BigBirdBot - Error",
                                                         Color = Color.Red,
@@ -655,7 +654,7 @@ internal class Program
                                                 }
                                             }
                                         }
-                                        var embedSuccess = new EmbedBuilder
+                                        EmbedBuilder embedSuccess = new EmbedBuilder
                                         {
                                             Title = "BigBirdBot - Added Image",
                                             Color = Color.Blue,
@@ -677,7 +676,7 @@ internal class Program
 
                                         if (dtExists.Rows.Count > 0)
                                         {
-                                            var embed = new EmbedBuilder
+                                            EmbedBuilder embed = new EmbedBuilder
                                             {
                                                 Title = "BigBirdBot - Error",
                                                 Color = Color.Red,
@@ -698,7 +697,7 @@ internal class Program
                                                     new SqlParameter("@UserID", userId)
                                                 });
 
-                                                var embed = new EmbedBuilder
+                                                EmbedBuilder embed = new EmbedBuilder
                                                 {
                                                     Title = "BigBirdBot - Added Image",
                                                     Color = Color.Blue,
@@ -716,7 +715,7 @@ internal class Program
                         // Todo, check all the commands eventually but for now let's stop the accidently double triggering.
                         if (!message.StartsWith(prefix))
                         {
-                            var channel = msg.Channel as SocketGuildChannel;
+                            SocketGuildChannel? channel = msg.Channel as SocketGuildChannel;
                             StoredProcedure storedProcedure = new StoredProcedure();
                             List<SqlParameter> parameters = new List<SqlParameter>();
                             parameters.Add(new SqlParameter("@UserID", msg.Author.Id.ToString()));
@@ -730,7 +729,7 @@ internal class Program
                                 parameters.Add(new SqlParameter("@Message", message));
                                 dt = storedProcedure.Select(connStr, "GetChatAction", parameters);
 
-                                var sender = client.GetChannel(channel.Id) as IMessageChannel;
+                                IMessageChannel? sender = client.GetChannel(channel.Id) as IMessageChannel;
 
                                 _ = Task.Run(async () =>
                                 {
@@ -770,7 +769,7 @@ internal class Program
     {
         if (user.IsBot && after.VoiceChannel == null)
         {
-            foreach (var u in before.VoiceChannel.ConnectedUsers)
+            foreach (SocketGuildUser? u in before.VoiceChannel.ConnectedUsers)
                 if (u.IsBot)
                     await u.VoiceChannel.DisconnectAsync();
 
@@ -787,20 +786,24 @@ internal class Program
             // Commenting out the last part to handle moves or disconnects
             if (before.VoiceChannel != null && before.VoiceChannel.ConnectedUsers.Where(s => !s.IsBot).ToList().Count == 0 && after.VoiceChannel == null) //&& after.VoiceChannel == null)
             {
-                foreach (var u in before.VoiceChannel.ConnectedUsers)
+                foreach (SocketGuildUser? u in before.VoiceChannel.ConnectedUsers)
                     if (u.IsBot)
                         await u.VoiceChannel.DisconnectAsync();
 
                 StoredProcedure stored = new StoredProcedure();
-                stored.UpdateCreate(Constants.discordBotConnStr, "DeletePlayerConnected", new List<SqlParameter>
-                {
-                    new SqlParameter("@ServerID", Int64.Parse(before.VoiceChannel.Guild.Id.ToString()))
-                });
 
-                stored.UpdateCreate(Constants.discordBotConnStr, "DeleteMusicQueueAll", new List<SqlParameter>
+                if (before.VoiceChannel != null)
                 {
-                    new SqlParameter("@ServerID", Int64.Parse(before.VoiceChannel.Guild.Id.ToString()))
-                });
+                    stored.UpdateCreate(Constants.discordBotConnStr, "DeletePlayerConnected", new List<SqlParameter>
+                    {
+                        new SqlParameter("@ServerID", Int64.Parse(before.VoiceChannel.Guild.Id.ToString()))
+                    });
+
+                    stored.UpdateCreate(Constants.discordBotConnStr, "DeleteMusicQueueAll", new List<SqlParameter>
+                    {
+                        new SqlParameter("@ServerID", Int64.Parse(before.VoiceChannel.Guild.Id.ToString()))
+                    });
+                }
             }
         }
     }
@@ -876,20 +879,19 @@ internal class Program
         Emoji triviaC = new Emoji("🇨");
         Emoji triviaD = new Emoji("🇩");
 
-        var embed = message.GetOrDownloadAsync().Result.Embeds;
+        IReadOnlyCollection<IEmbed> embed = message.GetOrDownloadAsync().Result.Embeds;
         StoredProcedure stored = new StoredProcedure();
         if (client.GetUser(reaction.UserId).IsBot) return;
 
         if (reaction.Emote.Name == triviaA.Name || reaction.Emote.Name == triviaB.Name || reaction.Emote.Name == triviaC.Name || reaction.Emote.Name == triviaD.Name)
         {
-            string connStr = Constants.discordBotConnStr;
             try
             {
                 if (embed.Count > 0)
                 {
-                    var messageId = Int64.Parse(message.Id.ToString());
+                    long messageId = Int64.Parse(message.Id.ToString());
                     DataTable dt = stored.Select(Constants.discordBotConnStr, "GetTriviaMessage", new List<SqlParameter> { new SqlParameter("@TriviaMessageID", messageId) });
-                    var theReaction = reaction.Emote.Name;
+                    string theReaction = reaction.Emote.Name;
                     if (dt.Rows.Count > 0)
                     {
                         string correctAnswer = "";
@@ -898,9 +900,9 @@ internal class Program
                             correctAnswer = dr["CorrectAnswer"].ToString();
                         }
 
-                        foreach (var e in embed)
+                        foreach (IEmbed? e in embed)
                         {
-                            foreach (var f in e.Fields.Where(s => s.Name.Contains(".")).ToList())
+                            foreach (EmbedField f in e.Fields.Where(s => s.Name.Contains(".")).ToList())
                             {
                                 if (correctAnswer.Equals(f.Value))
                                 {
@@ -994,7 +996,7 @@ internal class Program
                 tableName = string.Concat(tableName[0].ToString().ToUpper(), tableName.AsSpan(1));
 
                 // Send the DM :)
-                var user = await client.GetUserAsync(ulong.Parse(userId));
+                IUser user = await client.GetUserAsync(ulong.Parse(userId));
 
                 if (dr["FilePath"].ToString().Contains("C:\\"))
                     await user.SendFileAsync(filePath, $"**{tableName} - {DateTime.Now.ToString("MM/dd/yyyy hh:mm tt ET")}**");

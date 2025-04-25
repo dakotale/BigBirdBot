@@ -5,7 +5,13 @@
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <ApplicationIcon>bigbirdbot.ico</ApplicationIcon>
+    <Description>A Discord Bot</Description>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="bigbirdbot.ico" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Discord.KillersLibrary" Version="1.2.2" />

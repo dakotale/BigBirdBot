@@ -7,7 +7,7 @@ namespace DiscordBot.Helper
         public EmbedHelper() { }
         public EmbedBuilder BuildMessageEmbed(string title, string description, string thumbnailUrl, string commandFrom, Color color, string imageUrl = null, string url = null)
         {
-            var embed = new EmbedBuilder
+            EmbedBuilder embed = new EmbedBuilder
             {
                 Title = $"{title}",
                 Color = color,
@@ -25,7 +25,7 @@ namespace DiscordBot.Helper
 
         public EmbedBuilder BuildErrorEmbed(string module, string description, string commandFrom)
         {
-            var embed = new EmbedBuilder
+            EmbedBuilder embed = new EmbedBuilder
             {
                 Title = $"BigBirdBot - Error Module: {module}",
                 Color = Color.Red,

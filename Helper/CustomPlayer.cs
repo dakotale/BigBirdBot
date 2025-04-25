@@ -34,7 +34,7 @@ namespace DiscordBot.Helper
             if (track.Track.ArtworkUri != null)
                 artworkUrl = track.Track.ArtworkUri.ToString();
 
-            var embed = BuildMusicEmbed("Playing", msg, artworkUrl);
+            EmbedBuilder embed = BuildMusicEmbed("Playing", msg, artworkUrl);
 
             // send a message to the text channel
             await _textChannel
@@ -59,7 +59,7 @@ namespace DiscordBot.Helper
 
         private EmbedBuilder BuildMusicEmbed(string title, string description, string artwork = "")
         {
-            var embed = new EmbedBuilder
+            EmbedBuilder embed = new EmbedBuilder
             {
                 Title = $"BigBirdBot Music - {title}",
                 Color = Color.Blue,

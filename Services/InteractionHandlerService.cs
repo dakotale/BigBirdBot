@@ -45,13 +45,13 @@ namespace DiscordBot.Services
 
         private async Task ReadyAsync()
         {
-            var commands =
+            IReadOnlyCollection<Discord.Rest.RestGlobalCommand> commands =
             //await _handler.RegisterCommandsToGuildAsync(_configuration.GetValue<ulong>("testGuild"));
             await _handler.RegisterCommandsGloballyAsync();
 
             await _handler.RegisterCommandsAsync();
 
-            foreach (var command in commands)
+            foreach (Discord.Rest.RestGlobalCommand? command in commands)
                 _ = _services.GetRequiredService<LoggingService>().DebugAsync($"Name:{command.Name} Type.{command.Type} loaded");
 
 
@@ -64,10 +64,10 @@ namespace DiscordBot.Services
                 {
                     string voiceChannelId = dr["VoiceChannelID"].ToString();
                     string textChannelId = dr["TextChannelID"].ToString();
-                    foreach (var guild in _client.Guilds)
+                    foreach (SocketGuild? guild in _client.Guilds)
                     {
-                        var voiceChannel = guild.VoiceChannels.Where(s => s.Id.ToString().Equals(voiceChannelId)).FirstOrDefault();
-                        var textChannel = guild.TextChannels.Where(s => s.Id.ToString().Equals(textChannelId)).FirstOrDefault();
+                        SocketVoiceChannel? voiceChannel = guild.VoiceChannels.Where(s => s.Id.ToString().Equals(voiceChannelId)).FirstOrDefault();
+                        SocketTextChannel? textChannel = guild.TextChannels.Where(s => s.Id.ToString().Equals(textChannelId)).FirstOrDefault();
                         if (voiceChannel != null && textChannel != null)
                         {
                             if (voiceChannel.ConnectedUsers.Count > 0)
@@ -77,11 +77,11 @@ namespace DiscordBot.Services
                                     await _audioService.StartAsync();
                                     await Task.Delay(3000);
 
-                                    var channelBehavior = PlayerChannelBehavior.Join;
-                                    var options = new CustomPlayerOptions();
+                                    PlayerChannelBehavior channelBehavior = PlayerChannelBehavior.Join;
+                                    CustomPlayerOptions options = new CustomPlayerOptions();
                                     options.SelfMute = true;
                                     options.TextChannel = textChannel;
-                                    var retrieveOptions = new PlayerRetrieveOptions(ChannelBehavior: channelBehavior);
+                                    PlayerRetrieveOptions retrieveOptions = new PlayerRetrieveOptions(ChannelBehavior: channelBehavior);
 
                                     await _audioService.Players.JoinAsync<CustomPlayer, CustomPlayerOptions>(voiceChannel, CreatePlayerAsync, options);
                                 });
@@ -103,10 +103,10 @@ namespace DiscordBot.Services
             try
             {
                 // Create an execution context that matches the generic type parameter of your InteractionModuleBase<T> modules.
-                var context = new SocketInteractionContext(_client, interaction);
+                SocketInteractionContext context = new SocketInteractionContext(_client, interaction);
 
                 // Execute the incoming command.
-                var result = await _handler.ExecuteCommandAsync(context, _services);
+                IResult result = await _handler.ExecuteCommandAsync(context, _services);
 
                 EmbedHelper embedHelper = new EmbedHelper();
 
@@ -115,8 +115,8 @@ namespace DiscordBot.Services
                 {
                     if (interaction.Type is InteractionType.ApplicationCommand)
                     {
-                        var command = context.Interaction as SocketSlashCommand;
-                        var commandName = command.CommandName;
+                        SocketSlashCommand? command = context.Interaction as SocketSlashCommand;
+                        string commandName = command.CommandName;
                         Audit audit = new Audit();
                         audit.InsertAudit(commandName, context.User.Id.ToString(), Constants.Constants.discordBotConnStr, (context.Guild is null) ? context.Channel.Id.ToString() : context.Guild.Id.ToString());
                         audit.InsertAuditChannel(Constants.Constants.discordBotConnStr, (context.Guild is null) ? context.Channel.Id.ToString() : context.Guild.Id.ToString(), (context.Guild is null) ? context.Channel.Name : context.Guild.Name, context.User.Id.ToString());
@@ -143,7 +143,7 @@ namespace DiscordBot.Services
                             break;
                     }
             }
-            catch (Exception e)
+            catch (Exception)
             {
                 // If Slash Command execution fails it is most likely that the original interaction acknowledgement will persist. It is a good idea to delete the original
                 // response, or at least let the user know that something went wrong during the command execution.

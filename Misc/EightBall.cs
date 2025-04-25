@@ -5,20 +5,9 @@ namespace DiscordBot.Misc
 {
     public class EightBall
     {
-        private int? id = null;
-        private string saying = null;
+        public int? ID { get; set; } = null;
 
-        public int? ID
-        {
-            get { return id; }
-            set { id = value; }
-        }
-
-        public string Saying
-        {
-            get { return saying; }
-            set { saying = value; }
-        }
+        public string Saying { get; set; } = null;
 
         public EightBall() { }
 
@@ -29,9 +18,9 @@ namespace DiscordBot.Misc
             try
             {
                 // dt = sp output
-                using (var con = new SqlConnection(connStr))
-                using (var cmd = new SqlCommand("GetEightBall", con))
-                using (var da = new SqlDataAdapter(cmd))
+                using (SqlConnection con = new SqlConnection(connStr))
+                using (SqlCommand cmd = new SqlCommand("GetEightBall", con))
+                using (SqlDataAdapter da = new SqlDataAdapter(cmd))
                 {
                     cmd.CommandType = CommandType.StoredProcedure;
                     da.Fill(dt);
@@ -61,9 +50,9 @@ namespace DiscordBot.Misc
             DataTable dt = new DataTable();
             Random rnd = new Random();
 
-            using (var con = new SqlConnection(connStr))
-            using (var cmd = new SqlCommand("GetEightBall", con))
-            using (var da = new SqlDataAdapter(cmd))
+            using (SqlConnection con = new SqlConnection(connStr))
+            using (SqlCommand cmd = new SqlCommand("GetEightBall", con))
+            using (SqlDataAdapter da = new SqlDataAdapter(cmd))
             {
                 cmd.CommandType = CommandType.StoredProcedure;
                 da.Fill(dt);
@@ -79,8 +68,8 @@ namespace DiscordBot.Misc
 
         protected void LoadData(DataRow dr)
         {
-            id = dr.Field<int?>("ID");
-            saying = dr.Field<string>("Sayings");
+            ID = dr.Field<int?>("ID");
+            Saying = dr.Field<string>("Sayings");
         }
     }
 }

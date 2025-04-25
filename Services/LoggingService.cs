@@ -96,8 +96,8 @@ namespace DiscordBot.Services
             if (ex == null)
                 return Task.CompletedTask;
 
-            var st = new StackTrace(ex, true);
-            var sf = st.GetFrame(st.FrameCount - 1);
+            StackTrace st = new StackTrace(ex, true);
+            StackFrame? sf = st.GetFrame(st.FrameCount - 1);
 
             return LogAsync(Severity.Error, $"{ex.GetType().FullName} - {ex.Message}{Environment.NewLine}{ex.StackTrace}", sf!.GetMethod()!.Name, sf.GetFileName()!, sf.GetFileLineNumber());
         }
