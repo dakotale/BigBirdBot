@@ -144,6 +144,61 @@ namespace DiscordBot.SlashCommands
                 PlaySingleTrack(player, track);
         }
 
+        [SlashCommand("playnext", "Works the same as the play command except force the track to be next in queue.", runMode: RunMode.Async)]
+        public async Task PlayNextAsync(string searchQuery)
+        {
+            await DeferAsync();
+
+            searchQuery = HandleTwitter(searchQuery);
+
+            PlayerResult<LavalinkPlayer> isConnected = await _audioService.Players.RetrieveAsync(Context).ConfigureAwait(false);
+            LavalinkPlayer? player = isConnected.Player;
+
+            if (player == null)
+            {
+                // Have to join then query
+                IVoiceState? voiceState = Context.User as IVoiceState;
+
+                if (voiceState?.VoiceChannel == null)
+                {
+                    EmbedBuilder error = BuildMusicEmbed("Play Next", "You must be connected to a voice channel");
+                    await FollowupAsync(embed: error.Build());
+                    return;
+                }
+
+                await _audioService.StartAsync().ConfigureAwait(false);
+                await Task.Delay(3000);
+
+                AddPlayerConnected(voiceState);
+                player = await GetPlayerAsync(connectToVoiceChannel: true).ConfigureAwait(false);
+            }
+
+            // Now let's queue some tracks
+            TrackLoadResult tracks = await _audioService.Tracks.LoadTracksAsync(searchQuery, TrackSearchMode.YouTube);
+
+            if (tracks.IsFailed)
+            {
+                string empty = $"I wasn't able to find anything for '{searchQuery}'.";
+                EmbedBuilder noresults = BuildMusicEmbed("Play Next", empty);
+                await FollowupAsync(embed: noresults.Build());
+                return;
+            }
+
+            LavalinkTrack track = tracks.Track;
+
+            // This could be a playlist so we handle it differently
+            if (Uri.IsWellFormedUriString(searchQuery, UriKind.Absolute))
+            {
+                if (tracks.Count == 1)
+                    PlaySingleTrack(player, track, true);
+                else
+                    PlayMultipleTracks(player, tracks, true);
+            }
+            // If it's a direct search, we're not loading a playlist so only get the first track
+            else
+                PlaySingleTrack(player, track, true);
+        }
+
         [SlashCommand("forceskip", "Skips the current track.")]
         public async Task ForceSkipTaskAsync()
         {
@@ -788,7 +843,7 @@ namespace DiscordBot.SlashCommands
         }
 
         // For Single Tracks and Searches
-        private async void PlaySingleTrack(LavalinkPlayer? player, LavalinkTrack? track)
+        private async void PlaySingleTrack(LavalinkPlayer? player, LavalinkTrack? track, bool playNext = false)
         {
             AddMusicTable(track, Context.Guild.Id.ToString(), Context.User.Username);
 
@@ -822,14 +877,30 @@ namespace DiscordBot.SlashCommands
             else
                 msg = $"Track Name: **{track?.Title}**\nArtist: **{(string.IsNullOrEmpty(track.Author) ? "" : track.Author)}**\nURL: {track?.Uri}\nDuration: **{duration}**\nSource: **{track?.SourceName}**\nVolume: **{GetVolume(long.Parse(Context.Guild.Id.ToString()))}%**";
 
-            await player.PlayAsync(track).ConfigureAwait(false);
+            
+            if (playNext)
+            {
+                QueuedLavalinkPlayer? queued = await GetPlayerAsync(connectToVoiceChannel: false).ConfigureAwait(false);
+                if (queued != null && queued.Queue.Count > 0)
+                {
+                    List<ITrackQueueItem> itemList = queued.Queue.ToList();
+                    await queued.Queue.ClearAsync();
+                    await player.PlayAsync(track).ConfigureAwait(false);
+
+                    foreach (ITrackQueueItem? i in itemList)
+                        await queued.Queue.AddAsync(i);
+                }
+                else
+                    await player.PlayAsync(track).ConfigureAwait(false);
+            }
+
             await player.SetVolumeAsync(GetVolume(long.Parse(Context.Guild.Id.ToString())) / 100f).ConfigureAwait(false);
             EmbedBuilder embed = BuildMusicEmbed("Queued", msg);
             await FollowupAsync(embed: embed.Build()).ConfigureAwait(false);
         }
 
         // For Playlists and Multiple Tracks
-        private async void PlayMultipleTracks(LavalinkPlayer? player, TrackLoadResult tracks)
+        private async void PlayMultipleTracks(LavalinkPlayer? player, TrackLoadResult tracks, bool playNext = false)
         {
             string msg = "";
             System.Text.Json.JsonElement count = new System.Text.Json.JsonElement();
@@ -855,11 +926,33 @@ namespace DiscordBot.SlashCommands
                 msg = $"Playlist Name: **{playlist.Name}** with {count.ToString()} items added.\nURL: {url.ToString()}\nVolume: **{GetVolume(long.Parse(Context.Guild.Id.ToString()))}%**";
             }
 
-            foreach (LavalinkTrack t in tracks.Tracks)
+            if (playNext)
             {
-                await player.PlayAsync(t);
-                AddMusicTable(t, Context.Guild.Id.ToString(), Context.User.Username);
+                QueuedLavalinkPlayer? queued = await GetPlayerAsync(connectToVoiceChannel: false).ConfigureAwait(false);
+                if (queued != null && queued.Queue.Count > 0)
+                {
+                    List<ITrackQueueItem> itemList = queued.Queue.ToList();
+                    await queued.Queue.ClearAsync();
+
+                    foreach (LavalinkTrack t in tracks.Tracks)
+                    {
+                        await player.PlayAsync(t);
+                        AddMusicTable(t, Context.Guild.Id.ToString(), Context.User.Username);
+                    }
+
+                    foreach (ITrackQueueItem? i in itemList)
+                        await queued.Queue.AddAsync(i);
+                }
+                else
+                {
+                    foreach (LavalinkTrack t in tracks.Tracks)
+                    {
+                        await player.PlayAsync(t);
+                        AddMusicTable(t, Context.Guild.Id.ToString(), Context.User.Username);
+                    }
+                }
             }
+            
             await player.SetVolumeAsync(GetVolume(long.Parse(Context.Guild.Id.ToString())) / 100f).ConfigureAwait(false);
             EmbedBuilder embed = BuildMusicEmbed("Queued", msg, artworkUrl.ToString());
             await FollowupAsync(embed: embed.Build()).ConfigureAwait(false);

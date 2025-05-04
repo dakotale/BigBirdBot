@@ -37,36 +37,6 @@ namespace DiscordBot.SlashCommands
             await FollowupAsync(emoji.GetEmojiString(message));
         }
 
-        [SlashCommand("8ball", "Shake the figurative eight ball.")]
-        [EnabledInDm(true)]
-        public async Task HandleEightBallCommand([MinLength(1), MaxLength(4000)] string message)
-        {
-            await DeferAsync();
-            Random r = new Random();
-            EightBall eight = new EightBall();
-            List<EightBall> list = new List<EightBall>();
-            list = eight.GetEightBall(Constants.Constants.discordBotConnStr);
-            int i = r.Next(1, list.Count + 1);
-
-            string title = "BigBirdBot - 8ball";
-            string desc = $"{list.Where(s => s.ID == i).Select(s => s.Saying).FirstOrDefault()}";
-            string thumbnailUrl = "https://www.nicepng.com/png/detail/568-5689463_magic-8-ball-eight-ball-billiard-balls-billiards.png";
-            string createdBy = "Command from: " + Context.User.Username;
-
-            EmbedHelper embed = new EmbedHelper();
-            await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Discord.Color.Green).Build());
-        }
-
-        [SlashCommand("delete", "Removes messages from the chat.")]
-        [EnabledInDm(false)]
-        [Discord.Interactions.RequireUserPermission(Discord.ChannelPermission.ManageMessages)]
-        public async Task HandleDelete([MinValue(1), MaxValue(20)] int numToDelete)
-        {
-            SocketTextChannel? channel = Context.Channel as SocketTextChannel;
-            IEnumerable<IMessage> messages = await channel.GetMessagesAsync(numToDelete + 1).FlattenAsync();
-            await channel.DeleteMessagesAsync(messages);
-        }
-
         [SlashCommand("poll", "Create a poll for people to vote on.")]
         [EnabledInDm(true)]
         public async Task HandlePoll([MinLength(1), MaxLength(4000)] string statement, [MinLength(1)] string pollAnswer1, [MinLength(1)] string pollAnswer2, string pollAnswer3 = null, string pollAnswer4 = null, string pollAnswer5 = null, string pollAnswer6 = null, string pollAnswer7 = null, string pollAnswer8 = null, string pollAnswer9 = null, string pollAnswer10 = null)

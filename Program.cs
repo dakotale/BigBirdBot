@@ -189,55 +189,6 @@ internal class Program
                 new SqlParameter("@ServerUID", Int64.Parse(arg.Guild.Id.ToString())),
                 new SqlParameter("@Nickname", arg.Nickname)
             });
-
-            DataTable dt = stored.Select(Constants.discordBotConnStr, "CheckIfShowWelcomeMessage", new List<SqlParameter>
-            {
-                new SqlParameter("@ServerUID", Int64.Parse(arg.Guild.Id.ToString()))
-            });
-
-            if (dt.Rows.Count > 0)
-            {
-                foreach (DataRow dr in dt.Rows)
-                {
-                    if (bool.Parse(dr["ShowWelcomeMessage"].ToString()) == true)
-                    {
-                        string title = "BigBirdBot - Introductions";
-                        string desc = $"Everyone welcome {arg.Mention} to the server!";
-                        string thumbnailUrl = arg.GetAvatarUrl(ImageFormat.Png, 256);
-                        string createdBy = "BigBirdBot";
-                        string imageUrl = "";
-
-                        // Let's pull the first channel and hope for the best.....
-                        List<SocketTextChannel> textChannels = new List<SocketTextChannel>();
-                        textChannels = arg.Guild.TextChannels.Where(s => s.Name.Contains("general") || s.Name.Contains("no-mic")).ToList();
-                        SocketTextChannel? firstTextChannel;
-
-                        if (textChannels.Count > 0)
-                            firstTextChannel = arg.Guild.GetTextChannel(textChannels[0].Id) ?? arg.Guild.GetTextChannel(textChannels[1].Id);
-                        else
-                            firstTextChannel = arg.Guild.DefaultChannel;
-
-                        if (firstTextChannel != null)
-                        {
-                            SocketTextChannel? channel = client.GetChannel(firstTextChannel.Id) as SocketTextChannel;
-
-                            EmbedHelper embed = new EmbedHelper();
-                            if (channel != null && !arg.IsBot)
-                                await channel.SendMessageAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Color.Gold, imageUrl).Build());
-                        }
-
-                        string userId = arg.Id.ToString();
-                        IUser getUser = await client.GetUserAsync(ulong.Parse(userId));
-                        IDMChannel dmChannel = await getUser.CreateDMChannelAsync();
-
-                        EmbedHelper helper = new EmbedHelper();
-                        string output = "Welcome to the server, I'm BigBirdBot!\nI wanted to give you a proper welcome and hope you have a great time!\nFeel free to type -help in the server to get more information on what I can offer!";
-
-                        if (dmChannel != null)
-                            await dmChannel.SendMessageAsync(embed: helper.BuildMessageEmbed("BigBirdBot - Help Commands", output, "", "BigBirdBot", Discord.Color.Gold, null, null).Build());
-                    }
-                }
-            }
         }
     }
     private async Task ButtonHandler(SocketMessageComponent component)
@@ -969,18 +920,6 @@ internal class Program
                 storedProcedure.UpdateCreate(Constants.discordBotConnStr, "DeleteEvent", new List<SqlParameter> { new SqlParameter("@EventID", dr["EventID"].ToString()) });
 
                 await channel.SendMessageAsync(dr["EventText"].ToString());
-            }
-        }
-        else
-        {
-            dt = storedProcedure.Select(connStr, "GetEventReminder", new List<SqlParameter> { });
-            if (dt.Rows.Count > 0)
-            {
-                foreach (DataRow dr in dt.Rows)
-                {
-                    IMessageChannel channel = (IMessageChannel)client.GetChannel(ulong.Parse(dr["EventChannelSource"].ToString()));
-                    await channel.SendMessageAsync(dr["EventReminderText"].ToString());
-                }
             }
         }
 

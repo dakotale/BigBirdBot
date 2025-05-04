@@ -231,7 +231,7 @@ namespace DiscordBot.SlashCommands
             await FollowupAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Fire Apologized", $"**The Fire apology counter was updated to {currentCounter} on {currentDateTime}**\n**Average Per Day: {averagePerDay}**\n{counterHistory}", "", Context.User.Username, Discord.Color.Green).Build());
         }
 
-        [SlashCommand("whatever", "Times fire said whatever...")]
+        [SlashCommand("whatever", "Times Mary said whatever...")]
         [EnabledInDm(false)]
         public async Task HandleWhatever(int? additionalCount = null)
         {

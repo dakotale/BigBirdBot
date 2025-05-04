@@ -588,7 +588,7 @@ namespace DiscordBot.SlashCommands
 
                         StoredProcedure procedure = new StoredProcedure();
 
-                        DataTable dt = procedure.Select(Constants.Constants.discordBotConnStr, "GetChatActionActiveAndInActive", new List<System.Data.SqlClient.SqlParameter>
+                        DataTable dt = procedure.Select(Constants.Constants.discordBotConnStr, "GetChatAction", new List<System.Data.SqlClient.SqlParameter>
                         {
                             new System.Data.SqlClient.SqlParameter("@ServerID", serverId),
                             new System.Data.SqlClient.SqlParameter("@Message", word)
@@ -650,7 +650,7 @@ namespace DiscordBot.SlashCommands
 
                                 StoredProcedure procedure = new StoredProcedure();
 
-                                DataTable dt = procedure.Select(Constants.Constants.discordBotConnStr, "GetChatActionActiveAndInActive", new List<System.Data.SqlClient.SqlParameter>
+                                DataTable dt = procedure.Select(Constants.Constants.discordBotConnStr, "GetChatAction", new List<System.Data.SqlClient.SqlParameter>
                                 {
                                     new System.Data.SqlClient.SqlParameter("@ServerID", serverId),
                                     new System.Data.SqlClient.SqlParameter("@Message", word)
@@ -701,7 +701,7 @@ namespace DiscordBot.SlashCommands
                         else
                         {
                             string title = "BigBirdBot - Error";
-                            string desc = $"To add a chat keyword action, enter a word and action.  Ex: -ka laugh, LOL";
+                            string desc = $"To add a chat keyword action, enter a word and action.";
                             string thumbnailUrl = Constants.Constants.errorImageUrl;
                             string imageUrl = "";
                             string createdBy = "Command from: " + Context.User.Username;
@@ -719,7 +719,7 @@ namespace DiscordBot.SlashCommands
 
                     StoredProcedure procedure = new StoredProcedure();
 
-                    DataTable dt = procedure.Select(Constants.Constants.discordBotConnStr, "GetChatActionActiveAndInActive", new List<System.Data.SqlClient.SqlParameter>
+                    DataTable dt = procedure.Select(Constants.Constants.discordBotConnStr, "GetChatAction", new List<System.Data.SqlClient.SqlParameter>
                     {
                         new System.Data.SqlClient.SqlParameter("@ServerID", serverId),
                         new System.Data.SqlClient.SqlParameter("@Message", word)
@@ -758,7 +758,7 @@ namespace DiscordBot.SlashCommands
                 else
                 {
                     string title = "BigBirdBot - Error";
-                    string desc = $"To add a chat keyword action, enter a word and action.  Ex: -ka laugh, LOL";
+                    string desc = $"To add a chat keyword action, enter a word and action.";
                     string thumbnailUrl = Constants.Constants.errorImageUrl;
                     string imageUrl = "";
                     string createdBy = "Command from: " + Context.User.Username;
