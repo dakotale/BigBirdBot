@@ -16,7 +16,7 @@ namespace DiscordBot.SlashCommands
         public async Task HandleServerInformation()
         {
             await DeferAsync();
-            double botPercentage = Math.Round(Context.Guild.Users.Count(x => x.IsBot) / Context.Guild.MemberCount * 100d, 2);
+            double botPercentage = Math.Round((Context.Guild.Users.Count(x => x.IsBot) / Context.Guild.MemberCount) * 100d, 2);
 
             string bannerUrl = Context.Guild.BannerUrl ?? "";
 
@@ -26,7 +26,6 @@ namespace DiscordBot.SlashCommands
                 .WithTitle($"Server Information for {Context.Guild.Name}")
                 .WithDescription(
                     $"**Guild name:** {Context.Guild.Name}\n" +
-                    $"**Guild ID:** {Context.Guild.Id}\n" +
                     $"**Created On:** {Context.Guild.CreatedAt:MM/dd/yyyy}\n" +
                     $"**Owner:** {Context.Guild.Owner}\n\n" +
                     $"**Users:** {Context.Guild.MemberCount - Context.Guild.Users.Count(x => x.IsBot)}\n" +
@@ -35,8 +34,7 @@ namespace DiscordBot.SlashCommands
                     $"**Voice Channels:** {Context.Guild.VoiceChannels.Count}\n" +
                     $"**Roles:** {Context.Guild.Roles.Count}\n" +
                     $"**Emotes:** {Context.Guild.Emotes.Count}\n" +
-                    $"**Stickers:** {Context.Guild.Stickers.Count}\n\n" +
-                    $"**Security level:** {Context.Guild.VerificationLevel}")
+                    $"**Stickers:** {Context.Guild.Stickers.Count}\n\n")
                  .WithImageUrl(bannerUrl)
                  .WithCurrentTimestamp();
 

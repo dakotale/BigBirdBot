@@ -350,7 +350,7 @@ namespace DiscordBot.SlashCommands
             {
                 HttpClient client = new HttpClient();
 
-                if (!url.Contains("https") || url.Contains("cdn.discord"))
+                if (!url.Contains("https") || url.Contains("discordapp.net"))
                 {
                     await FollowupAsync(embed: embedHelper.BuildErrorEmbed("AI Detection Error", "**The request does not have a proper URL and failed when sending to the detection endpoint.**", Context.User.Username).Build());
                     return;

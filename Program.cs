@@ -576,7 +576,7 @@ internal class Program
                                 }
                                 if (message.Split(' ').Count() > 1)
                                 {
-                                    string content = message.Replace(keyword, "").Trim();
+                                    string content = message.Replace(prefix + keyword, "").Trim();
                                     bool multiUrl = false;
 
                                     if (content.Contains(",") && content.Contains("http"))
@@ -628,11 +628,11 @@ internal class Program
                                                     foreach (DataRow dr in dt.Rows)
                                                     {
                                                         stored.UpdateCreate(connStr, "AddThirstByMap", new List<System.Data.SqlClient.SqlParameter>
-                                                            {
-                                                                new SqlParameter("@FilePath", content),
-                                                                new SqlParameter("@TableName", dr["TableName"].ToString()),
-                                                                new SqlParameter("@UserID", userId)
-                                                            });
+                                                        {
+                                                            new SqlParameter("@FilePath", content),
+                                                            new SqlParameter("@TableName", dr["TableName"].ToString()),
+                                                            new SqlParameter("@UserID", userId)
+                                                        });
                                                     }
                                                 }
                                             }
