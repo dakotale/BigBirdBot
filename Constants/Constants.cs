@@ -12,5 +12,8 @@
         public const string spotifyClientSecret = "e5c19c145b0e4ba68b8b76f3a5acf1b2";
         public const string errorImageUrl = "https://cdn0.iconfinder.com/data/icons/shift-interfaces/32/Error-512.png";
         public const string testServerGuildId = "880569055856185354";
+        public const string aiApiUserId = "1741944096";
+        public const string aiApiSecretId = "JLtYDfz2ghw3czdAn3yEee5T7a45zAUM";
+        public const string aiDetectorPath = @"C:\Temp\DiscordBot\AIDetector\";
     }
 }

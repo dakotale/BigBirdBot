@@ -1,11 +1,12 @@
-﻿using System.Data;
-using System.Data.SqlClient;
-using Discord;
+﻿using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 using DiscordBot.Constants;
 using DiscordBot.Helper;
 using DiscordBot.Misc;
+using System.Data;
+using System.Data.SqlClient;
+using System.Net;
 
 namespace DiscordBot.SlashCommands
 {
@@ -198,10 +199,14 @@ namespace DiscordBot.SlashCommands
 
         [SlashCommand("setrolecolor", "Set the color of your role by hex code, include the #")]
         [EnabledInDm(false)]
-        public async Task HandleColor([MinLength(1), MaxLength(9)] string hexCode, SocketGuildUser userName = null)
+        public async Task HandleColor([MinLength(1), MaxLength(10)] string hexCode, SocketGuildUser userName = null)
         {
             await DeferAsync();
             EmbedHelper embedHelper = new EmbedHelper();
+
+            if (hexCode.StartsWith("#"))
+                hexCode = hexCode.Substring(1);
+
             try
             {
                 System.Drawing.Color color = System.Drawing.ColorTranslator.FromHtml(hexCode);
@@ -239,6 +244,169 @@ namespace DiscordBot.SlashCommands
             {
                 await FollowupAsync(embed: embedHelper.BuildErrorEmbed("Color", ex.Message, Context.User.Username).Build());
             }
+        }
+
+        [SlashCommand("detectaibyattachment", "Upload an attachment through the bot to get the percentage chance it's AI.")]
+        [EnabledInDm(true)]
+        public async Task HandleAIByAttachment(Attachment attachment)
+        {
+            await DeferAsync();
+            EmbedHelper embedHelper = new EmbedHelper();
+
+            try
+            {
+                string attachmentName = attachment.Filename;
+                string withoutExt = attachmentName.Split(".", StringSplitOptions.TrimEntries)[0];
+                string withExt = attachmentName.Split(".", StringSplitOptions.TrimEntries)[1];
+                withoutExt = withoutExt + "_" + DateTime.Now.ToString("yyyyMMdd_HHmmssfffff");
+
+                string path = Constants.Constants.aiDetectorPath + withoutExt + "." + withExt;
+
+                if (!attachment.ContentType.Contains("image"))
+                {
+                    await FollowupAsync(embed: embedHelper.BuildErrorEmbed("AI Detection Error", "**The file provided was not an image, please upload an image and try again.**", Context.User.Username).Build());
+                    return;
+                }
+
+                using (WebClient webClient = new WebClient())
+                {
+                    webClient.DownloadFileTaskAsync(new Uri(attachment.Url), path).Wait();
+                }
+
+                HttpClient client = new HttpClient();
+
+                HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, "https://api.sightengine.com/1.0/check.json");
+
+                MultipartFormDataContent content = new MultipartFormDataContent();
+                content.Add(new ByteArrayContent(File.ReadAllBytes(path)), "media", Path.GetFileName(path));
+                content.Add(new StringContent("genai"), "models");
+                content.Add(new StringContent(Constants.Constants.aiApiUserId), "api_user");
+                content.Add(new StringContent(Constants.Constants.aiApiSecretId), "api_secret");
+                request.Content = content;
+
+                HttpResponseMessage response = await client.SendAsync(request);
+                response.EnsureSuccessStatusCode();
+                string responseBody = await response.Content.ReadAsStringAsync();
+
+                if (!string.IsNullOrEmpty(responseBody))
+                {
+                    StoredProcedure stored = new StoredProcedure();
+                    DataTable dt = new DataTable();
+
+                    dt = stored.Select(Constants.Constants.discordBotConnStr, "GetAIJSONImageReturn", new List<SqlParameter> { new SqlParameter("@json", responseBody) });
+
+                    if (dt.Rows.Count > 0)
+                    {
+                        foreach (DataRow dr in dt.Rows)
+                        {
+                            if (dr["Status"].ToString().Equals("success"))
+                            {
+                                var detectionRate = double.Parse(dr["PercentageChance"].ToString());
+                                string description = "";
+
+                                if (detectionRate <= 25.0)
+                                    description = $"**There is a small chance ({detectionRate.ToString() + "%"}) this image is AI and would be safe to assume it is not AI.**";
+                                if (detectionRate > 25.0 &&  detectionRate <= 50.0)
+                                    description = $"**There is a chance ({detectionRate.ToString() + "%"}) this image is AI and should be investigated further.**";
+                                if (detectionRate > 50.0 && detectionRate <= 75.0)
+                                    description = $"**There is a high chance ({detectionRate.ToString() + "%"}) this image is AI and should be investigated further.**";
+                                if (detectionRate > 75.0)
+                                    description = $"**This image was created with AI based on the percentage matching of {detectionRate.ToString() + "%"}.**";
+
+                                await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - AI Detection", description, "", Context.User.Username, Discord.Color.Blue).Build());
+                            }
+                            else
+                            {
+                                await FollowupAsync(embed: embedHelper.BuildErrorEmbed("AI Detection Error", "**The request failed when sending to the detection endpoint.**", Context.User.Username).Build());
+                            }
+                        }
+                    }
+                    else
+                    {
+                        await FollowupAsync(embed: embedHelper.BuildErrorEmbed("AI Detection Error", "**There was no response returned from the detection endpoint.**", Context.User.Username).Build());
+                    }
+                }
+                else
+                {
+                    await FollowupAsync(embed: embedHelper.BuildErrorEmbed("AI Detection Error", "**There was no response returned from the detection endpoint.**", Context.User.Username).Build());
+                }
+            }
+            catch (Exception ex)
+            {
+                await FollowupAsync(embed: embedHelper.BuildErrorEmbed("AI Detection Error", ex.Message, Context.User.Username).Build());
+            }
+
+            
+        }
+
+        [SlashCommand("detectaibyurl", "Provide a URL through the bot to get the percentage chance the image URL is AI.")]
+        [EnabledInDm(true)]
+        public async Task HandleAIByURL(string url)
+        {
+            await DeferAsync();
+            EmbedHelper embedHelper = new EmbedHelper();
+
+            try
+            {
+                HttpClient client = new HttpClient();
+
+                if (!url.Contains("https") || url.Contains("cdn.discord"))
+                {
+                    await FollowupAsync(embed: embedHelper.BuildErrorEmbed("AI Detection Error", "**The request does not have a proper URL and failed when sending to the detection endpoint.**", Context.User.Username).Build());
+                    return;
+                }
+
+                string responseBody = await client.GetStringAsync($"https://api.sightengine.com/1.0/check.json?models=genai&api_user={Constants.Constants.aiApiUserId}&api_secret={Constants.Constants.aiApiSecretId}&url={url}");
+
+                if (!string.IsNullOrEmpty(responseBody))
+                {
+                    StoredProcedure stored = new StoredProcedure();
+                    DataTable dt = new DataTable();
+
+                    dt = stored.Select(Constants.Constants.discordBotConnStr, "GetAIJSONImageReturn", new List<SqlParameter> { new SqlParameter("@json", responseBody) });
+
+                    if (dt.Rows.Count > 0)
+                    {
+                        foreach (DataRow dr in dt.Rows)
+                        {
+                            if (dr["Status"].ToString().Equals("success"))
+                            {
+                                var detectionRate = double.Parse(dr["PercentageChance"].ToString());
+                                string description = "";
+
+                                if (detectionRate <= 25.0)
+                                    description = $"**There is a small chance ({detectionRate.ToString() + "%"}) this image is AI and would be safe to assume it is not AI.**";
+                                if (detectionRate > 25.0 && detectionRate <= 50.0)
+                                    description = $"**There is a chance ({detectionRate.ToString() + "%"}) this image is AI and should be investigated further.**";
+                                if (detectionRate > 50.0 && detectionRate <= 75.0)
+                                    description = $"**There is a high chance ({detectionRate.ToString() + "%"}) this image is AI and should be investigated further.**";
+                                if (detectionRate > 75.0)
+                                    description = $"**This image was created with AI based on the percentage matching of {detectionRate.ToString() + "%"}.**";
+
+                                await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - AI Detection", description, "", Context.User.Username, Discord.Color.Blue).Build());
+                            }
+                            else
+                            {
+                                await FollowupAsync(embed: embedHelper.BuildErrorEmbed("AI Detection Error", "**The request failed when sending to the detection endpoint.**", Context.User.Username).Build());
+                            }
+                        }
+                    }
+                    else
+                    {
+                        await FollowupAsync(embed: embedHelper.BuildErrorEmbed("AI Detection Error", "**There was no response returned from the detection endpoint.**", Context.User.Username).Build());
+                    }
+                }
+                else
+                {
+                    await FollowupAsync(embed: embedHelper.BuildErrorEmbed("AI Detection Error", "**There was no response returned from the detection endpoint.**", Context.User.Username).Build());
+                }
+            }
+            catch (Exception ex)
+            {
+                await FollowupAsync(embed: embedHelper.BuildErrorEmbed("AI Detection Error", ex.Message, Context.User.Username).Build());
+            }
+
+
         }
     }
 }

@@ -46,7 +46,7 @@ namespace DiscordBot.Services
         private async Task ReadyAsync()
         {
             IReadOnlyCollection<Discord.Rest.RestGlobalCommand> commands =
-            //await _handler.RegisterCommandsToGuildAsync(_configuration.GetValue<ulong>("testGuild"));
+            //await _handler.RegisterCommandsToGuildAsync(_configuration.GetValue<ulong>("testGuild"))
             await _handler.RegisterCommandsGloballyAsync();
 
             await _handler.RegisterCommandsAsync();

@@ -90,7 +90,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("play", "Play a Youtube, Spotify, Twitter, Twitch, or Soundcloud track/playlists in the bot.", runMode: RunMode.Async)]
-        public async Task PlayAsync(string searchQuery)
+        public async Task PlayAsync([MinLength(1)] string searchQuery)
         {
             await DeferAsync();
 
@@ -145,7 +145,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("playnext", "Works the same as the play command except force the track to be next in queue.", runMode: RunMode.Async)]
-        public async Task PlayNextAsync(string searchQuery)
+        public async Task PlayNextAsync([MinLength(1)] string searchQuery)
         {
             await DeferAsync();
 
@@ -560,7 +560,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("swap", "Switch two tracks in the queue.")]
-        public async Task SwapTrack(int oldPosition, int newPosition)
+        public async Task SwapTrack([MinValue(0)] int oldPosition, [MinValue(0)] int newPosition)
         {
             await DeferAsync();
             QueuedLavalinkPlayer? player = await GetPlayerAsync(connectToVoiceChannel: false);
@@ -657,7 +657,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("remove", "Deletes a track from the queue.")]
-        public async Task RemoveItem(int element)
+        public async Task RemoveItem([MinValue(0)] int element)
         {
             await DeferAsync();
             QueuedLavalinkPlayer? player = await GetPlayerAsync(connectToVoiceChannel: false).ConfigureAwait(false);
@@ -687,7 +687,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("seek", "Goes to a specific time of the current track.")]
-        public async Task SeekAsync(string timeSpan)
+        public async Task SeekAsync([MinLength(1)] string timeSpan)
         {
             await DeferAsync();
             QueuedLavalinkPlayer? player = await GetPlayerAsync(connectToVoiceChannel: false);
@@ -763,7 +763,7 @@ namespace DiscordBot.SlashCommands
         }
 
         // 'BigBirdBot' embed for music commands
-        private EmbedBuilder BuildMusicEmbed(string title, string description, string artwork = "")
+        private EmbedBuilder BuildMusicEmbed(string title, string description, string artwork = "", double duration = 0.0)
         {
             EmbedBuilder embed = new EmbedBuilder
             {
@@ -893,6 +893,8 @@ namespace DiscordBot.SlashCommands
                 else
                     await player.PlayAsync(track).ConfigureAwait(false);
             }
+            else
+                await player.PlayAsync(track).ConfigureAwait(false);
 
             await player.SetVolumeAsync(GetVolume(long.Parse(Context.Guild.Id.ToString())) / 100f).ConfigureAwait(false);
             EmbedBuilder embed = BuildMusicEmbed("Queued", msg);
@@ -952,7 +954,15 @@ namespace DiscordBot.SlashCommands
                     }
                 }
             }
-            
+            else
+            {
+                foreach (LavalinkTrack t in tracks.Tracks)
+                {
+                    await player.PlayAsync(t);
+                    AddMusicTable(t, Context.Guild.Id.ToString(), Context.User.Username);
+                }
+            }
+
             await player.SetVolumeAsync(GetVolume(long.Parse(Context.Guild.Id.ToString())) / 100f).ConfigureAwait(false);
             EmbedBuilder embed = BuildMusicEmbed("Queued", msg, artworkUrl.ToString());
             await FollowupAsync(embed: embed.Build()).ConfigureAwait(false);

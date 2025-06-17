@@ -68,5 +68,25 @@ namespace DiscordBot.SlashCommands
             EmbedHelper embed = new EmbedHelper();
             await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Green, imageUrl).Build());
         }
+
+        [SlashCommand("genpalette", "Let the bot generated 5 random hex color codes for your next inspiration")]
+        [EnabledInDm(true)]
+        public async Task HandlePalette()
+        {
+            await DeferAsync();
+            string result = "Here are the 5 generated hex codes with reference photos\n";
+
+            for (int i = 0; i < 5; i++)
+            {
+                Random random = new Random();
+                string color = String.Format("{0:X6}", random.Next(0x1000000));
+                result += (i + 1).ToString() + ". https://www.color-hex.com/color/" + color + "\n\n";
+            }
+            string title = "BigBirdBot - Generate Palette";
+            string embedCreatedBy = "Command from: " + Context.User.Username;
+
+            EmbedHelper embed = new EmbedHelper();
+            await FollowupAsync(embed: embed.BuildMessageEmbed(title, result, "", embedCreatedBy, Discord.Color.Blue).Build());
+        }
     }
 }

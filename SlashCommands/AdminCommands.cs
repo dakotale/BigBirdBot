@@ -121,7 +121,7 @@ namespace DiscordBot.SlashCommands
         [SlashCommand("delkeymultiroles", "Delete a role based on channels in the multiple action keyword category.")]
         [EnabledInDm(false)]
         [Discord.Interactions.RequireUserPermission(ChannelPermission.ManageRoles)]
-        public async Task HandleDeleteRoleToChannel([MinLength(1)] string roleName)
+        public async Task HandleDeleteRoleToChannel([MinLength(1), MaxLength(50)] string roleName)
         {
             await DeferAsync();
             StoredProcedure stored = new StoredProcedure();

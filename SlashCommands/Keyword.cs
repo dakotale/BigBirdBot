@@ -15,7 +15,7 @@ namespace DiscordBot.SlashCommands
         [SlashCommand("addkeyword", "Adds a keyword to the server.")]
         [EnabledInDm(false)]
         [RequireUserPermission(ChannelPermission.ManageMessages)]
-        public async Task HandleKeywordAdd([MinLength(1)] string keyword, string action = null, Attachment attachment = null)
+        public async Task HandleKeywordAdd([MinLength(1), MaxLength(50)] string keyword, string action = null, Attachment attachment = null)
         {
             await DeferAsync();
             try
@@ -143,7 +143,7 @@ namespace DiscordBot.SlashCommands
         [SlashCommand("addmultikeyword", "Adds a keyword that can access multiple actions.")]
         [EnabledInDm(false)]
         [RequireUserPermission(ChannelPermission.ManageMessages)]
-        public async Task HandleAddKeyMulti([MinLength(1)] string keyword, [Choice("Yes", "Yes"), Choice("No", "No"), MinLength(1)] string createChannel)
+        public async Task HandleAddKeyMulti([MinLength(1), MaxLength(50)] string keyword, [Choice("Yes", "Yes"), Choice("No", "No"), MinLength(1)] string createChannel)
         {
             await DeferAsync();
             try
@@ -258,7 +258,7 @@ namespace DiscordBot.SlashCommands
         [SlashCommand("addmultieventadmin", "Adds a scheduled job to send a photo for a user.")]
         [EnabledInDm(false)]
         [RequireUserPermission(ChannelPermission.ManageMessages)]
-        public async Task HandleThirstEventAdminAdd(SocketGuildUser user, [MinLength(1)] string keyword)
+        public async Task HandleThirstEventAdminAdd(SocketGuildUser user, [MinLength(1), MaxLength(50)] string keyword)
         {
             await DeferAsync();
 
@@ -330,7 +330,7 @@ namespace DiscordBot.SlashCommands
 
         [SlashCommand("addkeywordurl", "Add the same link to multiple comma-separated keywords in your server.")]
         [EnabledInDm(false)]
-        public async Task HandleMultipleLink([MinLength(1)] string keyword, string url)
+        public async Task HandleMultipleLink([MinLength(1), MaxLength(50)] string keyword, string url)
         {
             await DeferAsync();
 
@@ -436,7 +436,7 @@ namespace DiscordBot.SlashCommands
 
         [SlashCommand("addkeywordimage", "Add the same attachment to multiple comma-separated keywords in your server.")]
         [EnabledInDm(false)]
-        public async Task HandleMultipleImage([MinLength(1)] string keyword, IAttachment attachment, IAttachment? attachment2 = null, IAttachment? attachment3 = null, IAttachment? attachment4 = null, IAttachment? attachment5 = null, IAttachment? attachment6 = null, IAttachment? attachment7 = null, IAttachment? attachment8 = null, IAttachment? attachment9 = null, IAttachment? attachment10 = null)
+        public async Task HandleMultipleImage([MinLength(1), MaxLength(50)] string keyword, IAttachment attachment, IAttachment? attachment2 = null, IAttachment? attachment3 = null, IAttachment? attachment4 = null, IAttachment? attachment5 = null, IAttachment? attachment6 = null, IAttachment? attachment7 = null, IAttachment? attachment8 = null, IAttachment? attachment9 = null, IAttachment? attachment10 = null)
         {
             await DeferAsync();
             StoredProcedure stored = new StoredProcedure();
@@ -573,7 +573,7 @@ namespace DiscordBot.SlashCommands
         [SlashCommand("editkeyword", "Edits a keyword to the server.")]
         [EnabledInDm(false)]
         [RequireUserPermission(ChannelPermission.ManageMessages)]
-        public async Task HandleKeywordUpdate([MinLength(1)] string keyword, string action = null, Attachment attachment = null)
+        public async Task HandleKeywordUpdate([MinLength(1), MaxLength(50)] string keyword, string action = null, Attachment attachment = null)
         {
             await DeferAsync();
             try
@@ -816,7 +816,7 @@ namespace DiscordBot.SlashCommands
         [SlashCommand("deletekeyword", "Deletes a keyword from the server.")]
         [EnabledInDm(false)]
         [RequireUserPermission(ChannelPermission.ManageMessages)]
-        public async Task HandleKeywordDelete([MinLength(1)] string keyword)
+        public async Task HandleKeywordDelete([MinLength(1), MaxLength(50)] string keyword)
         {
             await DeferAsync();
             long serverId = Int64.Parse(Context.Guild.Id.ToString());
@@ -862,7 +862,7 @@ namespace DiscordBot.SlashCommands
         [SlashCommand("deletemultiurl", "Deletes a multi-keyword URL with a given table and link.")]
         [EnabledInDm(false)]
         [RequireUserPermission(ChannelPermission.ManageMessages)]
-        public async Task HandleThirstURLDelete([MinLength(1)] string url, [MinLength(1)] string chatName)
+        public async Task HandleThirstURLDelete([MinLength(1)] string url, [MinLength(1), MaxLength(50)] string chatName)
         {
             await DeferAsync();
 
@@ -898,7 +898,7 @@ namespace DiscordBot.SlashCommands
         [SlashCommand("deletemultikeyword", "Deletes a multi-keyword that was created.")]
         [EnabledInDm(false)]
         [RequireUserPermission(ChannelPermission.ManageMessages)]
-        public async Task HandleThirstDelete([MinLength(1)] string keyword)
+        public async Task HandleThirstDelete([MinLength(1), MaxLength(50)] string keyword)
         {
             await DeferAsync();
 
