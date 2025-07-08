@@ -17,7 +17,7 @@ namespace DiscordBot.SlashCommands
         [RequireUserPermission(ChannelPermission.ManageMessages)]
         public async Task HandleKeywordAdd([MinLength(1), MaxLength(50)] string keyword, string action = null, Attachment attachment = null)
         {
-            await DeferAsync();
+            await DeferAsync(ephemeral: true);
             try
             {
                 if (keyword.Trim().Length > 0 && (!string.IsNullOrEmpty(action) || attachment != null))
@@ -145,7 +145,7 @@ namespace DiscordBot.SlashCommands
         [RequireUserPermission(ChannelPermission.ManageMessages)]
         public async Task HandleAddKeyMulti([MinLength(1), MaxLength(50)] string keyword, [Choice("Yes", "Yes"), Choice("No", "No"), MinLength(1)] string createChannel)
         {
-            await DeferAsync();
+            await DeferAsync(ephemeral: true);
             try
             {
                 StoredProcedure stored = new StoredProcedure();
@@ -260,7 +260,7 @@ namespace DiscordBot.SlashCommands
         [RequireUserPermission(ChannelPermission.ManageMessages)]
         public async Task HandleThirstEventAdminAdd(SocketGuildUser user, [MinLength(1), MaxLength(50)] string keyword)
         {
-            await DeferAsync();
+            await DeferAsync(ephemeral: true);
 
             try
             {
@@ -296,7 +296,7 @@ namespace DiscordBot.SlashCommands
         [EnabledInDm(false)]
         public async Task HandleThirstEventAdd()
         {
-            await DeferAsync();
+            await DeferAsync(ephemeral: true);
 
             try
             {
@@ -332,7 +332,7 @@ namespace DiscordBot.SlashCommands
         [EnabledInDm(false)]
         public async Task HandleMultipleLink([MinLength(1), MaxLength(50)] string keyword, string url)
         {
-            await DeferAsync();
+            await DeferAsync(ephemeral: true);
 
             StoredProcedure stored = new StoredProcedure();
             string connStr = Constants.Constants.discordBotConnStr;
@@ -438,7 +438,7 @@ namespace DiscordBot.SlashCommands
         [EnabledInDm(false)]
         public async Task HandleMultipleImage([MinLength(1), MaxLength(50)] string keyword, IAttachment attachment, IAttachment? attachment2 = null, IAttachment? attachment3 = null, IAttachment? attachment4 = null, IAttachment? attachment5 = null, IAttachment? attachment6 = null, IAttachment? attachment7 = null, IAttachment? attachment8 = null, IAttachment? attachment9 = null, IAttachment? attachment10 = null)
         {
-            await DeferAsync();
+            await DeferAsync(ephemeral: true);
             StoredProcedure stored = new StoredProcedure();
             string connStr = Constants.Constants.discordBotConnStr;
             List<string> multipleKeywords = new List<string>();
@@ -575,7 +575,7 @@ namespace DiscordBot.SlashCommands
         [RequireUserPermission(ChannelPermission.ManageMessages)]
         public async Task HandleKeywordUpdate([MinLength(1), MaxLength(50)] string keyword, string action = null, Attachment attachment = null)
         {
-            await DeferAsync();
+            await DeferAsync(ephemeral: true);
             try
             {
                 if (keyword.Trim().Length > 0 && (!string.IsNullOrEmpty(action) || attachment != null))
@@ -787,7 +787,7 @@ namespace DiscordBot.SlashCommands
         [RequireUserPermission(ChannelPermission.ManageMessages)]
         public async Task HandleKeywordOnOff()
         {
-            await DeferAsync();
+            await DeferAsync(ephemeral: true);
             StoredProcedure procedure = new StoredProcedure();
             long serverId = Int64.Parse(Context.Guild.Id.ToString());
             string result = "";
@@ -810,7 +810,7 @@ namespace DiscordBot.SlashCommands
             string embedCreatedBy = "Command from: " + Context.User.Username;
 
             EmbedHelper embed = new EmbedHelper();
-            await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Green, imageUrl).Build());
+            await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Green, imageUrl).Build(), ephemeral: true);
         }
 
         [SlashCommand("deletekeyword", "Deletes a keyword from the server.")]
@@ -818,7 +818,7 @@ namespace DiscordBot.SlashCommands
         [RequireUserPermission(ChannelPermission.ManageMessages)]
         public async Task HandleKeywordDelete([MinLength(1), MaxLength(50)] string keyword)
         {
-            await DeferAsync();
+            await DeferAsync(ephemeral: true);
             long serverId = Int64.Parse(Context.Guild.Id.ToString());
 
             StoredProcedure procedure = new StoredProcedure();
@@ -844,7 +844,7 @@ namespace DiscordBot.SlashCommands
                 string embedCreatedBy = "Command from: " + Context.User.Username;
 
                 EmbedHelper embed = new EmbedHelper();
-                await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Green, imageUrl).Build());
+                await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Green, imageUrl).Build(), ephemeral: true);
             }
             else
             {
@@ -864,7 +864,7 @@ namespace DiscordBot.SlashCommands
         [RequireUserPermission(ChannelPermission.ManageMessages)]
         public async Task HandleThirstURLDelete([MinLength(1)] string url, [MinLength(1), MaxLength(50)] string chatName)
         {
-            await DeferAsync();
+            await DeferAsync(ephemeral: true);
 
             EmbedHelper embedHelper = new EmbedHelper();
             string tableName = chatName.Trim();
@@ -900,7 +900,7 @@ namespace DiscordBot.SlashCommands
         [RequireUserPermission(ChannelPermission.ManageMessages)]
         public async Task HandleThirstDelete([MinLength(1), MaxLength(50)] string keyword)
         {
-            await DeferAsync();
+            await DeferAsync(ephemeral: true);
 
             StoredProcedure stored = new StoredProcedure();
             EmbedHelper embedHelper = new EmbedHelper();
@@ -936,7 +936,7 @@ namespace DiscordBot.SlashCommands
         [RequireOwner]
         public async Task HandleThirstEventDelete(SocketGuildUser user, string chatName = null)
         {
-            await DeferAsync();
+            await DeferAsync(ephemeral: true);
             EmbedHelper embedHelper = new EmbedHelper();
             StoredProcedure stored = new StoredProcedure();
             DataTable dt = new DataTable();
@@ -967,7 +967,7 @@ namespace DiscordBot.SlashCommands
         [EnabledInDm(false)]
         public async Task HandleDeleteExcludeFromKeyword()
         {
-            await DeferAsync();
+            await DeferAsync(ephemeral: true);
             StoredProcedure stored = new StoredProcedure();
             string connStr = Constants.Constants.discordBotConnStr;
             string userId = Context.User.Id.ToString();
@@ -996,7 +996,7 @@ namespace DiscordBot.SlashCommands
         [RequireOwner]
         public async Task RequeueThirst(SocketGuildUser user)
         {
-            await DeferAsync();
+            await DeferAsync(ephemeral: true);
             EmbedHelper embedHelper = new EmbedHelper();
             StoredProcedure stored = new StoredProcedure();
 
@@ -1015,7 +1015,7 @@ namespace DiscordBot.SlashCommands
         [EnabledInDm(false)]
         public async Task HandleExcludeFromKeyword()
         {
-            await DeferAsync();
+            await DeferAsync(ephemeral: true);
             StoredProcedure stored = new StoredProcedure();
             string connStr = Constants.Constants.discordBotConnStr;
             string userId = Context.User.Id.ToString();

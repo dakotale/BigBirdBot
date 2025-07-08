@@ -17,7 +17,7 @@ namespace DiscordBot.SlashCommands
         [Discord.Interactions.RequireOwner]
         public async Task HandleAnnouncement([MinValue(1), MaxLength(4000)] string message, Attachment attachment = null)
         {
-            await DeferAsync();
+            await DeferAsync(ephemeral: true);
             List<string> serverList = new List<string>();
             List<string> serverListNoPerms = new List<string>();
             try
@@ -76,7 +76,7 @@ namespace DiscordBot.SlashCommands
         [Discord.Interactions.RequireOwner]
         public async Task HandleServerList()
         {
-            await DeferAsync();
+            await DeferAsync(ephemeral: true);
             StoredProcedure stored = new StoredProcedure();
 
             DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "GetScheduledEventUsers", new List<SqlParameter>());
@@ -95,7 +95,7 @@ namespace DiscordBot.SlashCommands
         [Discord.Interactions.RequireOwner]
         public async Task HandlePlayersConnected()
         {
-            await DeferAsync();
+            await DeferAsync(ephemeral: true);
             StoredProcedure stored = new StoredProcedure();
             DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "GetPlayerConnected", new List<SqlParameter>());
             EmbedHelper embed = new EmbedHelper();
@@ -127,7 +127,7 @@ namespace DiscordBot.SlashCommands
         [Discord.Interactions.RequireOwner]
         public async Task HandlePopulateAllUserCommand()
         {
-            await DeferAsync();
+            await DeferAsync(ephemeral: true);
             try
             {
                 StoredProcedure stored = new StoredProcedure();
@@ -182,7 +182,7 @@ namespace DiscordBot.SlashCommands
         [RequireOwner]
         public async Task HandleThirstImageDelete([MinLength(1)] string fileName, [MinLength(1)] string chatName)
         {
-            await DeferAsync();
+            await DeferAsync(ephemeral: true);
 
             EmbedHelper embedHelper = new EmbedHelper();
             string tableName = chatName.Trim();

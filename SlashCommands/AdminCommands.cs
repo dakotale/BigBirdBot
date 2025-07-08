@@ -64,7 +64,7 @@ namespace DiscordBot.SlashCommands
         [Discord.Interactions.RequireUserPermission(ChannelPermission.ManageRoles)]
         public async Task HandleCreateRoleToChannel()
         {
-            await DeferAsync();
+            await DeferAsync(ephemeral: true);
             StoredProcedure stored = new StoredProcedure();
             EmbedHelper embed = new EmbedHelper();
             DataTable dt = new DataTable();
@@ -146,7 +146,7 @@ namespace DiscordBot.SlashCommands
         [Discord.Interactions.RequireUserPermission(ChannelPermission.ManageRoles)]
         public async Task HandleAddRoles(string roleName)
         {
-            await DeferAsync();
+            await DeferAsync(ephemeral: true);
 
             StoredProcedure stored = new StoredProcedure();
             string connStr = Constants.Constants.discordBotConnStr;

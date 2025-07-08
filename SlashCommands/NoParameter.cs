@@ -12,7 +12,7 @@ namespace DiscordBot.SlashCommands
         [EnabledInDm(false)]
         public async Task HandleTwitterEmbeds()
         {
-            await DeferAsync();
+            await DeferAsync(ephemeral: true);
             StoredProcedure procedure = new StoredProcedure();
             string result = "";
 
@@ -38,7 +38,7 @@ namespace DiscordBot.SlashCommands
         [EnabledInDm(true)]
         public async Task HandlePalette()
         {
-            await DeferAsync();
+            await DeferAsync(ephemeral: true);
             string result = "Here are the 5 generated hex codes with reference photos\n";
 
             for (int i = 0; i < 5; i++)

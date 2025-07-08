@@ -76,7 +76,7 @@ namespace DiscordBot.SlashCommands
         [EnabledInDm(false)]
         public async Task HandleBirthday(SocketGuildUser user, [MinValue(1), MaxValue(12)] int monthNumber, [MinValue(1), MaxValue(31)] int dayNumber)
         {
-            await DeferAsync();
+            await DeferAsync(ephemeral: true);
             StoredProcedure storedProcedure = new StoredProcedure();
             try
             {
@@ -201,7 +201,7 @@ namespace DiscordBot.SlashCommands
         [EnabledInDm(false)]
         public async Task HandleColor([MinLength(1), MaxLength(10)] string hexCode, SocketGuildUser userName = null)
         {
-            await DeferAsync();
+            await DeferAsync(ephemeral: true);
             EmbedHelper embedHelper = new EmbedHelper();
 
             if (hexCode.StartsWith("#"))
