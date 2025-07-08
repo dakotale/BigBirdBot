@@ -5,14 +5,11 @@ using Discord.Interactions;
 using Discord.WebSocket;
 using DiscordBot.Constants;
 using DiscordBot.Helper;
-using Fergun.Interactive;
 
 namespace DiscordBot.SlashCommands
 {
     public class AdminCommands : InteractionModuleBase<SocketInteractionContext>
     {
-        private readonly InteractiveService _interactive;
-
         [SlashCommand("pronoun", "Select a list of available pronouns.")]
         [EnabledInDm(false)]
         [Discord.Interactions.RequireUserPermission(ChannelPermission.ManageMessages)]
@@ -115,7 +112,7 @@ namespace DiscordBot.SlashCommands
                 }
             }
 
-            await FollowupAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Multi-Keyword Role Added", "Role was added successfully.", "", Context.User.Username, Discord.Color.Blue).Build());
+            await FollowupAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Multi-Keyword Role Added", "Role was added successfully.", "", Context.User.Username, Discord.Color.Blue).Build(), ephemeral: true);
         }
 
         [SlashCommand("delkeymultiroles", "Delete a role based on channels in the multiple action keyword category.")]
@@ -141,13 +138,13 @@ namespace DiscordBot.SlashCommands
                 });
             }
 
-            await FollowupAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Multi-Keyword Role Deleted", "Role was deleted successfully.", "", Context.User.Username, Discord.Color.Blue).Build());
+            await FollowupAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Multi-Keyword Role Deleted", "Role was deleted successfully.", "", Context.User.Username, Discord.Color.Blue).Build(), ephemeral: true);
         }
 
         [SlashCommand("addrole", "Add a role for the bot to handle when the roles command is ran.")]
         [EnabledInDm(false)]
         [Discord.Interactions.RequireUserPermission(ChannelPermission.ManageRoles)]
-        public async Task HandleAddRoles(SocketRole role)
+        public async Task HandleAddRoles(string roleName)
         {
             await DeferAsync();
 
@@ -155,14 +152,29 @@ namespace DiscordBot.SlashCommands
             string connStr = Constants.Constants.discordBotConnStr;
             EmbedHelper embed = new EmbedHelper();
 
-            stored.UpdateCreate(connStr, "AddRoles", new List<SqlParameter>
-            {
-                new SqlParameter("@RoleID", Int64.Parse(role.Id.ToString())),
-                new SqlParameter("@RoleName", role.Name),
-                new SqlParameter("@ServerID", Int64.Parse(role.Guild.Id.ToString()))
-            });
+            long serverId = Int64.Parse(Context.Guild.Id.ToString());
+            SocketGuild guild = Context.Client.GetGuild(ulong.Parse(serverId.ToString()));
 
-            await FollowupAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Role Added to Role Selection", "Role was added successfully.", "", Context.User.Username, Discord.Color.Blue).Build()).ConfigureAwait(false);
+            if (!guild.Roles.Any(s => s.Name.Equals(roleName)))
+            {
+                SocketRole botRole = guild.Roles.First(s => s.Name.Equals("BigBirdBot"));
+                SocketRole lastRole = guild.Roles.Last();
+                int botPos = botRole.Position;
+                int lastPos = lastRole.Position;
+
+                Discord.Rest.RestRole guildRole = await guild.CreateRoleAsync(roleName.ToLower(), null, null, false, true);
+
+                await guildRole.ModifyAsync(f => f.Position = lastPos).ConfigureAwait(false);
+
+                stored.UpdateCreate(connStr, "AddRoles", new List<SqlParameter>
+                {
+                    new SqlParameter("@RoleID", Int64.Parse(guildRole.Id.ToString())),
+                    new SqlParameter("@RoleName", guildRole.Name),
+                    new SqlParameter("@ServerID", serverId)
+                });
+            }
+
+            await FollowupAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Role Added to Role Selection", "Role was added successfully.", "", Context.User.Username, Discord.Color.Blue).Build(), ephemeral: true).ConfigureAwait(false);
         }
     }
 }

@@ -62,7 +62,7 @@ namespace DiscordBot.SlashCommands
                 }
                 string delimiter = ", ";
                 string result = string.Join(delimiter, serverList);
-                await FollowupAsync($"Announcement sent to **{result}**.\nNot Sent: {string.Join(delimiter, serverListNoPerms)}").ConfigureAwait(false);
+                await FollowupAsync($"Announcement sent to **{result}**.\nNot Sent: {string.Join(delimiter, serverListNoPerms)}", ephemeral: true).ConfigureAwait(false);
             }
             catch (Exception e)
             {
@@ -87,7 +87,7 @@ namespace DiscordBot.SlashCommands
                 foreach (DataRow dr in dt.Rows)
                     description += "- " + dr["Username"].ToString() + " - " + dr["ScheduledEventTable"].ToString() + " - " + DateTime.Parse(dr["EventDateTime"].ToString()).ToString("MM/dd hh:mm tt") + "\n";
 
-            await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Scheduled List", description, "", Context.User.Username, Discord.Color.Blue).Build()).ConfigureAwait(false);
+            await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Scheduled List", description, "", Context.User.Username, Discord.Color.Blue).Build(), ephemeral: true).ConfigureAwait(false);
         }
 
         [SlashCommand("connplayers", "List of all connected players in voice channels.")]
@@ -113,12 +113,12 @@ namespace DiscordBot.SlashCommands
                 {
                     desc += "\n- " + dr["ServerName"];
                 }
-                await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Blue, imageUrl).Build());
+                await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Blue, imageUrl).Build(), ephemeral: true);
             }
             else
             {
                 desc = "No Players are connected at this time.";
-                await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Blue, imageUrl).Build());
+                await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Blue, imageUrl).Build(), ephemeral: true);
             }
         }
 
@@ -168,7 +168,7 @@ namespace DiscordBot.SlashCommands
                     }
                 }
 
-                await FollowupAsync("User table updated.");
+                await FollowupAsync("User table updated.", ephemeral: true);
             }
             catch (Exception e)
             {
@@ -204,12 +204,12 @@ namespace DiscordBot.SlashCommands
                 });
 
                 EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Delete Successful", $"Image {fileName} was successfully deleted from the {tableName} table.", "", Context.User.Username, Color.Blue, "");
-                await FollowupAsync(embed: embed.Build());
+                await FollowupAsync(embed: embed.Build(), ephemeral: true);
             }
             else
             {
                 EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "The image doesn't exist in the table provided or the table doesn't exist.", Constants.Constants.errorImageUrl, Context.User.Username, Color.Red, "");
-                await FollowupAsync(embed: embed.Build());
+                await FollowupAsync(embed: embed.Build(), ephemeral: true);
             }
         }
 

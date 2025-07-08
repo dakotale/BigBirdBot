@@ -57,7 +57,7 @@ namespace DiscordBot.SlashCommands
                             string embedCreatedBy = "Command from: " + Context.User.Username;
 
                             EmbedHelper embed = new EmbedHelper();
-                            await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Green, imageUrl).Build());
+                            await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Green, imageUrl).Build(), ephemeral: true);
                         }
                     }
                     else
@@ -88,7 +88,7 @@ namespace DiscordBot.SlashCommands
                                 string embedCreatedBy = "Command from: " + Context.User.Username;
 
                                 EmbedHelper embed = new EmbedHelper();
-                                await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Green, imageUrl).Build());
+                                await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Green, imageUrl).Build(), ephemeral: true);
                             }
                             else
                             {
@@ -99,7 +99,7 @@ namespace DiscordBot.SlashCommands
                                 string createdBy = "Command from: " + Context.User.Username;
 
                                 EmbedHelper embed = new EmbedHelper();
-                                await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Discord.Color.Red, imageUrl).Build());
+                                await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Discord.Color.Red, imageUrl).Build(), ephemeral: true);
                             }
                         }
                         else
@@ -111,7 +111,7 @@ namespace DiscordBot.SlashCommands
                             string createdBy = "Command from: " + Context.User.Username;
 
                             EmbedHelper embed = new EmbedHelper();
-                            await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Discord.Color.Red, imageUrl).Build());
+                            await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Discord.Color.Red, imageUrl).Build(), ephemeral: true);
                         }
                     }
                 }
@@ -124,7 +124,7 @@ namespace DiscordBot.SlashCommands
                     string createdBy = "Command from: " + Context.User.Username;
 
                     EmbedHelper embed = new EmbedHelper();
-                    await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Discord.Color.Red, imageUrl).Build());
+                    await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Discord.Color.Red, imageUrl).Build(), ephemeral: true);
                 }
             }
             catch (Exception e)
@@ -136,7 +136,7 @@ namespace DiscordBot.SlashCommands
                 string createdBy = "Command from: " + Context.User.Username;
 
                 EmbedHelper embed = new EmbedHelper();
-                await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Discord.Color.Red, imageUrl).Build());
+                await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Discord.Color.Red, imageUrl).Build(), ephemeral: true);
             }
         }
 
@@ -231,7 +231,7 @@ namespace DiscordBot.SlashCommands
                     // Output when we are all good
                     title = "BigBirdBot - " + chatName + " Information";
                     desc = $"Keyword Added: **{keyword}**\nAdd Command: **-{addCommand}**";
-                    await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, "", createdByMsg, Color.Blue).Build());
+                    await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, "", createdByMsg, Color.Blue).Build(), ephemeral: true);
                 }
                 else
                 {
@@ -251,7 +251,7 @@ namespace DiscordBot.SlashCommands
                 string title = "BigBirdBot - Keyword Multi Error";
                 string desc = ex.Message;
                 string createdByMsg = "Command from: " + Context.User.Username;
-                await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, "", createdByMsg, Color.Red).Build());
+                await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, "", createdByMsg, Color.Red).Build(), ephemeral: true);
             }
         }
 
@@ -280,7 +280,7 @@ namespace DiscordBot.SlashCommands
                     foreach (DataRow dr in dt.Rows)
                     {
                         EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Multiple Keyword User Added", $"{tableName} was successfully added and **{user.Username}** will start receiving this on {DateTime.Parse(dr["ScheduleTime"].ToString()).ToString("MM/dd/yyyy hh:mm t")} ET.\nThe current list of multi people/characters for this user are; *{dr["ScheduledEventTable"].ToString()}*", "", Context.User.Username, Color.Blue, "");
-                        await FollowupAsync(embed: embed.Build());
+                        await FollowupAsync(embed: embed.Build(), ephemeral: true);
                     }
                 }
             }
@@ -288,7 +288,7 @@ namespace DiscordBot.SlashCommands
             {
                 EmbedHelper embedHelper = new EmbedHelper();
                 EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", e.Message, Constants.Constants.errorImageUrl, "", Color.Red, "");
-                await FollowupAsync(embed: embed.Build());
+                await FollowupAsync(embed: embed.Build(), ephemeral: true);
             }
         }
 
@@ -316,7 +316,7 @@ namespace DiscordBot.SlashCommands
                     foreach (DataRow dr in dt.Rows)
                     {
                         EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Multiple Keyword User Added", $"{tableName} was successfully added and **{Context.User.Username}** will start receiving this on {DateTime.Parse(dr["ScheduleTime"].ToString()).ToString("MM/dd/yyyy hh:mm t")} ET.\nThe current list of multi people/characters for you are; *{dr["ScheduledEventTable"].ToString()}*", "", Context.User.Username, Color.Blue, "");
-                        await FollowupAsync(embed: embed.Build());
+                        await FollowupAsync(embed: embed.Build(), ephemeral: true);
                     }
                 }
             }
@@ -324,7 +324,7 @@ namespace DiscordBot.SlashCommands
             {
                 EmbedHelper embedHelper = new EmbedHelper();
                 EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", e.Message, Constants.Constants.errorImageUrl, "", Color.Red, "");
-                await FollowupAsync(embed: embed.Build());
+                await FollowupAsync(embed: embed.Build(), ephemeral: true);
             }
         }
 
@@ -431,7 +431,7 @@ namespace DiscordBot.SlashCommands
                 Description = $"Added link(s) successfully for **{keyword}**."
             };
 
-            await FollowupAsync(embed: embed.Build());
+            await FollowupAsync(embed: embed.Build(), ephemeral: true);
         }
 
         [SlashCommand("addkeywordimage", "Add the same attachment to multiple comma-separated keywords in your server.")]
@@ -508,7 +508,7 @@ namespace DiscordBot.SlashCommands
                 Description = $"Added attachment(s) successfully for **{keyword}**."
             };
 
-            await FollowupAsync(embed: embed.Build());
+            await FollowupAsync(embed: embed.Build(), ephemeral: true);
         }
         #endregion
 
@@ -622,7 +622,7 @@ namespace DiscordBot.SlashCommands
                                 string embedCreatedBy = "Command from: " + Context.User.Username;
 
                                 EmbedHelper embed = new EmbedHelper();
-                                await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Green, imageUrl).Build());
+                                await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Green, imageUrl).Build(), ephemeral: true);
                             }
                         }
                         else
@@ -634,7 +634,7 @@ namespace DiscordBot.SlashCommands
                             string createdByMsg = "Command from: " + Context.User.Username;
 
                             EmbedHelper embed = new EmbedHelper();
-                            await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdByMsg, Discord.Color.Red, imageUrl).Build());
+                            await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdByMsg, Discord.Color.Red, imageUrl).Build(), ephemeral: true);
                         }
                     }
                     else
@@ -672,7 +672,7 @@ namespace DiscordBot.SlashCommands
                                     string embedCreatedBy = "Command from: " + Context.User.Username;
 
                                     EmbedHelper embed = new EmbedHelper();
-                                    await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Green, imageUrl).Build());
+                                    await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Green, imageUrl).Build(), ephemeral: true);
                                 }
                                 else
                                 {
@@ -683,7 +683,7 @@ namespace DiscordBot.SlashCommands
                                     string createdByMsg = "Command from: " + Context.User.Username;
 
                                     EmbedHelper embed = new EmbedHelper();
-                                    await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdByMsg, Discord.Color.Red, imageUrl).Build());
+                                    await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdByMsg, Discord.Color.Red, imageUrl).Build(), ephemeral: true);
                                 }
                             }
                             else
@@ -695,7 +695,7 @@ namespace DiscordBot.SlashCommands
                                 string createdBy = "Command from: " + Context.User.Username;
 
                                 EmbedHelper embed = new EmbedHelper();
-                                await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Discord.Color.Red, imageUrl).Build());
+                                await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Discord.Color.Red, imageUrl).Build(), ephemeral: true);
                             }
                         }
                         else
@@ -707,7 +707,7 @@ namespace DiscordBot.SlashCommands
                             string createdBy = "Command from: " + Context.User.Username;
 
                             EmbedHelper embed = new EmbedHelper();
-                            await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Discord.Color.Red, imageUrl).Build());
+                            await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Discord.Color.Red, imageUrl).Build(), ephemeral: true);
                         }
                     }
                 }
@@ -752,7 +752,7 @@ namespace DiscordBot.SlashCommands
                         string createdByMsg = "Command from: " + Context.User.Username;
 
                         EmbedHelper embed = new EmbedHelper();
-                        await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdByMsg, Discord.Color.Red, imageUrl).Build());
+                        await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdByMsg, Discord.Color.Red, imageUrl).Build(), ephemeral: true);
                     }
                 }
                 else
@@ -764,7 +764,7 @@ namespace DiscordBot.SlashCommands
                     string createdBy = "Command from: " + Context.User.Username;
 
                     EmbedHelper embed = new EmbedHelper();
-                    await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Discord.Color.Red, imageUrl).Build());
+                    await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Discord.Color.Red, imageUrl).Build(), ephemeral: true);
                 }
             }
             catch (Exception e)
@@ -776,7 +776,7 @@ namespace DiscordBot.SlashCommands
                 string createdBy = "Command from: " + Context.User.Username;
 
                 EmbedHelper embed = new EmbedHelper();
-                await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Discord.Color.Red, imageUrl).Build());
+                await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Discord.Color.Red, imageUrl).Build(), ephemeral: true);
             }
         }
         #endregion
@@ -855,7 +855,7 @@ namespace DiscordBot.SlashCommands
                 string createdByMsg = "Command from: " + Context.User.Username;
 
                 EmbedHelper embed = new EmbedHelper();
-                await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdByMsg, Discord.Color.Red, imageUrl).Build());
+                await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdByMsg, Discord.Color.Red, imageUrl).Build(), ephemeral: true);
             }
         }
 
@@ -886,12 +886,12 @@ namespace DiscordBot.SlashCommands
                     });
 
                 EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Delete Successful", $"URL {url} was successfully deleted from the {tableName} table.", "", Context.User.Username, Color.Blue, "");
-                await FollowupAsync(embed: embed.Build());
+                await FollowupAsync(embed: embed.Build(), ephemeral: true);
             }
             else
             {
                 EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "The URL doesn't exist in the table provided or the table doesn't exist.", Constants.Constants.errorImageUrl, Context.User.Username, Color.Red, "");
-                await FollowupAsync(embed: embed.Build());
+                await FollowupAsync(embed: embed.Build(), ephemeral: true);
             }
         }
 
@@ -921,13 +921,13 @@ namespace DiscordBot.SlashCommands
                     });
 
                     EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Delete Successful", "The multi-keyword provided was removed successfully.", "", "", Color.Blue, "");
-                    await FollowupAsync(embed: embed.Build());
+                    await FollowupAsync(embed: embed.Build(), ephemeral: true);
                 }
             }
             else
             {
                 EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "The multi-keyword entered does not exist.", Constants.Constants.errorImageUrl, "", Color.Red, "");
-                await FollowupAsync(embed: embed.Build());
+                await FollowupAsync(embed: embed.Build(), ephemeral: true);
             }
         }
 
@@ -959,7 +959,7 @@ namespace DiscordBot.SlashCommands
 
             foreach (DataRow dr in dt.Rows)
             {
-                await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Multi-Keyword User Removed", dr["Message"].ToString(), "", Context.User.Username, Discord.Color.Blue).Build());
+                await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Multi-Keyword User Removed", dr["Message"].ToString(), "", Context.User.Username, Discord.Color.Blue).Build(), ephemeral: true);
             }
         }
 
@@ -986,7 +986,7 @@ namespace DiscordBot.SlashCommands
                 Description = $"You are removed from being excluded on keywords."
             };
 
-            await FollowupAsync(embed: embed.Build());
+            await FollowupAsync(embed: embed.Build(), ephemeral: true);
         }
         #endregion
 
@@ -1007,7 +1007,7 @@ namespace DiscordBot.SlashCommands
 
             foreach (DataRow dr in dt.Rows)
             {
-                await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Event Requeue", dr["Message"].ToString(), "", Context.User.Username, Discord.Color.Blue).Build());
+                await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Event Requeue", dr["Message"].ToString(), "", Context.User.Username, Discord.Color.Blue).Build(), ephemeral: true);
             }
         }
 
@@ -1034,7 +1034,7 @@ namespace DiscordBot.SlashCommands
                 Description = $"You have been excluded from keywords."
             };
 
-            await FollowupAsync(embed: embed.Build());
+            await FollowupAsync(embed: embed.Build(), ephemeral: true);
         }
         #endregion
     }

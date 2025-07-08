@@ -96,7 +96,7 @@ namespace DiscordBot.SlashCommands
                         Description = "A **birthday** role was created, please have an administrator add the users to this role before running this command again."
                     };
 
-                    await FollowupAsync(embed: embed.Build());
+                    await FollowupAsync(embed: embed.Build(), ephemeral: true);
 
                     return;
                 }
@@ -235,14 +235,14 @@ namespace DiscordBot.SlashCommands
                         await (user as IGuildUser).AddRoleAsync(role).ConfigureAwait(false);
                     }
 
-                    await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Role Color", $"Color was updated successfully", "", Context.User.Username, Discord.Color.Blue).Build());
+                    await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Role Color", $"Color was updated successfully", "", Context.User.Username, Discord.Color.Blue).Build(), ephemeral: true);
                 }
                 else
-                    await FollowupAsync(embed: embedHelper.BuildErrorEmbed("Color", "The hex code entered was not valid.\nExample: #607c8c", Context.User.Username).Build());
+                    await FollowupAsync(embed: embedHelper.BuildErrorEmbed("Color", "The hex code entered was not valid.\nExample: #607c8c", Context.User.Username).Build(), ephemeral: true);
             }
             catch (Exception ex)
             {
-                await FollowupAsync(embed: embedHelper.BuildErrorEmbed("Color", ex.Message, Context.User.Username).Build());
+                await FollowupAsync(embed: embedHelper.BuildErrorEmbed("Color", ex.Message, Context.User.Username).Build(), ephemeral: true);
             }
         }
 

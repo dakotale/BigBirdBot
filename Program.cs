@@ -1,6 +1,4 @@
-﻿// There is no need to implement IDisposable like before as we are
-// using dependency injection, which handles calling Dispose for us.
-using System.Data;
+﻿using System.Data;
 using System.Data.SqlClient;
 using System.Net;
 using System.Net.WebSockets;
@@ -15,7 +13,6 @@ using DiscordBot.Helper;
 using DiscordBot.Services;
 using Fergun.Interactive;
 using KillersLibrary.Services;
-using Lavalink4NET;
 using Lavalink4NET.Extensions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -25,7 +22,6 @@ internal class Program
     private static DiscordSocketClient client = new DiscordSocketClient();
     internal readonly LoggingService loggingService;
     internal readonly IServiceProvider services;
-    private readonly IAudioService audioService;
 
     public Program()
     {
@@ -39,7 +35,7 @@ internal class Program
     private static void Main(string[] args)
     {
         System.Timers.Timer eventTimer;
-        eventTimer = new System.Timers.Timer(59000); // Check every 55 seconds
+        eventTimer = new System.Timers.Timer(60000); // Check every 60 seconds
         eventTimer.Elapsed += OnTimedEvent;
         eventTimer.AutoReset = true;
         eventTimer.Enabled = true;
@@ -66,10 +62,10 @@ internal class Program
 
             client.Disconnected += async (e) =>
             {
-                await loggingService.InfoAsync("Bot disconnected");
+                await loggingService.InfoAsync("Bot disconnected - " + client.ConnectionState.ToString());
 
                 if (client.ConnectionState == Discord.ConnectionState.Connecting)
-                    await loggingService.InfoAsync("Bot connecting");
+                    await loggingService.InfoAsync("Bot connecting - " + client.ConnectionState.ToString());
             };
 
             client.Connected += async () =>
@@ -437,218 +433,74 @@ internal class Program
             string serverId = msgChannel.Guild.Id.ToString();
             bool isActive = false;
             bool isServerActive = false;
-            int totalActive = 0;
             StoredProcedure stored = new StoredProcedure();
             URLCleanup cleanup = new URLCleanup();
+            string prefix = "-";
+            string keyword = "";
+            List<SqlParameter> parameters = new List<SqlParameter>();
+            string userId = msg.Author.Id.ToString();
 
-            // If the valorant role is mentioned, auto increment the counter
-            if (msg.MentionedRoleIds.Count > 0 && msg.MentionedRoleIds.Where(s => s.ToString().Equals("1313502437201543168")).Count() > 0)
-            {
-                EmbedHelper embed = new EmbedHelper();
-                DataTable dt = new DataTable();
-                string userId = msg.Author.Id.ToString();
-
-                dt = stored.Select(connStr, "AddToCounter", new List<SqlParameter>
-                {
-                    new SqlParameter("@CreatedBy", userId),
-                    new SqlParameter("@Counter", 1),
-                    new SqlParameter("@CounterName", "Valorant")
-                });
-
-                string counterHistory = "Here are the most recent times *people were asked to play Valorant*.\n";
-                string currentCounter = "";
-                string currentDateTime = "";
-                string averagePerDay = "";
-
-                foreach (DataRow dr in dt.Rows)
-                {
-                    currentCounter = dr["CurrentCounter"].ToString();
-                    currentDateTime = DateTime.Parse(dr["CurrentDateTime"].ToString()).ToString("MM/dd/yyyy hh:mm tt ET");
-                    counterHistory += $"{dr["UpdatedCounter"].ToString()} - {DateTime.Parse(dr["TimeStamp"].ToString()).ToString("MM/dd/yyyy hh:mm tt ET")}\n";
-                    averagePerDay = dr["AveragePerDay"].ToString();
-                }
-                var result = embed.BuildMessageEmbed("BigBirdBot -  Times people were asked to Play Valorant**",  $" {currentCounter} on {currentDateTime}**\n**Average Per Day: {averagePerDay}**\n{counterHistory}", "", msg.Author.Username, Discord.Color.Green);
-
-                await msg.Channel.SendMessageAsync(embed: result.Build());
-            }
-
-            DataTable serverActive = stored.Select(connStr, "GetServerPrefixByServerID", new List<SqlParameter>
+            DataTable dt = stored.Select(connStr, "GetServerPrefixByServerID", new List<SqlParameter>
             {
                 new SqlParameter("ServerUID", Int64.Parse(serverId))
             });
+            isServerActive = bool.Parse(dt.Rows[0]["IsActive"].ToString());
 
-            foreach (DataRow dr in serverActive.Rows)
+            if (!isServerActive)
+                return;
+
+            dt = stored.Select(connStr, "CheckIfKeywordsAreActivePerServer", new List<SqlParameter> { new SqlParameter("ServerUID", Int64.Parse(serverId)) });
+
+            if (dt.Rows.Count > 0)
+                isActive = int.Parse(dt.Rows[0]["TotalActive"].ToString()) > 0 ? true : false;
+
+            if (!isActive)
+                return;
+
+            if (cleanup.HasSocialMediaEmbed(message))
             {
-                isServerActive = bool.Parse(dr["IsActive"].ToString());
+                dt = stored.Select(connStr, "GetTwitterBroken", new List<SqlParameter> { new SqlParameter("@ServerID", Int64.Parse(serverId)) });
+                bool isTwitterBroken = bool.Parse(dt.Rows[0]["TwitterBroken"].ToString());
+
+                if (isTwitterBroken)
+                    await msg.Channel.SendMessageAsync(cleanup.CleanURLEmbed(message));
             }
-
-            if (isServerActive)
+            else
             {
-                DataTable dtActive = stored.Select(connStr, "CheckIfKeywordsAreActivePerServer", new List<SqlParameter>
+                if (message.StartsWith(prefix))
                 {
-                    new SqlParameter("ServerUID", Int64.Parse(serverId))
-                });
+                    if (message.Split(' ').Count() > 0)
+                        keyword = message.Split(' ')[0].Replace(prefix, "");
 
-                if (dtActive.Rows.Count > 0)
-                {
-                    foreach (DataRow row in dtActive.Rows)
+                    dt = stored.Select(connStr, "GetThirstTableByMap", new List<SqlParameter> { new SqlParameter("@AddKeyword", keyword) });
+                    if (dt.Rows.Count > 0)
                     {
-                        totalActive = int.Parse(row["TotalActive"].ToString());
-                        if (totalActive > 0)
-                            isActive = true;
-                    }
-                }
-
-                if (isActive)
-                {
-                    string prefix = "";
-                    DataTable dtPrefix = stored.Select(Constants.discordBotConnStr, "GetServerPrefixByServerID", new List<SqlParameter> { new SqlParameter("@ServerUID", Int64.Parse(serverId)) });
-                    foreach (DataRow dr in dtPrefix.Rows)
-                    {
-                        prefix = dr["Prefix"].ToString();
-                    }
-
-                    if ((message.Contains("https://twitter.com") || message.Contains("https://x.com") || message.Contains("https://tiktok.com") || message.Contains("https://instagram.com")) && !message.Contains(prefix))
-                    {
-                        DataTable dtTwitter = stored.Select(connStr, "GetTwitterBroken", new List<SqlParameter> { new SqlParameter("@ServerID", Int64.Parse(serverId)) });
-                        bool isTwitterBroken = false;
-                        foreach (DataRow dr in dtTwitter.Rows)
-                            isTwitterBroken = bool.Parse(dr["TwitterBroken"].ToString());
-
-                        if (isTwitterBroken)
-                            await msg.Channel.SendMessageAsync(cleanup.CleanURLEmbed(message));
-                    }
-                    else
-                    {
-                        if (message.StartsWith(prefix))
+                        string tablename = dt.Rows[0]["TableName"].ToString();
+                        if (msg.Attachments.Count > 0)
                         {
-                            string keyword = "";
-                            if (message.Split(' ').Count() == 1)
-                                keyword = message.Replace(prefix, "");
-                            if (message.Split(' ').Count() > 1)
-                                keyword = message.Split(' ')[0].Replace(prefix, "");
+                            AddAttachments(msg, tablename, connStr, userId);
+                            await msg.Channel.SendMessageAsync(embed: CreateMessageEmbed("Added Image", Color.Blue, "Added attachment(s) successfully.").Build());
+                        }
+                        if (message.Split(' ').Count() > 1)
+                        {
+                            string content = message.Replace(prefix + keyword, "").Trim();
+                            bool multiUrl = false;
 
-                            // Check if it's in the ThirstMap and run the add command
-                            List<SqlParameter> parameters = new List<SqlParameter>();
-                            parameters.Add(new SqlParameter("@AddKeyword", keyword));
+                            if (content.Contains(",") && content.Contains("http"))
+                                multiUrl = true;
 
-                            DataTable dt = stored.Select(connStr, "GetThirstTableByMap", parameters);
-                            if (dt.Rows.Count > 0)
+                            if (multiUrl)
                             {
-                                if (msg.Attachments.Count > 0)
+                                string[] urls = content.Split(",", StringSplitOptions.TrimEntries);
+                                foreach (string u in urls)
                                 {
-                                    string userId = msg.Author.Id.ToString();
-                                    foreach (DataRow dr in dt.Rows)
-                                    {
-                                        IReadOnlyCollection<Attachment> attachments = msg.Attachments;
-                                        foreach (Attachment? attachment in attachments)
-                                        {
-                                            string tablename = dr["TableName"].ToString();
-                                            tablename = tablename.Replace("KeywordMulti.", "");
-                                            string attachmentName = attachment.Filename;
-                                            string withoutExt = attachmentName.Split(".", StringSplitOptions.TrimEntries)[0];
-                                            string withExt = attachmentName.Split(".", StringSplitOptions.TrimEntries)[1];
-                                            withoutExt = withoutExt + "_" + DateTime.Now.ToString("yyyyMMdd_HHmmssfffff");
+                                    bool result = u.Trim().StartsWith("http");
 
-                                            string path = @"C:\Temp\DiscordBot\" + tablename + @"\" + withoutExt + "." + withExt;
-
-                                            using (WebClient client = new WebClient())
-                                            {
-                                                client.DownloadFileAsync(new Uri(attachment.Url), path);
-                                            }
-
-                                            stored.UpdateCreate(connStr, "AddThirstByMap", new List<System.Data.SqlClient.SqlParameter>
-                                            {
-                                                new SqlParameter("@FilePath", path),
-                                                new SqlParameter("@TableName", dr["TableName"].ToString()),
-                                                new SqlParameter("@UserID", userId)
-                                            });
-                                        }
-                                        EmbedBuilder embed = new EmbedBuilder
-                                        {
-                                            Title = "BigBirdBot - Added Image",
-                                            Color = Color.Blue,
-                                            Description = "Added attachment(s) successfully."
-                                        };
-
-                                        await msg.Channel.SendMessageAsync(embed: embed.Build());
-                                    }
-                                }
-                                if (message.Split(' ').Count() > 1)
-                                {
-                                    string content = message.Replace(prefix + keyword, "").Trim();
-                                    bool multiUrl = false;
-
-                                    if (content.Contains(",") && content.Contains("http"))
-                                        multiUrl = true;
-
-                                    if (multiUrl)
-                                    {
-                                        string[] urls = content.Split(",", StringSplitOptions.TrimEntries);
-                                        foreach (string u in urls)
-                                        {
-                                            bool result = u.Trim().StartsWith("http");
-
-                                            if (!result)
-                                            {
-                                                EmbedBuilder embed = new EmbedBuilder
-                                                {
-                                                    Title = "BigBirdBot - Error",
-                                                    Color = Color.Red,
-                                                    Description = $"The URL provided (*{u}*) for this command is invalid."
-                                                }.WithCurrentTimestamp();
-
-                                                await msg.Channel.SendMessageAsync(embed: embed.Build());
-                                            }
-                                            else
-                                            {
-                                                content = cleanup.CleanURLEmbed(u);
-
-                                                // Check if link exists for thirst table
-                                                DataTable dtExists = stored.Select(connStr, "CheckIfThirstURLExists", new List<SqlParameter>
-                                                {
-                                                    new SqlParameter("@FilePath", content),
-                                                    new SqlParameter("@TableName", dt.Rows[0]["TableName"].ToString())
-                                                });
-
-                                                if (dtExists.Rows.Count > 0)
-                                                {
-                                                    EmbedBuilder embed = new EmbedBuilder
-                                                    {
-                                                        Title = "BigBirdBot - Error",
-                                                        Color = Color.Red,
-                                                        Description = $"The URL provided (*{content}*) was already added for this Multi-Keyword Command."
-                                                    }.WithCurrentTimestamp();
-
-                                                    await msg.Channel.SendMessageAsync(embed: embed.Build());
-                                                }
-                                                else
-                                                {
-                                                    string userId = msg.Author.Id.ToString();
-                                                    foreach (DataRow dr in dt.Rows)
-                                                    {
-                                                        stored.UpdateCreate(connStr, "AddThirstByMap", new List<System.Data.SqlClient.SqlParameter>
-                                                        {
-                                                            new SqlParameter("@FilePath", content),
-                                                            new SqlParameter("@TableName", dr["TableName"].ToString()),
-                                                            new SqlParameter("@UserID", userId)
-                                                        });
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        EmbedBuilder embedSuccess = new EmbedBuilder
-                                        {
-                                            Title = "BigBirdBot - Added Image",
-                                            Color = Color.Blue,
-                                            Description = "Added link(s) successfully."
-                                        };
-
-                                        await msg.Channel.SendMessageAsync(embed: embedSuccess.Build());
-                                    }
+                                    if (!result)
+                                        await msg.Channel.SendMessageAsync(embed: CreateMessageEmbed("Error", Color.Red, $"The URL provided (*{u}*) for this command is invalid.").Build());
                                     else
                                     {
-                                        content = cleanup.CleanURLEmbed(content);
+                                        content = cleanup.CleanURLEmbed(u);
 
                                         // Check if link exists for thirst table
                                         DataTable dtExists = stored.Select(connStr, "CheckIfThirstURLExists", new List<SqlParameter>
@@ -658,134 +510,142 @@ internal class Program
                                         });
 
                                         if (dtExists.Rows.Count > 0)
-                                        {
-                                            EmbedBuilder embed = new EmbedBuilder
-                                            {
-                                                Title = "BigBirdBot - Error",
-                                                Color = Color.Red,
-                                                Description = $"The URL provided was already added for this Multi-Keyword Command."
-                                            }.WithCurrentTimestamp();
-
-                                            await msg.Channel.SendMessageAsync(embed: embed.Build());
-                                        }
+                                            await msg.Channel.SendMessageAsync(embed: CreateMessageEmbed("Error", Color.Red, $"The URL provided (*{content}*) was already added for this Multi-Keyword Command.").Build());
                                         else
                                         {
-                                            string userId = msg.Author.Id.ToString();
                                             foreach (DataRow dr in dt.Rows)
                                             {
-                                                stored.UpdateCreate(connStr, "AddThirstByMap", new List<System.Data.SqlClient.SqlParameter>
+                                                stored.UpdateCreate(connStr, "AddThirstByMap", new List<SqlParameter>
                                                 {
                                                     new SqlParameter("@FilePath", content),
-                                                    new SqlParameter("@TableName", dr["TableName"].ToString()),
+                                                    new SqlParameter("@TableName", tablename),
                                                     new SqlParameter("@UserID", userId)
                                                 });
-
-                                                EmbedBuilder embed = new EmbedBuilder
-                                                {
-                                                    Title = "BigBirdBot - Added Image",
-                                                    Color = Color.Blue,
-                                                    Description = "Added link(s) successfully."
-                                                };
-
-                                                await msg.Channel.SendMessageAsync(embed: embed.Build());
                                             }
                                         }
                                     }
                                 }
+
+                                await msg.Channel.SendMessageAsync(embed: CreateMessageEmbed("Added Image", Color.Blue, "Added link(s) successfully.").Build());
+                            }
+                            else
+                            {
+                                content = cleanup.CleanURLEmbed(content);
+
+                                // Check if link exists for thirst table
+                                DataTable dtExists = stored.Select(connStr, "CheckIfThirstURLExists", new List<SqlParameter>
+                                {
+                                    new SqlParameter("@FilePath", content),
+                                    new SqlParameter("@TableName", tablename)
+                                });
+
+                                if (dtExists.Rows.Count > 0)
+                                    await msg.Channel.SendMessageAsync(embed: CreateMessageEmbed("Error", Color.Red, "The URL provided was already added for this Multi-Keyword Command.").Build());
+                                else
+                                {
+                                    foreach (DataRow dr in dt.Rows)
+                                    {
+                                        stored.UpdateCreate(connStr, "AddThirstByMap", new List<System.Data.SqlClient.SqlParameter>
+                                        {
+                                            new SqlParameter("@FilePath", content),
+                                            new SqlParameter("@TableName", dr["TableName"].ToString()),
+                                            new SqlParameter("@UserID", userId)
+                                        });
+
+                                        await msg.Channel.SendMessageAsync(embed: CreateMessageEmbed("Added URL/Text", Color.Blue, "Added URL/Text(s) successfully.").Build());
+                                    }
+                                }
                             }
                         }
+                    }
+                }
 
-                        // Todo, check all the commands eventually but for now let's stop the accidently double triggering.
-                        if (!message.StartsWith(prefix))
+                if (!message.StartsWith(prefix))
+                {
+                    parameters.Clear();
+                    parameters.Add(new SqlParameter("@UserID", msg.Author.Id.ToString()));
+                    parameters.Add(new SqlParameter("@ServerID", Int64.Parse(msgChannel.Guild.Id.ToString())));
+                    dt = stored.Select(connStr, "GetChatKeywordExclusion", parameters);
+
+                    if (dt.Rows.Count == 0)
+                    {
+                        parameters.Clear();
+                        parameters.Add(new SqlParameter("@ServerID", Int64.Parse(msgChannel.Guild.Id.ToString())));
+                        parameters.Add(new SqlParameter("@Message", message));
+                        dt = stored.Select(connStr, "GetChatAction", parameters);
+
+                        IUserMessage output;
+                        Emoji nsfwMarker = new Emoji("❌");
+                        IMessageChannel? sender = client.GetChannel(msgChannel.Id) as IMessageChannel;
+
+                        _ = Task.Run(async () =>
                         {
-                            SocketGuildChannel? channel = msg.Channel as SocketGuildChannel;
-                            StoredProcedure storedProcedure = new StoredProcedure();
-                            List<SqlParameter> parameters = new List<SqlParameter>();
-                            parameters.Add(new SqlParameter("@UserID", msg.Author.Id.ToString()));
-                            parameters.Add(new SqlParameter("@ServerID", Int64.Parse(channel.Guild.Id.ToString())));
-                            DataTable dt = storedProcedure.Select(connStr, "GetChatKeywordExclusion", parameters);
-
-                            if (dt.Rows.Count == 0)
+                            if (dt.Rows.Count > 0 && sender != null)
                             {
-                                parameters = new List<SqlParameter>();
-                                parameters.Add(new SqlParameter("@ServerID", Int64.Parse(channel.Guild.Id.ToString())));
-                                parameters.Add(new SqlParameter("@Message", message));
-                                dt = storedProcedure.Select(connStr, "GetChatAction", parameters);
-
-                                IUserMessage output;
-                                Emoji nsfwMarker = new Emoji("❌");
-                                IMessageChannel? sender = client.GetChannel(channel.Id) as IMessageChannel;
-
-                                _ = Task.Run(async () =>
+                                foreach (DataRow dr in dt.Rows)
                                 {
-                                    if (dt.Rows.Count > 0 && sender != null)
-                                    {
-                                        foreach (DataRow dr in dt.Rows)
-                                        {
-                                            string chatAction = dr["ChatAction"].ToString();
-                                            bool isNsfw = bool.Parse(dr["NSFW"].ToString());
+                                    string chatAction = dr["ChatAction"].ToString();
+                                    bool isNsfw = bool.Parse(dr["NSFW"].ToString());
 
-                                            if (!string.IsNullOrEmpty(chatAction))
+                                    if (!string.IsNullOrEmpty(chatAction))
+                                    {
+                                        await msg.Channel.TriggerTypingAsync(new RequestOptions { Timeout = 30 });
+                                        if (chatAction.Contains("C:\\"))
+                                        {
+                                            if (isNsfw && !chatAction.Contains("SPOILER_"))
+                                                await msg.Channel.SendFileAsync(dr["ChatAction"].ToString(), isSpoiler: true).ConfigureAwait(false);
+                                            else
                                             {
-                                                await msg.Channel.TriggerTypingAsync(new RequestOptions { Timeout = 30 });
-                                                if (chatAction.Contains("C:\\"))
+                                                output = await msg.Channel.SendFileAsync(dr["ChatAction"].ToString()).ConfigureAwait(false);
+                                                await output.AddReactionAsync(nsfwMarker).ConfigureAwait(false);
+                                            }
+                                        }
+                                        else
+                                        {
+                                            if (dr["ChatAction"].ToString().Contains("http") && IsLinkWorking(dr["ChatAction"].ToString()))
+                                            {
+                                                if (isNsfw)
                                                 {
-                                                    if (isNsfw && !chatAction.Contains("SPOILER_"))
-                                                        await msg.Channel.SendFileAsync(dr["ChatAction"].ToString(), isSpoiler: true).ConfigureAwait(false);
-                                                    else
-                                                    {
-                                                        output = await msg.Channel.SendFileAsync(dr["ChatAction"].ToString()).ConfigureAwait(false);
-                                                        await output.AddReactionAsync(nsfwMarker).ConfigureAwait(false);
-                                                    }
+                                                    chatAction = "||" + chatAction + "||";
+                                                    await sender.SendMessageAsync(chatAction).ConfigureAwait(false);
                                                 }
                                                 else
                                                 {
-                                                    if (dr["ChatAction"].ToString().Contains("http") && IsLinkWorking(dr["ChatAction"].ToString()))
-                                                    {
-                                                        if (isNsfw)
-                                                        {
-                                                            chatAction = "||" + chatAction + "||";
-                                                            await sender.SendMessageAsync(chatAction).ConfigureAwait(false);
-                                                        }
-                                                        else
-                                                        {
-                                                            output = await sender.SendMessageAsync(dr["ChatAction"].ToString()).ConfigureAwait(false);
-                                                            await output.AddReactionAsync(nsfwMarker).ConfigureAwait(false);
-                                                        }
-                                                    }
-                                                    else if (dr["ChatAction"].ToString().Contains("http") && !IsLinkWorking(dr["ChatAction"].ToString()))
-                                                    {
-                                                        await sender.SendMessageAsync($"Link was dead so I deleted it :) -> {dr["ChatAction"].ToString()}").ConfigureAwait(false);
-                                                        storedProcedure.UpdateCreate(Constants.discordBotConnStr, "DeleteThirstURL", new List<SqlParameter> { new SqlParameter("@FilePath", dr["ChatAction"].ToString()), new SqlParameter("@TableName", "") });
-                                                    }
-                                                    else
-                                                    {
-                                                        if (isNsfw)
-                                                        {
-                                                            chatAction = "||" + chatAction + "||";
-                                                            await sender.SendMessageAsync(chatAction).ConfigureAwait(false);
-                                                        }
-                                                        else
-                                                        {
-                                                            output = await sender.SendMessageAsync(dr["ChatAction"].ToString()).ConfigureAwait(false);
-                                                            await output.AddReactionAsync(nsfwMarker).ConfigureAwait(false);
-                                                        }
-                                                    }
-                                                        
+                                                    output = await sender.SendMessageAsync(dr["ChatAction"].ToString()).ConfigureAwait(false);
+                                                    await output.AddReactionAsync(nsfwMarker).ConfigureAwait(false);
                                                 }
-
-                                                parameters.Clear();
-                                                parameters.Add(new SqlParameter("@ChatKeywordID", int.Parse(dr["ChatKeywordID"].ToString())));
-                                                parameters.Add(new SqlParameter("@MessageText", message));
-                                                parameters.Add(new SqlParameter("@CreatedBy", msg.Author.Id.ToString()));
-                                                parameters.Add(new SqlParameter("@ServerID", Int64.Parse(serverId)));
-                                                storedProcedure.UpdateCreate(connStr, "AddAuditKeyword", parameters);
                                             }
+                                            else if (dr["ChatAction"].ToString().Contains("http") && !IsLinkWorking(dr["ChatAction"].ToString()))
+                                            {
+                                                await sender.SendMessageAsync($"Link was dead so I deleted it :) -> {dr["ChatAction"].ToString()}").ConfigureAwait(false);
+                                                stored.UpdateCreate(Constants.discordBotConnStr, "DeleteThirstURL", new List<SqlParameter> { new SqlParameter("@FilePath", dr["ChatAction"].ToString()), new SqlParameter("@TableName", "") });
+                                            }
+                                            else
+                                            {
+                                                if (isNsfw)
+                                                {
+                                                    chatAction = "||" + chatAction + "||";
+                                                    await sender.SendMessageAsync(chatAction).ConfigureAwait(false);
+                                                }
+                                                else
+                                                {
+                                                    output = await sender.SendMessageAsync(dr["ChatAction"].ToString()).ConfigureAwait(false);
+                                                    await output.AddReactionAsync(nsfwMarker).ConfigureAwait(false);
+                                                }
+                                            }
+                                                        
                                         }
+
+                                        parameters.Clear();
+                                        parameters.Add(new SqlParameter("@ChatKeywordID", int.Parse(dr["ChatKeywordID"].ToString())));
+                                        parameters.Add(new SqlParameter("@MessageText", message));
+                                        parameters.Add(new SqlParameter("@CreatedBy", msg.Author.Id.ToString()));
+                                        parameters.Add(new SqlParameter("@ServerID", Int64.Parse(serverId)));
+                                        stored.UpdateCreate(connStr, "AddAuditKeyword", parameters);
                                     }
-                                });
+                                }
                             }
-                        }
+                        });
                     }
                 }
             }
@@ -854,37 +714,6 @@ internal class Program
                 }
             }
         }
-    }
-
-    public static bool IsLinkWorking(string url)
-    {
-        if (url.Contains("fxtwitter") || url.Contains("vxtwitter"))
-        {
-            HttpWebRequest request = (HttpWebRequest)HttpWebRequest.Create(url);
-
-            //You can set some parameters in the "request" object...
-            request.AllowAutoRedirect = true;
-
-            try
-            {
-                HttpWebResponse response = (HttpWebResponse)request.GetResponse();
-
-                var encoding = ASCIIEncoding.ASCII;
-                using (var reader = new System.IO.StreamReader(response.GetResponseStream(), encoding))
-                {
-                    string responseText = reader.ReadToEnd();
-                    if (responseText.Contains("post doesn't exist"))
-                        return false;
-                }
-                return true;
-            }
-            catch
-            { //TODO: Check for the right exception here
-                return false;
-            }
-        }
-        else
-            return true;
     }
     #endregion
 
@@ -1129,6 +958,78 @@ internal class Program
             }
         }
 
+    }
+    #endregion
+
+    #region Helpers
+    public static bool IsLinkWorking(string url)
+    {
+        if (url.Contains("fxtwitter") || url.Contains("vxtwitter"))
+        {
+            HttpWebRequest request = (HttpWebRequest)HttpWebRequest.Create(url);
+
+            //You can set some parameters in the "request" object...
+            request.AllowAutoRedirect = true;
+
+            try
+            {
+                HttpWebResponse response = (HttpWebResponse)request.GetResponse();
+                var encoding = ASCIIEncoding.ASCII;
+                using (var reader = new System.IO.StreamReader(response.GetResponseStream(), encoding))
+                {
+                    string responseText = reader.ReadToEnd();
+                    if (responseText.Contains("post doesn't exist"))
+                        return false;
+                }
+                return true;
+            }
+            catch
+            { //TODO: Check for the right exception here
+                return true;
+            }
+        }
+        else
+            return true;
+    }
+
+    private void AddAttachments(SocketMessage msg, string tablename, string connStr, string userId)
+    {
+        StoredProcedure stored = new StoredProcedure();
+        IReadOnlyCollection<Attachment> attachments = msg.Attachments;
+        foreach (Attachment? attachment in attachments)
+        {
+            tablename = tablename.Replace("KeywordMulti.", "");
+            string attachmentName = attachment.Filename;
+            string withoutExt = attachmentName.Split(".", StringSplitOptions.TrimEntries)[0];
+            string withExt = attachmentName.Split(".", StringSplitOptions.TrimEntries)[1];
+            withoutExt = withoutExt + "_" + DateTime.Now.ToString("yyyyMMdd_HHmmssfffff");
+
+            string path = @"C:\Temp\DiscordBot\" + tablename + @"\" + withoutExt + "." + withExt;
+
+            using (WebClient client = new WebClient())
+            {
+                client.DownloadFileAsync(new Uri(attachment.Url), path);
+            }
+
+            stored.UpdateCreate(connStr, "AddThirstByMap", new List<SqlParameter>
+            {
+                new SqlParameter("@FilePath", path),
+                new SqlParameter("@TableName", tablename),
+                new SqlParameter("@UserID", userId)
+            });
+        }
+    }
+
+    private EmbedBuilder CreateMessageEmbed(string title, Color color, string description)
+    {
+        EmbedBuilder embed = new EmbedBuilder
+        {
+            Title = "BigBirdBot - " + title,
+            Color = color,
+            Description = description
+        }.WithCurrentTimestamp();
+
+        return embed;
     }
     #endregion
 }
