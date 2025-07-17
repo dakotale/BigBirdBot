@@ -135,13 +135,13 @@ namespace DiscordBot.SlashCommands
             if (Uri.IsWellFormedUriString(searchQuery, UriKind.Absolute))
             {
                 if (tracks.Count == 1)
-                    PlaySingleTrack(player, track);
+                    await PlaySingleTrackAsync(player, track);
                 else
-                    PlayMultipleTracks(player, tracks);
+                    await PlayMultipleTracksAsync(player, tracks);
             }
             // If it's a direct search, we're not loading a playlist so only get the first track
             else
-                PlaySingleTrack(player, track);
+                await PlaySingleTrackAsync(player, track);
         }
 
         [SlashCommand("playnext", "Works the same as the play command except force the track to be next in queue.", runMode: RunMode.Async)]
@@ -190,13 +190,13 @@ namespace DiscordBot.SlashCommands
             if (Uri.IsWellFormedUriString(searchQuery, UriKind.Absolute))
             {
                 if (tracks.Count == 1)
-                    PlaySingleTrack(player, track, true);
+                    await PlaySingleTrackAsync(player, track, true);
                 else
-                    PlayMultipleTracks(player, tracks, true);
+                    await PlayMultipleTracksAsync(player, tracks, true);
             }
             // If it's a direct search, we're not loading a playlist so only get the first track
             else
-                PlaySingleTrack(player, track, true);
+                await PlaySingleTrackAsync(player, track, true);
         }
 
         [SlashCommand("forceskip", "Skips the current track.")]
@@ -843,128 +843,138 @@ namespace DiscordBot.SlashCommands
         }
 
         // For Single Tracks and Searches
-        private async void PlaySingleTrack(LavalinkPlayer? player, LavalinkTrack? track, bool playNext = false)
+        private async Task PlaySingleTrackAsync(LavalinkPlayer? player, LavalinkTrack? track, bool playNext = false)
         {
+            if (player == null || track == null) return;
+
             AddMusicTable(track, Context.Guild.Id.ToString(), Context.User.Username);
 
-            TimeSpan duration = new TimeSpan();
-            System.Text.Json.JsonElement albumName = new System.Text.Json.JsonElement();
-            System.Text.Json.JsonElement artist = new System.Text.Json.JsonElement();
-            string msg = "";
+            // Extract metadata
+            TimeSpan duration = track.Duration;
+            string artist = "";
+            string albumName = "";
 
-            if (track?.Duration != null)
-                duration = new TimeSpan(track.Duration.Hours, track.Duration.Minutes, track.Duration.Seconds);
-
-            if (track.AdditionalInformation.Count > 0)
-                foreach (KeyValuePair<string, System.Text.Json.JsonElement> keyValue in track.AdditionalInformation)
+            if (track.AdditionalInformation?.Count > 0)
+            {
+                foreach (var (key, value) in track.AdditionalInformation)
                 {
-                    if (keyValue.Key.Equals("artistUrl"))
-                        artist = keyValue.Value;
-
-                    if (keyValue.Key.Equals("albumName"))
-                        albumName = keyValue.Value;
+                    if (key.Equals("artistUrl", StringComparison.OrdinalIgnoreCase))
+                        artist = value.ToString();
+                    else if (key.Equals("albumName", StringComparison.OrdinalIgnoreCase))
+                        albumName = value.ToString();
                 }
+            }
 
-            // For some reason Artist and Album are hiding, need to figure out why....
-            if (track.AdditionalInformation.Count > 0)
-                msg = $"Track Name: **{track?.Title}**" +
-                    $"\nArtist: {artist.ToString()}" +
-                    $"\nAlbum: **{albumName.ToString()}**" +
-                    $"\nURL: {track?.Uri}" +
-                    $"\nDuration: **{duration}**" +
-                    $"\nSource: **{track?.SourceName}**" +
-                    $"\nVolume: **{GetVolume(long.Parse(Context.Guild.Id.ToString()))}%**";
-            else
-                msg = $"Track Name: **{track?.Title}**\nArtist: **{(string.IsNullOrEmpty(track.Author) ? "" : track.Author)}**\nURL: {track?.Uri}\nDuration: **{duration}**\nSource: **{track?.SourceName}**\nVolume: **{GetVolume(long.Parse(Context.Guild.Id.ToString()))}%**";
-
-            
+            // Play the track
             if (playNext)
             {
-                QueuedLavalinkPlayer? queued = await GetPlayerAsync(connectToVoiceChannel: false).ConfigureAwait(false);
-                if (queued != null && queued.Queue.Count > 0)
+                var queued = await GetPlayerAsync(connectToVoiceChannel: false).ConfigureAwait(false);
+                if (queued?.Queue.Count > 0)
                 {
-                    List<ITrackQueueItem> itemList = queued.Queue.ToList();
-                    await queued.Queue.ClearAsync();
+                    var items = queued.Queue.ToList();
+                    await queued.Queue.ClearAsync().ConfigureAwait(false);
                     await player.PlayAsync(track).ConfigureAwait(false);
-
-                    foreach (ITrackQueueItem? i in itemList)
-                        await queued.Queue.AddAsync(i);
+                    foreach (var item in items)
+                        await queued.Queue.AddAsync(item).ConfigureAwait(false);
                 }
                 else
+                {
                     await player.PlayAsync(track).ConfigureAwait(false);
+                }
             }
             else
+            {
                 await player.PlayAsync(track).ConfigureAwait(false);
+            }
 
-            await player.SetVolumeAsync(GetVolume(long.Parse(Context.Guild.Id.ToString())) / 100f).ConfigureAwait(false);
-            EmbedBuilder embed = BuildMusicEmbed("Queued", msg);
+            // Set volume
+            float volume = GetVolume(long.Parse(Context.Guild.Id.ToString())) / 100f;
+            await player.SetVolumeAsync(volume).ConfigureAwait(false);
+
+            // Build and send embed
+            var embed = BuildTrackEmbed("Queued", track, artist, albumName, duration, volume);
             await FollowupAsync(embed: embed.Build()).ConfigureAwait(false);
         }
 
         // For Playlists and Multiple Tracks
-        private async void PlayMultipleTracks(LavalinkPlayer? player, TrackLoadResult tracks, bool playNext = false)
+        private async Task PlayMultipleTracksAsync(LavalinkPlayer? player, TrackLoadResult tracks, bool playNext = false)
         {
-            string msg = "";
-            System.Text.Json.JsonElement count = new System.Text.Json.JsonElement();
-            System.Text.Json.JsonElement artworkUrl = new System.Text.Json.JsonElement();
-            System.Text.Json.JsonElement url = new System.Text.Json.JsonElement();
+            if (player == null || tracks == null || tracks.Tracks.Count() == 0)
+                return;
+
+            string playlistName = "";
+            string totalTracks = "";
+            string artworkUrl = "";
+            string playlistUrl = "";
 
             if (tracks.Playlist != null)
             {
-                PlaylistInformation playlist = tracks.Playlist;
+                var playlist = tracks.Playlist;
+                playlistName = playlist.Name;
 
-                foreach (KeyValuePair<string, System.Text.Json.JsonElement> keyValue in playlist.AdditionalInformation)
+                foreach (var (key, value) in playlist.AdditionalInformation)
                 {
-                    if (keyValue.Key.Equals("totalTracks"))
-                        count = keyValue.Value;
-
-                    if (keyValue.Key.Equals("artworkUrl"))
-                        artworkUrl = keyValue.Value;
-
-                    if (keyValue.Key.Equals("url"))
-                        url = keyValue.Value;
+                    switch (key)
+                    {
+                        case "totalTracks":
+                            totalTracks = value.ToString();
+                            break;
+                        case "artworkUrl":
+                            artworkUrl = value.ToString();
+                            break;
+                        case "url":
+                            playlistUrl = value.ToString();
+                            break;
+                    }
                 }
-
-                msg = $"Playlist Name: **{playlist.Name}** with {count.ToString()} items added.\nURL: {url.ToString()}\nVolume: **{GetVolume(long.Parse(Context.Guild.Id.ToString()))}%**";
             }
+
+            string msg = $"Playlist Name: **{playlistName}** with {totalTracks} items added." +
+                         $"\nURL: {playlistUrl}" +
+                         $"\nVolume: **{GetVolume(long.Parse(Context.Guild.Id.ToString()))}%**";
+
+            var guildIdStr = Context.Guild.Id.ToString();
+            var userName = Context.User.Username;
 
             if (playNext)
             {
-                QueuedLavalinkPlayer? queued = await GetPlayerAsync(connectToVoiceChannel: false).ConfigureAwait(false);
+                var queued = await GetPlayerAsync(connectToVoiceChannel: false).ConfigureAwait(false);
                 if (queued != null && queued.Queue.Count > 0)
                 {
-                    List<ITrackQueueItem> itemList = queued.Queue.ToList();
-                    await queued.Queue.ClearAsync();
+                    var currentQueue = queued.Queue.ToList();
+                    await queued.Queue.ClearAsync().ConfigureAwait(false);
 
-                    foreach (LavalinkTrack t in tracks.Tracks)
+                    foreach (var track in tracks.Tracks)
                     {
-                        await player.PlayAsync(t);
-                        AddMusicTable(t, Context.Guild.Id.ToString(), Context.User.Username);
+                        await player.PlayAsync(track).ConfigureAwait(false);
+                        AddMusicTable(track, guildIdStr, userName);
                     }
 
-                    foreach (ITrackQueueItem? i in itemList)
-                        await queued.Queue.AddAsync(i);
+                    foreach (var item in currentQueue)
+                        await queued.Queue.AddAsync(item).ConfigureAwait(false);
                 }
                 else
                 {
-                    foreach (LavalinkTrack t in tracks.Tracks)
+                    foreach (var track in tracks.Tracks)
                     {
-                        await player.PlayAsync(t);
-                        AddMusicTable(t, Context.Guild.Id.ToString(), Context.User.Username);
+                        await player.PlayAsync(track).ConfigureAwait(false);
+                        AddMusicTable(track, guildIdStr, userName);
                     }
                 }
             }
             else
             {
-                foreach (LavalinkTrack t in tracks.Tracks)
+                foreach (var track in tracks.Tracks)
                 {
-                    await player.PlayAsync(t);
-                    AddMusicTable(t, Context.Guild.Id.ToString(), Context.User.Username);
+                    await player.PlayAsync(track).ConfigureAwait(false);
+                    AddMusicTable(track, guildIdStr, userName);
                 }
             }
 
-            await player.SetVolumeAsync(GetVolume(long.Parse(Context.Guild.Id.ToString())) / 100f).ConfigureAwait(false);
-            EmbedBuilder embed = BuildMusicEmbed("Queued", msg, artworkUrl.ToString());
+            float volume = GetVolume(long.Parse(guildIdStr)) / 100f;
+            await player.SetVolumeAsync(volume).ConfigureAwait(false);
+
+            var embed = BuildMusicEmbed("Queued", msg, artworkUrl);
             await FollowupAsync(embed: embed.Build()).ConfigureAwait(false);
         }
 
@@ -986,6 +996,19 @@ namespace DiscordBot.SlashCommands
             ArgumentNullException.ThrowIfNull(properties);
 
             return ValueTask.FromResult(new CustomPlayer(properties));
+        }
+
+        private EmbedBuilder BuildTrackEmbed(string title, LavalinkTrack track, string artist, string albumName, TimeSpan duration, float volume)
+        {
+            string msg = $"Track Name: **{track.Title}**" +
+                         $"\nArtist: {(string.IsNullOrEmpty(artist) ? $"**{track.Author}**" : artist)}" +
+                         $"{(string.IsNullOrEmpty(albumName) ? "" : $"\nAlbum: **{albumName}**")}" +
+                         $"\nURL: {track.Uri}" +
+                         $"\nDuration: **{duration:hh\\:mm\\:ss}**" +
+                         $"\nSource: **{track.SourceName}**" +
+                         $"\nVolume: **{volume * 100}%**";
+
+            return BuildMusicEmbed(title, msg);
         }
         #endregion
     }

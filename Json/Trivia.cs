@@ -19,50 +19,35 @@ namespace DiscordBot.Json
 
         public Trivia(string trivia)
         {
-            JObject obj = JObject.Parse(trivia);
-            if (obj.Count > 0)
+            var obj = JObject.Parse(trivia);
+
+            if (obj.TryGetValue("results", out JToken? resultsToken) && resultsToken is JArray resultsArray && resultsArray.Count > 0)
             {
-                foreach (KeyValuePair<string, JToken> item in obj)
+                var textInfo = System.Globalization.CultureInfo.CurrentCulture.TextInfo;
+
+                var firstResult = resultsArray.First as JObject;
+                if (firstResult != null)
                 {
-                    string key = item.Key;
-                    if (key.Equals("results"))
+                    if (firstResult.TryGetValue("category", out JToken? categoryToken))
+                        CategoryName = categoryToken.ToString();
+
+                    if (firstResult.TryGetValue("type", out JToken? typeToken))
+                        TypeName = textInfo.ToTitleCase(typeToken.ToString().ToLower());
+
+                    if (firstResult.TryGetValue("difficulty", out JToken? difficultyToken))
+                        Difficulty = textInfo.ToTitleCase(difficultyToken.ToString().ToLower());
+
+                    if (firstResult.TryGetValue("question", out JToken? questionToken))
+                        Question = System.Net.WebUtility.HtmlDecode(questionToken.ToString());
+
+                    if (firstResult.TryGetValue("correct_answer", out JToken? correctToken))
+                        CorrectAnswer = System.Net.WebUtility.HtmlDecode(correctToken.ToString());
+
+                    if (firstResult.TryGetValue("incorrect_answers", out JToken? incorrectToken) && incorrectToken is JArray incorrectArray)
                     {
-                        JArray arr = JArray.Parse(item.Value.ToString());
-                        foreach (JObject o in arr.Children<JObject>())
-                        {
-                            foreach (JProperty p in o.Properties())
-                            {
-                                if (p.Name.Equals("category"))
-                                {
-                                    CategoryName = (string)p.Value;
-                                }
-                                if (p.Name.Equals("type"))
-                                {
-                                    TypeName = System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(p.Value.ToString().ToLower());
-                                }
-                                if (p.Name.Equals("difficulty"))
-                                {
-                                    Difficulty = System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(p.Value.ToString().ToLower());
-                                }
-                                if (p.Name.Equals("question"))
-                                {
-                                    Question = System.Net.WebUtility.HtmlDecode((string)p.Value);
-                                }
-                                if (p.Name.Equals("correct_answer"))
-                                {
-                                    CorrectAnswer = System.Net.WebUtility.HtmlDecode((string)p.Value);
-                                }
-                                if (p.Name.Equals("incorrect_answers"))
-                                {
-                                    List<string> badAnswers = new List<string>();
-                                    foreach (JToken ans in p.Value)
-                                    {
-                                        badAnswers.Add(System.Net.WebUtility.HtmlDecode(ans.ToString()));
-                                    }
-                                    IncorrectAnswers = badAnswers;
-                                }
-                            }
-                        }
+                        IncorrectAnswers = incorrectArray
+                            .Select(ans => System.Net.WebUtility.HtmlDecode(ans.ToString()))
+                            .ToList();
                     }
                 }
             }

@@ -26,9 +26,6 @@ namespace DiscordBot.Constants
 
                 // execute the command
                 cmd.ExecuteNonQuery();
-
-                conn.Close();
-                cmd.Dispose();
             }
         }
 
@@ -51,9 +48,6 @@ namespace DiscordBot.Constants
 
                 // execute the command
                 cmd.ExecuteNonQuery();
-
-                conn.Close();
-                cmd.Dispose();
             }
         }
     }

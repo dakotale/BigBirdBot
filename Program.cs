@@ -425,233 +425,218 @@ internal class Program
     }
     private async Task MessageReceived(SocketMessage msg)
     {
-        if (msg != null && !msg.Author.IsBot && !msg.Author.IsWebhook && (msg.Channel as SocketGuildChannel) != null)
+        if (msg is not { Author.IsBot: false, Author.IsWebhook: false, Channel: SocketGuildChannel msgChannel })
+            return;
+
+        string message = msg.Content.Trim().ToLower();
+        string connStr = Constants.discordBotConnStr;
+        string serverId = msgChannel.Guild.Id.ToString();
+        string userId = msg.Author.Id.ToString();
+        string prefix = "-";
+
+        var stored = new StoredProcedure();
+        var cleanup = new URLCleanup();
+        var parameters = new List<SqlParameter>();
+
+        // Get server status
+        var dt = stored.Select(connStr, "GetServerPrefixByServerID", new List<SqlParameter> {
+            new SqlParameter("ServerUID", long.Parse(serverId))
+        });
+        if (!bool.TryParse(dt.Rows[0]["IsActive"]?.ToString(), out var isServerActive) || !isServerActive)
+            return;
+
+        // Check if keyword system is active
+        dt = stored.Select(connStr, "CheckIfKeywordsAreActivePerServer", new List<SqlParameter> {
+            new SqlParameter("ServerUID", long.Parse(serverId))
+        });
+        if (dt.Rows.Count == 0 || int.Parse(dt.Rows[0]["TotalActive"].ToString()) <= 0)
+            return;
+
+        bool isCommand = message.StartsWith(prefix);
+
+        if (cleanup.HasSocialMediaEmbed(message) && !isCommand)
         {
-            string message = msg.Content.Trim().ToLower();
-            string connStr = Constants.discordBotConnStr;
-            SocketGuildChannel? msgChannel = msg.Channel as SocketGuildChannel;
-            string serverId = msgChannel.Guild.Id.ToString();
-            bool isActive = false;
-            bool isServerActive = false;
-            StoredProcedure stored = new StoredProcedure();
-            URLCleanup cleanup = new URLCleanup();
-            string prefix = "-";
-            string keyword = "";
-            List<SqlParameter> parameters = new List<SqlParameter>();
-            string userId = msg.Author.Id.ToString();
-
-            DataTable dt = stored.Select(connStr, "GetServerPrefixByServerID", new List<SqlParameter>
-            {
-                new SqlParameter("ServerUID", Int64.Parse(serverId))
+            dt = stored.Select(connStr, "GetTwitterBroken", new List<SqlParameter> {
+                new SqlParameter("@ServerID", long.Parse(serverId))
             });
-            isServerActive = bool.Parse(dt.Rows[0]["IsActive"].ToString());
 
-            if (!isServerActive)
-                return;
-
-            dt = stored.Select(connStr, "CheckIfKeywordsAreActivePerServer", new List<SqlParameter> { new SqlParameter("ServerUID", Int64.Parse(serverId)) });
-
-            if (dt.Rows.Count > 0)
-                isActive = int.Parse(dt.Rows[0]["TotalActive"].ToString()) > 0 ? true : false;
-
-            if (!isActive)
-                return;
-
-            if (cleanup.HasSocialMediaEmbed(message))
+            if (bool.TryParse(dt.Rows[0]["TwitterBroken"]?.ToString(), out var isTwitterBroken) && isTwitterBroken)
             {
-                dt = stored.Select(connStr, "GetTwitterBroken", new List<SqlParameter> { new SqlParameter("@ServerID", Int64.Parse(serverId)) });
-                bool isTwitterBroken = bool.Parse(dt.Rows[0]["TwitterBroken"].ToString());
-
-                if (isTwitterBroken)
-                    await msg.Channel.SendMessageAsync(cleanup.CleanURLEmbed(message));
+                await msg.Channel.SendMessageAsync(cleanup.CleanURLEmbed(message));
             }
-            else
+
+            return;
+        }
+
+        if (isCommand)
+        {
+            var splitMessage = message.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (splitMessage.Length == 0)
+                return;
+
+            string keyword = splitMessage[0].Replace(prefix, "");
+            dt = stored.Select(connStr, "GetThirstTableByMap", new List<SqlParameter> {
+                new SqlParameter("@AddKeyword", keyword)
+            });
+
+            if (dt.Rows.Count == 0)
+                return;
+
+            string tablename = dt.Rows[0]["TableName"].ToString();
+
+            if (msg.Attachments.Count > 0)
             {
-                if (message.StartsWith(prefix))
+                AddAttachments(msg, tablename, connStr, userId);
+                await msg.Channel.SendMessageAsync(embed: CreateMessageEmbed("Added Image", Color.Blue, "Added attachment(s) successfully.").Build());
+            }
+
+            if (splitMessage.Length > 1)
+            {
+                string content = message[(prefix.Length + keyword.Length)..].Trim();
+                bool multiUrl = content.Contains(",") && content.Contains("http");
+
+                if (multiUrl)
                 {
-                    if (message.Split(' ').Count() > 0)
-                        keyword = message.Split(' ')[0].Replace(prefix, "");
-
-                    dt = stored.Select(connStr, "GetThirstTableByMap", new List<SqlParameter> { new SqlParameter("@AddKeyword", keyword) });
-                    if (dt.Rows.Count > 0)
+                    string[] urls = content.Split(",", StringSplitOptions.TrimEntries);
+                    foreach (string url in urls)
                     {
-                        string tablename = dt.Rows[0]["TableName"].ToString();
-                        if (msg.Attachments.Count > 0)
+                        if (!url.StartsWith("http"))
                         {
-                            AddAttachments(msg, tablename, connStr, userId);
-                            await msg.Channel.SendMessageAsync(embed: CreateMessageEmbed("Added Image", Color.Blue, "Added attachment(s) successfully.").Build());
+                            await msg.Channel.SendMessageAsync(embed: CreateMessageEmbed("Error", Color.Red, $"The URL provided (*{url}*) is invalid.").Build());
+                            continue;
                         }
-                        if (message.Split(' ').Count() > 1)
+
+                        string cleanedUrl = cleanup.CleanURLEmbed(url);
+                        if (!IsUrlNew(cleanedUrl, tablename, connStr, stored))
                         {
-                            string content = message.Replace(prefix + keyword, "").Trim();
-                            bool multiUrl = false;
+                            await msg.Channel.SendMessageAsync(embed: CreateMessageEmbed("Error", Color.Red, $"The URL provided (*{cleanedUrl}*) was already added.").Build());
+                            continue;
+                        }
 
-                            if (content.Contains(",") && content.Contains("http"))
-                                multiUrl = true;
-
-                            if (multiUrl)
+                        foreach (DataRow row in dt.Rows)
+                        {
+                            stored.UpdateCreate(connStr, "AddThirstByMap", new List<SqlParameter>
                             {
-                                string[] urls = content.Split(",", StringSplitOptions.TrimEntries);
-                                foreach (string u in urls)
-                                {
-                                    bool result = u.Trim().StartsWith("http");
-
-                                    if (!result)
-                                        await msg.Channel.SendMessageAsync(embed: CreateMessageEmbed("Error", Color.Red, $"The URL provided (*{u}*) for this command is invalid.").Build());
-                                    else
-                                    {
-                                        content = cleanup.CleanURLEmbed(u);
-
-                                        // Check if link exists for thirst table
-                                        DataTable dtExists = stored.Select(connStr, "CheckIfThirstURLExists", new List<SqlParameter>
-                                        {
-                                            new SqlParameter("@FilePath", content),
-                                            new SqlParameter("@TableName", dt.Rows[0]["TableName"].ToString())
-                                        });
-
-                                        if (dtExists.Rows.Count > 0)
-                                            await msg.Channel.SendMessageAsync(embed: CreateMessageEmbed("Error", Color.Red, $"The URL provided (*{content}*) was already added for this Multi-Keyword Command.").Build());
-                                        else
-                                        {
-                                            foreach (DataRow dr in dt.Rows)
-                                            {
-                                                stored.UpdateCreate(connStr, "AddThirstByMap", new List<SqlParameter>
-                                                {
-                                                    new SqlParameter("@FilePath", content),
-                                                    new SqlParameter("@TableName", tablename),
-                                                    new SqlParameter("@UserID", userId)
-                                                });
-                                            }
-                                        }
-                                    }
-                                }
-
-                                await msg.Channel.SendMessageAsync(embed: CreateMessageEmbed("Added Image", Color.Blue, "Added link(s) successfully.").Build());
-                            }
-                            else
-                            {
-                                content = cleanup.CleanURLEmbed(content);
-
-                                // Check if link exists for thirst table
-                                DataTable dtExists = stored.Select(connStr, "CheckIfThirstURLExists", new List<SqlParameter>
-                                {
-                                    new SqlParameter("@FilePath", content),
-                                    new SqlParameter("@TableName", tablename)
-                                });
-
-                                if (dtExists.Rows.Count > 0)
-                                    await msg.Channel.SendMessageAsync(embed: CreateMessageEmbed("Error", Color.Red, "The URL provided was already added for this Multi-Keyword Command.").Build());
-                                else
-                                {
-                                    foreach (DataRow dr in dt.Rows)
-                                    {
-                                        stored.UpdateCreate(connStr, "AddThirstByMap", new List<System.Data.SqlClient.SqlParameter>
-                                        {
-                                            new SqlParameter("@FilePath", content),
-                                            new SqlParameter("@TableName", dr["TableName"].ToString()),
-                                            new SqlParameter("@UserID", userId)
-                                        });
-
-                                        await msg.Channel.SendMessageAsync(embed: CreateMessageEmbed("Added URL/Text", Color.Blue, "Added URL/Text(s) successfully.").Build());
-                                    }
-                                }
-                            }
+                                new SqlParameter("@FilePath", cleanedUrl),
+                                new SqlParameter("@TableName", row["TableName"].ToString()),
+                                new SqlParameter("@UserID", userId)
+                            });
                         }
                     }
+
+                    await msg.Channel.SendMessageAsync(embed: CreateMessageEmbed("Added Image", Color.Blue, "Added link(s) successfully.").Build());
                 }
-
-                if (!message.StartsWith(prefix))
+                else
                 {
-                    parameters.Clear();
-                    parameters.Add(new SqlParameter("@UserID", msg.Author.Id.ToString()));
-                    parameters.Add(new SqlParameter("@ServerID", Int64.Parse(msgChannel.Guild.Id.ToString())));
-                    dt = stored.Select(connStr, "GetChatKeywordExclusion", parameters);
+                    string cleanedContent = cleanup.CleanURLEmbed(content);
 
-                    if (dt.Rows.Count == 0)
+                    if (!IsUrlNew(cleanedContent, tablename, connStr, stored))
                     {
-                        parameters.Clear();
-                        parameters.Add(new SqlParameter("@ServerID", Int64.Parse(msgChannel.Guild.Id.ToString())));
-                        parameters.Add(new SqlParameter("@Message", message));
-                        dt = stored.Select(connStr, "GetChatAction", parameters);
+                        await msg.Channel.SendMessageAsync(embed: CreateMessageEmbed("Error", Color.Red, "The URL provided was already added.").Build());
+                        return;
+                    }
 
-                        IUserMessage output;
-                        Emoji nsfwMarker = new Emoji("❌");
-                        IMessageChannel? sender = client.GetChannel(msgChannel.Id) as IMessageChannel;
-
-                        _ = Task.Run(async () =>
+                    foreach (DataRow row in dt.Rows)
+                    {
+                        stored.UpdateCreate(connStr, "AddThirstByMap", new List<SqlParameter>
                         {
-                            if (dt.Rows.Count > 0 && sender != null)
-                            {
-                                foreach (DataRow dr in dt.Rows)
-                                {
-                                    string chatAction = dr["ChatAction"].ToString();
-                                    bool isNsfw = bool.Parse(dr["NSFW"].ToString());
-
-                                    if (!string.IsNullOrEmpty(chatAction))
-                                    {
-                                        await msg.Channel.TriggerTypingAsync(new RequestOptions { Timeout = 30 });
-                                        if (chatAction.Contains("C:\\"))
-                                        {
-                                            if (isNsfw && !chatAction.Contains("SPOILER_"))
-                                                await msg.Channel.SendFileAsync(dr["ChatAction"].ToString(), isSpoiler: true).ConfigureAwait(false);
-                                            else
-                                            {
-                                                output = await msg.Channel.SendFileAsync(dr["ChatAction"].ToString()).ConfigureAwait(false);
-                                                await output.AddReactionAsync(nsfwMarker).ConfigureAwait(false);
-                                            }
-                                        }
-                                        else
-                                        {
-                                            if (dr["ChatAction"].ToString().Contains("http") && IsLinkWorking(dr["ChatAction"].ToString()))
-                                            {
-                                                if (isNsfw)
-                                                {
-                                                    chatAction = "||" + chatAction + "||";
-                                                    await sender.SendMessageAsync(chatAction).ConfigureAwait(false);
-                                                }
-                                                else
-                                                {
-                                                    output = await sender.SendMessageAsync(dr["ChatAction"].ToString()).ConfigureAwait(false);
-                                                    await output.AddReactionAsync(nsfwMarker).ConfigureAwait(false);
-                                                }
-                                            }
-                                            else if (dr["ChatAction"].ToString().Contains("http") && !IsLinkWorking(dr["ChatAction"].ToString()))
-                                            {
-                                                await sender.SendMessageAsync($"Link was dead so I deleted it :) -> {dr["ChatAction"].ToString()}").ConfigureAwait(false);
-                                                stored.UpdateCreate(Constants.discordBotConnStr, "DeleteThirstURL", new List<SqlParameter> { new SqlParameter("@FilePath", dr["ChatAction"].ToString()), new SqlParameter("@TableName", "") });
-                                            }
-                                            else
-                                            {
-                                                if (isNsfw)
-                                                {
-                                                    chatAction = "||" + chatAction + "||";
-                                                    await sender.SendMessageAsync(chatAction).ConfigureAwait(false);
-                                                }
-                                                else
-                                                {
-                                                    output = await sender.SendMessageAsync(dr["ChatAction"].ToString()).ConfigureAwait(false);
-                                                    await output.AddReactionAsync(nsfwMarker).ConfigureAwait(false);
-                                                }
-                                            }
-                                                        
-                                        }
-
-                                        parameters.Clear();
-                                        parameters.Add(new SqlParameter("@ChatKeywordID", int.Parse(dr["ChatKeywordID"].ToString())));
-                                        parameters.Add(new SqlParameter("@MessageText", message));
-                                        parameters.Add(new SqlParameter("@CreatedBy", msg.Author.Id.ToString()));
-                                        parameters.Add(new SqlParameter("@ServerID", Int64.Parse(serverId)));
-                                        stored.UpdateCreate(connStr, "AddAuditKeyword", parameters);
-                                    }
-                                }
-                            }
+                            new SqlParameter("@FilePath", cleanedContent),
+                            new SqlParameter("@TableName", row["TableName"].ToString()),
+                            new SqlParameter("@UserID", userId)
                         });
                     }
+
+                    await msg.Channel.SendMessageAsync(embed: CreateMessageEmbed("Added URL/Text", Color.Blue, "Added URL/Text(s) successfully.").Build());
                 }
             }
+
+            return;
+        }
+
+        // Chat Keyword Actions (non-command)
+        parameters = new List<SqlParameter> {
+            new SqlParameter("@UserID", userId),
+            new SqlParameter("@ServerID", long.Parse(serverId))
+        };
+
+        dt = stored.Select(connStr, "GetChatKeywordExclusion", parameters);
+        if (dt.Rows.Count > 0)
+            return;
+
+        parameters = new List<SqlParameter> {
+            new SqlParameter("@ServerID", long.Parse(serverId)),
+            new SqlParameter("@Message", message)
+        };
+
+        dt = stored.Select(connStr, "GetChatAction", parameters);
+
+        if (dt.Rows.Count > 0)
+        {
+            _ = Task.Run(async () =>
+            {
+                var sender = client.GetChannel(msgChannel.Id) as IMessageChannel;
+                if (sender == null) return;
+
+                foreach (DataRow row in dt.Rows)
+                {
+                    string chatAction = row["ChatAction"].ToString();
+                    bool isNsfw = bool.TryParse(row["NSFW"]?.ToString(), out var nsfw) && nsfw;
+
+                    if (string.IsNullOrWhiteSpace(chatAction))
+                        continue;
+
+                    await msg.Channel.TriggerTypingAsync();
+
+                    if (chatAction.Contains("C:\\"))
+                    {
+                        var isSpoiler = isNsfw && !chatAction.Contains("SPOILER_");
+                        var output = await msg.Channel.SendFileAsync(chatAction, isSpoiler: isSpoiler);
+                        if (!isSpoiler)
+                            await output.AddReactionAsync(new Emoji("❌"));
+                    }
+                    else if (chatAction.Contains("http"))
+                    {
+                        if (IsLinkWorking(chatAction))
+                        {
+                            if (isNsfw)
+                                chatAction = $"||{chatAction}||";
+
+                            var output = await sender.SendMessageAsync(chatAction);
+                            if (!isNsfw)
+                                await output.AddReactionAsync(new Emoji("❌"));
+                        }
+                        else
+                        {
+                            await sender.SendMessageAsync($"Link was dead so I deleted it :) -> {chatAction}");
+                            stored.UpdateCreate(connStr, "DeleteThirstURL", new List<SqlParameter> {
+                                new SqlParameter("@FilePath", chatAction),
+                                new SqlParameter("@TableName", "")
+                            });
+                        }
+                    }
+                    else
+                    {
+                        if (isNsfw)
+                            chatAction = $"||{chatAction}||";
+
+                        var output = await sender.SendMessageAsync(chatAction);
+                        if (!isNsfw)
+                            await output.AddReactionAsync(new Emoji("❌"));
+                    }
+
+                    // Audit trail
+                    parameters = new List<SqlParameter> {
+                        new SqlParameter("@ChatKeywordID", int.Parse(row["ChatKeywordID"].ToString())),
+                        new SqlParameter("@MessageText", message),
+                        new SqlParameter("@CreatedBy", userId),
+                        new SqlParameter("@ServerID", long.Parse(serverId))
+                    };
+
+                    stored.UpdateCreate(connStr, "AddAuditKeyword", parameters);
+                }
+            });
         }
     }
-
     private async Task UserVoiceStateUpdated(SocketUser user, SocketVoiceState before, SocketVoiceState after)
     {
         if (user.IsBot && after.VoiceChannel == null)
@@ -694,7 +679,6 @@ internal class Program
             }
         }
     }
-
     private async Task LogMessage(LogMessage message)
     {
         EmbedHelper embedHelper = new EmbedHelper();
@@ -773,132 +757,156 @@ internal class Program
         var msg = download.ToString();
         var attach = download.Attachments;
         StoredProcedure stored = new StoredProcedure();
-        if (client.GetUser(reaction.UserId).IsBot) return;
+
+        if (client.GetUser(reaction.UserId).IsBot) 
+            return;
 
         // Mark the message as NSFW
-        if (reaction.Emote.Name == nsfwMarker.Name)
+        if (reaction.Emote.Name == nsfwMarker.Name && download.Author.IsBot && download.Reactions.Count < 2 && !embed.Any(e => e.Color.Equals(Discord.Color.Blue)))
         {
-            DataTable dt = new DataTable();
+            var connStr = Constants.discordBotConnStr;
+            var userId = reaction.User.Value.Id.ToString();
+            var messageId = download.Id.ToString();
 
-            if (msg != null)
+            var existingReaction = stored.Select(connStr, "GetReactionMessage", new List<SqlParameter>
             {
-                dt = stored.Select(Constants.discordBotConnStr, "GetKeywordNSFW", new List<SqlParameter>
+                new SqlParameter("@UserID", userId),
+                new SqlParameter("@MessageID", messageId)
+            });
+
+            if (existingReaction.Rows.Count > 0)
+                return;
+
+            // Add initial reaction record
+            stored.UpdateCreate(connStr, "AddReactionMessage", new List<SqlParameter>
+            {
+                new SqlParameter("@UserID", userId),
+                new SqlParameter("@MessageID", messageId)
+            });
+
+            async Task HandleNSFWMark(string messageContent)
+            {
+                var keywordRows = stored.Select(connStr, "GetKeywordNSFW", new List<SqlParameter>
                 {
-                    new SqlParameter("@Message", msg)
+                    new SqlParameter("@Message", messageContent)
                 });
 
-                if (dt.Rows.Count > 0)
+                if (!keywordRows.AsEnumerable().Any(r => r["NSFW"].ToString() == "1"))
                 {
-                    foreach (DataRow dr in dt.Rows)
+                    stored.Select(connStr, "MarkKeywordNSFW", new List<SqlParameter>
                     {
-                        if (dr["NSFW"].ToString() != "1")
-                        {
-                            dt = stored.Select(Constants.discordBotConnStr, "MarkKeywordNSFW", new List<SqlParameter>
-                            {
-                                new SqlParameter("@Message", msg)
-                            });
+                        new SqlParameter("@Message", messageContent)
+                    });
 
-                            await channel.Value.SendMessageAsync(embed: embedNsfw.BuildMessageEmbed("BigBirdBot - NSFW", $"Thanks {reaction.User.Value.Mention}, the message was marked as NSFW, sorry about that :)", "", "BigBirdBot", Discord.Color.Blue, null, null).Build());
-                        }
-                    }
+                    await channel.Value.SendMessageAsync(embed:
+                        embedNsfw.BuildMessageEmbed(
+                            "BigBirdBot - NSFW",
+                            $"Thanks {reaction.User.Value.Mention}, the message was marked as NSFW, sorry about that :)",
+                            "",
+                            "BigBirdBot",
+                            Discord.Color.Blue
+                        ).Build());
                 }
+            }
+
+            // Handle message text
+            if (!string.IsNullOrEmpty(msg))
+            {
+                await HandleNSFWMark(msg);
                 return;
             }
+
+            // Handle attachments
             if (attach != null && attach.Count > 0)
             {
                 foreach (var a in attach)
-                {
-                    dt = stored.Select(Constants.discordBotConnStr, "GetKeywordNSFW", new List<SqlParameter>
-                    {
-                        new SqlParameter("@Message", a.Filename)
-                    });
+                    await HandleNSFWMark(a.Filename);
 
-                    if (dt.Rows.Count > 0)
-                    {
-                        foreach (DataRow dr in dt.Rows)
-                        {
-                            if (dr["NSFW"].ToString() != "1")
-                            {
-                                dt = stored.Select(Constants.discordBotConnStr, "MarkKeywordNSFW", new List<SqlParameter>
-                                {
-                                    new SqlParameter("@Message", a.Filename)
-                                });
-
-                                await channel.Value.SendMessageAsync(embed: embedNsfw.BuildMessageEmbed("BigBirdBot - NSFW", $"Thanks {reaction.User.Value.Mention}, the message was marked as NSFW, sorry about that :)", "", "BigBirdBot", Discord.Color.Blue, null, null).Build());
-                            }
-                        }
-                    }
-                }
-                
                 return;
             }
         }
+
 
         if (reaction.Emote.Name == triviaA.Name || reaction.Emote.Name == triviaB.Name || reaction.Emote.Name == triviaC.Name || reaction.Emote.Name == triviaD.Name)
         {
             try
             {
-                if (embed.Count > 0)
-                {
-                    long messageId = Int64.Parse(message.Id.ToString());
-                    DataTable dt = stored.Select(Constants.discordBotConnStr, "GetTriviaMessage", new List<SqlParameter> { new SqlParameter("@TriviaMessageID", messageId) });
-                    string theReaction = reaction.Emote.Name;
-                    if (dt.Rows.Count > 0)
-                    {
-                        string correctAnswer = "";
-                        foreach (DataRow dr in dt.Rows)
-                        {
-                            correctAnswer = dr["CorrectAnswer"].ToString();
-                        }
+                if (embed.Count == 0)
+                    return;
 
-                        foreach (IEmbed? e in embed)
-                        {
-                            foreach (EmbedField f in e.Fields.Where(s => s.Name.Contains(".")).ToList())
-                            {
-                                if (correctAnswer.Equals(f.Value))
-                                {
-                                    EmbedHelper embedHelper = new EmbedHelper();
-                                    // We have the correct answer, so let's get the reaction that it equals
-                                    if (f.Name == "A." && theReaction.Equals(triviaA.Name))
-                                    {
-                                        await channel.Value.SendMessageAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Correct", $"{reaction.User.Value.Mention} answered correctly with **{correctAnswer}**!", "", "BigBirdBot", Discord.Color.Green, null, null).Build());
-                                        stored.UpdateCreate(Constants.discordBotConnStr, "DeleteTriviaMessage", new List<SqlParameter> { new SqlParameter("@TriviaMessageID", messageId) });
-                                    }
-                                    else if (f.Name == "B." && theReaction.Equals(triviaB.Name))
-                                    {
-                                        // Check if the reaction was 'B'
-                                        await channel.Value.SendMessageAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Correct", $"{reaction.User.Value.Mention} answered correctly with **{correctAnswer}**!", "", "BigBirdBot", Discord.Color.Green, null, null).Build());
-                                        stored.UpdateCreate(Constants.discordBotConnStr, "DeleteTriviaMessage", new List<SqlParameter> { new SqlParameter("@TriviaMessageID", messageId) });
-                                    }
-                                    else if (f.Name == "C." && theReaction.Equals(triviaC.Name))
-                                    {
-                                        // Check if the reaction was 'C'
-                                        await channel.Value.SendMessageAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Correct", $"{reaction.User.Value.Mention} answered correctly with **{correctAnswer}**!", "", "BigBirdBot", Discord.Color.Green, null, null).Build());
-                                        stored.UpdateCreate(Constants.discordBotConnStr, "DeleteTriviaMessage", new List<SqlParameter> { new SqlParameter("@TriviaMessageID", messageId) });
-                                    }
-                                    else if (f.Name == "D." && theReaction.Equals(triviaD.Name))
-                                    {
-                                        // Check if the reaction was 'D'
-                                        await channel.Value.SendMessageAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Correct", $"{reaction.User.Value.Mention} answered correctly with **{correctAnswer}**!", "", "BigBirdBot", Discord.Color.Green, null, null).Build());
-                                        stored.UpdateCreate(Constants.discordBotConnStr, "DeleteTriviaMessage", new List<SqlParameter> { new SqlParameter("@TriviaMessageID", messageId) });
-                                    }
-                                    else
-                                    {
-                                        // Ya wrong
-                                        await channel.Value.SendMessageAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Wrong", $"{reaction.User.Value.Mention} you didn't answer correctly, try again!", "", "BigBirdBot", Discord.Color.Red, null, null).Build());
-                                    }
-                                }
-                            }
-                        }
-                    }
+                var connStr = Constants.discordBotConnStr;
+                ulong messageId = message.Id;
+                string userMention = reaction.User.Value.Mention;
+                string reactionName = reaction.Emote.Name;
+
+                // Lookup tables for mapping letters and emojis
+                var emojiMap = new Dictionary<string, string>
+                {
+                    { triviaA.Name, "A." },
+                    { triviaB.Name, "B." },
+                    { triviaC.Name, "C." },
+                    { triviaD.Name, "D." }
+                };
+
+                var dt = stored.Select(connStr, "GetTriviaMessage", new List<SqlParameter>
+                {
+                    new SqlParameter("@TriviaMessageID", messageId)
+                });
+
+                if (dt.Rows.Count == 0)
+                    return;
+
+                string correctAnswer = dt.Rows[0]["CorrectAnswer"].ToString();
+                var fields = embed.SelectMany(e => e.Fields).Where(f => f.Name.Contains(".")).ToList();
+
+                var correctField = fields.FirstOrDefault(f => f.Value == correctAnswer);
+                if (correctField == null || !emojiMap.TryGetValue(reactionName, out string selectedLetter))
+                    return;
+
+                var embedHelper = new EmbedHelper();
+
+                if (selectedLetter == correctField.Name)
+                {
+                    await channel.Value.SendMessageAsync(embed:
+                        embedHelper.BuildMessageEmbed(
+                            "BigBirdBot - Correct",
+                            $"{userMention} answered correctly with **{correctAnswer}**!",
+                            "",
+                            "BigBirdBot",
+                            Discord.Color.Green
+                        ).Build());
+
+                    stored.UpdateCreate(connStr, "DeleteTriviaMessage", new List<SqlParameter>
+                    {
+                        new SqlParameter("@TriviaMessageID", messageId)
+                    });
+                }
+                else
+                {
+                    await channel.Value.SendMessageAsync(embed:
+                        embedHelper.BuildMessageEmbed(
+                            "BigBirdBot - Wrong",
+                            $"{userMention}, you didn't answer correctly. Try again!",
+                            "",
+                            "BigBirdBot",
+                            Discord.Color.Red
+                        ).Build());
                 }
             }
             catch (Exception ex)
             {
-                EmbedHelper errorEmbed = new EmbedHelper();
-                await channel.Value.SendMessageAsync(embed: errorEmbed.BuildMessageEmbed("BigBirdBot - Error", ex.Message, Constants.errorImageUrl, "", Color.Red, "").Build());
+                var errorEmbed = new EmbedHelper();
+                await channel.Value.SendMessageAsync(embed:
+                    errorEmbed.BuildMessageEmbed(
+                        "BigBirdBot - Error",
+                        ex.Message,
+                        Constants.errorImageUrl,
+                        "",
+                        Color.Red
+                    ).Build());
             }
         }
+
     }
 
     // When the timer is kicked off, call this function to pull the EventText or ReminderText from SPs.
@@ -964,32 +972,40 @@ internal class Program
     #region Helpers
     public static bool IsLinkWorking(string url)
     {
-        if (url.Contains("fxtwitter") || url.Contains("vxtwitter"))
-        {
-            HttpWebRequest request = (HttpWebRequest)HttpWebRequest.Create(url);
-
-            //You can set some parameters in the "request" object...
-            request.AllowAutoRedirect = true;
-
-            try
-            {
-                HttpWebResponse response = (HttpWebResponse)request.GetResponse();
-                var encoding = ASCIIEncoding.ASCII;
-                using (var reader = new System.IO.StreamReader(response.GetResponseStream(), encoding))
-                {
-                    string responseText = reader.ReadToEnd();
-                    if (responseText.Contains("post doesn't exist"))
-                        return false;
-                }
-                return true;
-            }
-            catch
-            { //TODO: Check for the right exception here
-                return true;
-            }
-        }
-        else
+        if (!url.Contains("fxtwitter") && !url.Contains("vxtwitter"))
             return true;
+
+        try
+        {
+            var request = (HttpWebRequest)WebRequest.Create(url);
+            request.AllowAutoRedirect = true;
+            request.Method = "GET";
+            request.Timeout = 5000; // Set a timeout to avoid hanging
+
+            using var response = (HttpWebResponse)request.GetResponse();
+            using var reader = new StreamReader(response.GetResponseStream(), Encoding.ASCII);
+            string responseText = reader.ReadToEnd();
+
+            return !responseText.Contains("post doesn't exist");
+        }
+        catch (WebException ex)
+        {
+            // Handle specific WebException if needed, else assume link is not working or unreachable
+            if (ex.Response is HttpWebResponse webResponse)
+            {
+                // For example, 404 means the link is broken
+                if (webResponse.StatusCode == HttpStatusCode.NotFound)
+                    return false;
+            }
+
+            // For other exceptions, return false or true based on your requirement
+            return false;
+        }
+        catch
+        {
+            // Unexpected exceptions, return false for safety
+            return false;
+        }
     }
 
     private void AddAttachments(SocketMessage msg, string tablename, string connStr, string userId)
@@ -1030,6 +1046,16 @@ internal class Program
         }.WithCurrentTimestamp();
 
         return embed;
+    }
+
+    private bool IsUrlNew(string url, string tableName, string connStr, StoredProcedure stored)
+    {
+        var checkDt = stored.Select(connStr, "CheckIfThirstURLExists", new List<SqlParameter> {
+                new SqlParameter("@FilePath", url),
+                new SqlParameter("@TableName", tableName)
+            });
+
+        return checkDt.Rows.Count == 0;
     }
     #endregion
 }

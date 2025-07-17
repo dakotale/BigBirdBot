@@ -1,8 +1,9 @@
-﻿using System.Data;
-using System.Data.SqlClient;
-using Discord.Interactions;
+﻿using Discord.Interactions;
 using DiscordBot.Constants;
 using DiscordBot.Helper;
+using System.Data;
+using System.Data.SqlClient;
+using System.Text;
 
 namespace DiscordBot.SlashCommands
 {
@@ -39,19 +40,21 @@ namespace DiscordBot.SlashCommands
         public async Task HandlePalette()
         {
             await DeferAsync(ephemeral: true);
-            string result = "Here are the 5 generated hex codes with reference photos\n";
 
-            for (int i = 0; i < 5; i++)
+            var random = new Random();
+            var sb = new StringBuilder("Here are the 5 generated hex codes with reference photos\n\n");
+
+            for (int i = 1; i <= 5; i++)
             {
-                Random random = new Random();
-                string color = String.Format("{0:X6}", random.Next(0x1000000));
-                result += (i + 1).ToString() + ". https://www.color-hex.com/color/" + color + "\n\n";
+                string color = random.Next(0x1000000).ToString("X6");
+                sb.AppendLine($"{i}. https://www.color-hex.com/color/{color}\n");
             }
+
             string title = "BigBirdBot - Generate Palette";
-            string embedCreatedBy = "Command from: " + Context.User.Username;
+            string embedCreatedBy = $"Command from: {Context.User.Username}";
 
             EmbedHelper embed = new EmbedHelper();
-            await FollowupAsync(embed: embed.BuildMessageEmbed(title, result, "", embedCreatedBy, Discord.Color.Blue).Build(), ephemeral: true);
+            await FollowupAsync(embed: embed.BuildMessageEmbed(title, sb.ToString(), "", embedCreatedBy, Discord.Color.Blue).Build(), ephemeral: true);
         }
     }
 }

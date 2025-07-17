@@ -23,6 +23,24 @@ namespace DiscordBot.Helper
             return embed;
         }
 
+        public EmbedBuilder BuildImageEmbed(string title, string description, string thumbnailUrl, string commandFrom, Color color, Attachment attachment, string imageUrl = null, string url = null)
+        {
+            EmbedBuilder embed = new EmbedBuilder
+            {
+                Title = $"{title}",
+                Color = color,
+                Description = $"{description}",
+                ThumbnailUrl = $"{thumbnailUrl}",
+                ImageUrl = imageUrl,
+                Url = url,
+            };
+
+            embed.WithFooter(footer => footer.Text = commandFrom)
+                                    .WithCurrentTimestamp();
+
+            return embed;
+        }
+
         public EmbedBuilder BuildErrorEmbed(string module, string description, string commandFrom)
         {
             EmbedBuilder embed = new EmbedBuilder

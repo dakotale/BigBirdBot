@@ -313,7 +313,7 @@ namespace DiscordBot.SlashCommands
                                 if (detectionRate > 75.0)
                                     description = $"**This image was created with AI based on the percentage matching of {detectionRate.ToString() + "%"}.**";
 
-                                await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - AI Detection", description, "", Context.User.Username, Discord.Color.Blue).Build());
+                                await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - AI Detection", description, "", Context.User.Username, Discord.Color.Blue, attachment.Url).Build());
                             }
                             else
                             {
@@ -383,7 +383,7 @@ namespace DiscordBot.SlashCommands
                                 if (detectionRate > 75.0)
                                     description = $"**This image was created with AI based on the percentage matching of {detectionRate.ToString() + "%"}.**";
 
-                                await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - AI Detection", description, "", Context.User.Username, Discord.Color.Blue).Build());
+                                await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - AI Detection", description, "", Context.User.Username, Discord.Color.Blue, url: url).Build());
                             }
                             else
                             {

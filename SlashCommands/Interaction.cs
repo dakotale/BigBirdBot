@@ -1,9 +1,10 @@
-﻿using System.Data;
-using System.Web;
-using Discord;
+﻿using Discord;
 using Discord.Interactions;
 using DiscordBot.Constants;
 using DiscordBot.Helper;
+using System.Data;
+using System.Data.SqlClient;
+using System.Web;
 
 namespace DiscordBot.SlashCommands
 {
@@ -15,117 +16,90 @@ namespace DiscordBot.SlashCommands
         {
             await DeferAsync();
 
-            StoredProcedure stored = new StoredProcedure();
-            string token = "";
+            var stored = new StoredProcedure();
+            var connStr = Constants.Constants.discordBotConnStr;
 
-            DataTable dtToken = stored.Select(Constants.Constants.discordBotConnStr, "GetTriviaToken", new List<System.Data.SqlClient.SqlParameter> { });
-            if (dtToken.Rows.Count > 0)
+            var dtToken = stored.Select(connStr, "GetTriviaToken", new List<SqlParameter>());
+            if (dtToken.Rows.Count == 0)
             {
-                foreach (DataRow dr in dtToken.Rows)
-                    token = dr["Token"].ToString();
-
-                DataTable dtTrivia = stored.Select(Constants.Constants.discordBotConnStr, "GetTrivia", new List<System.Data.SqlClient.SqlParameter> { new System.Data.SqlClient.SqlParameter("@Token", token) });
-
-                if (dtTrivia.Rows.Count > 0)
-                {
-                    List<string> answers = new List<string>();
-                    foreach (DataRow dr in dtTrivia.Rows)
-                    {
-                        EmbedHelper embedHelper = new EmbedHelper();
-
-                        answers.Add(dr["CorrectAnswer"].ToString());
-                        answers.Add(dr["FirstIncorrect"].ToString());
-                        if (dr["SecondIncorrect"] != null)
-                            answers.Add(dr["SecondIncorrect"].ToString());
-                        if (dr["ThirdIncorrect"] != null)
-                            answers.Add(dr["ThirdIncorrect"].ToString());
-
-                        Random r = new Random();
-
-                        answers = answers.OrderBy(s => r.Next()).ToList();
-
-                        for (int i = 0; i < answers.Count; i++)
-                            answers[i] = HttpUtility.HtmlDecode(answers[i]);
-
-                        string question = HttpUtility.HtmlDecode(dr["Question"].ToString());
-                        string difficulty = dr["Difficulty"].ToString();
-                        difficulty = char.ToUpper(difficulty[0]) + difficulty.Substring(1);
-                        string title = "BigBirdBot - Trivia";
-                        string thumbnailUrl = "https://www.mtzion.lib.il.us/kids-teens/question-mark.jpg/@@images/image.jpeg";
-                        string createdBy = "Command from: " + Context.User.Username;
-
-                        EmbedBuilder embed = new EmbedBuilder();
-                        embed.Title = title;
-                        embed.ThumbnailUrl = thumbnailUrl;
-                        embed.WithFooter(footer => footer.Text = createdBy);
-                        embed.Color = Discord.Color.Green;
-                        embed.AddField("Category", dr["Category"].ToString());
-                        embed.AddField("Difficulty", difficulty);
-                        embed.AddField("Question", question);
-                        embed.AddField("A. ", answers[0]);
-
-                        if (answers.Count == 2)
-                            embed.AddField("B. ", answers[1]);
-                        if (answers.Count == 3)
-                        {
-                            embed.AddField("B. ", answers[1]);
-                            embed.AddField("C. ", answers[2]);
-                        }
-                        if (answers.Count == 4)
-                        {
-                            embed.AddField("B. ", answers[1]);
-                            embed.AddField("C. ", answers[2]);
-                            embed.AddField("D. ", answers[3]);
-                        }
-
-                        IUserMessage message = await FollowupAsync(embed: embed.Build());
-                        long messageId = Int64.Parse(message.Id.ToString());
-                        stored.UpdateCreate(Constants.Constants.discordBotConnStr, "AddTriviaMessage", new List<System.Data.SqlClient.SqlParameter>
-                        {
-                            new System.Data.SqlClient.SqlParameter("@TriviaMessageID", messageId),
-                            new System.Data.SqlClient.SqlParameter("@CorrectAnswer", dr["CorrectAnswer"].ToString())
-                        });
-
-                        Emoji triviaA = new Emoji("🇦");
-                        Emoji triviaB = new Emoji("🇧");
-                        Emoji triviaC = new Emoji("🇨");
-                        Emoji triviaD = new Emoji("🇩");
-
-                        if (answers.Count == 2)
-                        {
-                            await message.AddReactionAsync(triviaA);
-                            await message.AddReactionAsync(triviaB);
-                        }
-
-                        if (answers.Count == 3)
-                        {
-                            await message.AddReactionAsync(triviaA);
-                            await message.AddReactionAsync(triviaB);
-                            await message.AddReactionAsync(triviaC);
-                        }
-
-                        if (answers.Count == 4)
-                        {
-                            await message.AddReactionAsync(triviaA);
-                            await message.AddReactionAsync(triviaB);
-                            await message.AddReactionAsync(triviaC);
-                            await message.AddReactionAsync(triviaD);
-                        }
-                    }
-                }
-                else
-                {
-                    // Can't get Trivia
-                    EmbedHelper errorEmbed = new EmbedHelper();
-                    await FollowupAsync(embed: errorEmbed.BuildErrorEmbed("", "Unable to retrieve token", Context.User.Username).Build());
-                }
+                await SendError("Unable to retrieve token");
+                return;
             }
-            else
+
+            string token = dtToken.Rows[0]["Token"].ToString();
+            var dtTrivia = stored.Select(connStr, "GetTrivia", new List<SqlParameter> { new SqlParameter("@Token", token) });
+
+            if (dtTrivia.Rows.Count == 0)
             {
-                // Can't get token
-                EmbedHelper errorEmbed = new EmbedHelper();
-                await FollowupAsync(embed: errorEmbed.BuildErrorEmbed("", "Uanble to retrieve token", Context.User.Username).Build());
+                await SendError("Unable to retrieve trivia");
+                return;
             }
+
+            foreach (DataRow dr in dtTrivia.Rows)
+            {
+                // Build and shuffle answers
+                var answers = new List<string>
+                {
+                    dr["CorrectAnswer"].ToString(),
+                    dr["FirstIncorrect"].ToString()
+                };
+
+                if (dr["SecondIncorrect"] != DBNull.Value)
+                    answers.Add(dr["SecondIncorrect"].ToString());
+                if (dr["ThirdIncorrect"] != DBNull.Value)
+                    answers.Add(dr["ThirdIncorrect"].ToString());
+
+                // Decode HTML entities and shuffle
+                answers = answers
+                    .Select(HttpUtility.HtmlDecode)
+                    .OrderBy(_ => Guid.NewGuid()) // Better than new Random() inside loop
+                    .ToList();
+
+                // Build embed
+                var embed = new EmbedBuilder
+                {
+                    Title = "BigBirdBot - Trivia",
+                    ThumbnailUrl = "https://www.mtzion.lib.il.us/kids-teens/question-mark.jpg/@@images/image.jpeg",
+                    Color = Color.Green,
+                    Footer = new EmbedFooterBuilder { Text = $"Command from: {Context.User.Username}" }
+                };
+
+                embed.AddField("Category", dr["Category"].ToString());
+                embed.AddField("Difficulty", Capitalize(dr["Difficulty"].ToString()));
+                embed.AddField("Question", HttpUtility.HtmlDecode(dr["Question"].ToString()));
+
+                var optionLabels = new[] { "A. ", "B. ", "C. ", "D. " };
+                for (int i = 0; i < answers.Count; i++)
+                    embed.AddField(optionLabels[i], answers[i]);
+
+                var message = await FollowupAsync(embed: embed.Build());
+                ulong messageId = message.Id;
+
+                stored.UpdateCreate(connStr, "AddTriviaMessage", new List<SqlParameter>
+                {
+                    new SqlParameter("@TriviaMessageID", messageId),
+                    new SqlParameter("@CorrectAnswer", dr["CorrectAnswer"].ToString())
+                });
+
+                // Add emoji reactions
+                var emojiOptions = new[] { "🇦", "🇧", "🇨", "🇩" }
+                    .Take(answers.Count)
+                    .Select(e => new Emoji(e));
+
+                foreach (var emoji in emojiOptions)
+                    await message.AddReactionAsync(emoji);
+            }
+        }
+
+        // Utility function to capitalize a string
+        private string Capitalize(string input) =>
+            string.IsNullOrEmpty(input) ? input : char.ToUpper(input[0]) + input[1..].ToLower();
+
+        // Utility to send error embed
+        private async Task SendError(string message)
+        {
+            var errorEmbed = new EmbedHelper();
+            await FollowupAsync(embed: errorEmbed.BuildErrorEmbed("", message, Context.User.Username).Build());
         }
     }
 }

@@ -2,42 +2,44 @@ namespace DiscordBot.Constants
 {
     public class URLCleanup
     {
-        public URLCleanup() { }
+        private static readonly Dictionary<string, string> UrlReplacements = new()
+        {
+            ["fxtwitter.com"] = "dl.fxtwitter.com",
+            ["vxtwitter.com"] = "dl.fxtwitter.com",
+            ["twitter.com"] = "dl.fxtwitter.com",
+            ["x.com"] = "dl.fxtwitter.com",
+            ["tiktok.com"] = "vxtiktok.com",
+            ["bsky.app"] = "bskx.app"
+        };
+
+        private static readonly string[] SocialMediaDomains = UrlReplacements.Keys
+            .Select(domain => "https://" + domain)
+            .ToArray();
 
         public string CleanURLEmbed(string message)
         {
-            if (message.Contains("https://fxtwitter.com"))
-                message = message.Replace("fxtwitter.com", "dl.fxtwitter.com");
-            if (message.Contains("https://vxtwitter.com"))
-                message = message.Replace("vxtwitter.com", "dl.fxtwitter.com");
-            if (message.Contains("https://twitter.com"))
-                message = message.Replace("twitter.com", "dl.fxtwitter.com");
-            if (message.Contains("https://x.com"))
-                message = message.Replace("x.com", "dl.fxtwitter.com");
-            if (message.Contains("https://tiktok.com"))
-                message = message.Replace("tiktok.com", "vxtiktok.com");
-            if (message.Contains("https://bsky.app"))
-                message = message.Replace("bsky.app", "bskx.app");
+            if (string.IsNullOrEmpty(message))
+                return message;
+
+            foreach (var kvp in UrlReplacements)
+            {
+                var oldValue = "https://" + kvp.Key;
+                if (message.Contains(oldValue))
+                {
+                    message = message.Replace(kvp.Key, kvp.Value);
+                }
+            }
 
             return message;
         }
 
         public bool HasSocialMediaEmbed(string message)
         {
-            if (message.Contains("https://fxtwitter.com"))
-                return true;
-            if (message.Contains("https://vxtwitter.com"))
-                return true;
-            if (message.Contains("https://twitter.com"))
-                return true;
-            if (message.Contains("https://x.com"))
-                return true;
-            if (message.Contains("https://tiktok.com"))
-                return true;
-            if (message.Contains("https://bsky.app"))
-                return true;
+            if (string.IsNullOrEmpty(message))
+                return false;
 
-            return false;
+            return SocialMediaDomains.Any(message.Contains);
         }
     }
+
 }
