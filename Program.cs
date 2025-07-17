@@ -52,75 +52,101 @@ internal class Program
     {
         try
         {
-            _ = loggingService.InfoAsync("Starting Bot");
+            await loggingService.InfoAsync("Starting Bot");
 
 #if DEBUG
-            await client.LoginAsync(TokenType.Bot, Constants.devBotToken);
+        var token = Constants.devBotToken;
 #else
-            await client.LoginAsync(TokenType.Bot, Constants.botToken);
+            var token = Constants.botToken;
 #endif
+            await client.LoginAsync(TokenType.Bot, token);
 
-            client.Disconnected += async (e) =>
+            RegisterEvents(client);
+
+            if (client.ConnectionState != Discord.ConnectionState.Connected &&
+                client.ConnectionState != Discord.ConnectionState.Connecting)
             {
-                await loggingService.InfoAsync("Bot disconnected - " + client.ConnectionState.ToString());
-
-                if (client.ConnectionState == Discord.ConnectionState.Connecting)
-                    await loggingService.InfoAsync("Bot connecting - " + client.ConnectionState.ToString());
-            };
-
-            client.Connected += async () =>
-            {
-                await loggingService.InfoAsync("Bot connected");
-                await client.SetGameAsync("/reportbug");
-            };
-
-            if (client.ConnectionState != Discord.ConnectionState.Connected && client.ConnectionState != Discord.ConnectionState.Connecting)
                 await client.StartAsync();
-
-            client.ReactionAdded += HandleReactionAsync;
-            client.JoinedGuild += JoinedGuild;
-            client.UserJoined += UserJoined;
-            client.UserLeft += UserLeft;
-            client.ButtonExecuted += ButtonHandler;
-            client.MessageReceived += MessageReceived;
-            client.UserVoiceStateUpdated += UserVoiceStateUpdated;
-            client.Log += LogMessage;
+            }
 
             await Task.Delay(Timeout.Infinite);
         }
-        catch (WebSocketException wse)
+        catch (Exception ex) when (ex is WebSocketException
+                                 || ex is WebSocketClosedException
+                                 || ex is GatewayReconnectException)
         {
-            await loggingService.InfoAsync("WebSocketException: " + wse.Message);
-            await client.LogoutAsync();
-            client = new DiscordSocketClient();
-            client = services.GetRequiredService<DiscordSocketClient>();
-            await RunBot(client);
-        }
-        catch (WebSocketClosedException wsce)
-        {
-            await loggingService.InfoAsync("WebSocketClosedException: " + wsce.Message);
-            await client.LogoutAsync();
-            client = new DiscordSocketClient();
-            client = services.GetRequiredService<DiscordSocketClient>();
-            await RunBot(client);
-        }
-        catch (GatewayReconnectException gre)
-        {
-            await loggingService.InfoAsync("GatewayReconnectException: " + gre.Message);
-            await client.LogoutAsync();
-            client = new DiscordSocketClient();
-            client = services.GetRequiredService<DiscordSocketClient>();
-            await RunBot(client);
+            await HandleReconnectAsync(client, ex);
         }
         catch (Exception ex)
         {
-            await loggingService.InfoAsync("Exception: " + ex.Message);
-            await client.LogoutAsync();
-            client = new DiscordSocketClient();
-            client = services.GetRequiredService<DiscordSocketClient>();
-            await RunBot(client);
+            await HandleReconnectAsync(client, ex);
         }
     }
+
+    private void RegisterEvents(DiscordSocketClient client)
+    {
+        // Unsubscribe first to avoid multiple subscriptions on reconnects
+        client.Disconnected -= OnDisconnectedAsync;
+        client.Disconnected += OnDisconnectedAsync;
+
+        client.Connected -= OnConnectedAsync;
+        client.Connected += OnConnectedAsync;
+
+        client.ReactionAdded -= HandleReactionAsync;
+        client.ReactionAdded += HandleReactionAsync;
+
+        client.JoinedGuild -= JoinedGuild;
+        client.JoinedGuild += JoinedGuild;
+
+        client.UserJoined -= UserJoined;
+        client.UserJoined += UserJoined;
+
+        client.UserLeft -= UserLeft;
+        client.UserLeft += UserLeft;
+
+        client.ButtonExecuted -= ButtonHandler;
+        client.ButtonExecuted += ButtonHandler;
+
+        client.MessageReceived -= MessageReceived;
+        client.MessageReceived += MessageReceived;
+
+        client.UserVoiceStateUpdated -= UserVoiceStateUpdated;
+        client.UserVoiceStateUpdated += UserVoiceStateUpdated;
+
+        client.Log -= LogMessage;
+        client.Log += LogMessage;
+    }
+
+    private async Task OnDisconnectedAsync(Exception arg)
+    {
+        await loggingService.InfoAsync($"Bot disconnected - {client.ConnectionState}");
+        if (client.ConnectionState == Discord.ConnectionState.Connecting)
+            await loggingService.InfoAsync($"Bot connecting - {client.ConnectionState}");
+    }
+
+    private async Task OnConnectedAsync()
+    {
+        await loggingService.InfoAsync("Bot connected");
+        await client.SetGameAsync("/reportbug");
+    }
+
+    private async Task HandleReconnectAsync(DiscordSocketClient client, Exception ex)
+    {
+        await loggingService.InfoAsync($"{ex.GetType().Name}: {ex.Message}");
+        try
+        {
+            await client.LogoutAsync();
+        }
+        catch
+        {
+            // ignore logout errors
+        }
+        client.Dispose();
+
+        var newClient = services.GetRequiredService<DiscordSocketClient>();
+        await RunBot(newClient);
+    }
+
 
     #region DiscordSocketClient Events
     private async Task UserLeft(SocketGuild arg1, SocketUser arg2)
