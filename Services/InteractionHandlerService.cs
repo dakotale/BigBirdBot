@@ -45,55 +45,70 @@ namespace DiscordBot.Services
 
         private async Task ReadyAsync()
         {
-            IReadOnlyCollection<Discord.Rest.RestGlobalCommand> commands =
-            //await _handler.RegisterCommandsToGuildAsync(_configuration.GetValue<ulong>("testGuild"))
-            await _handler.RegisterCommandsGloballyAsync();
-
+            // Register commands globally and log their names and types
+            var commands = await _handler.RegisterCommandsGloballyAsync();
             await _handler.RegisterCommandsAsync();
 
-            foreach (Discord.Rest.RestGlobalCommand? command in commands)
-                _ = _services.GetRequiredService<LoggingService>().DebugAsync($"Name:{command.Name} Type.{command.Type} loaded");
-
-
-            StoredProcedure stored = new StoredProcedure();
-            DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "GetPlayerConnected", new List<SqlParameter>());
-
-            if (dt.Rows.Count > 0)
+            var loggingService = _services.GetRequiredService<LoggingService>();
+            foreach (var command in commands)
             {
-                foreach (DataRow dr in dt.Rows)
+                // Fire and forget debug logs
+                _ = loggingService.DebugAsync($"Name:{command.Name} Type.{command.Type} loaded");
+            }
+
+            // Fetch player connected data
+            var stored = new StoredProcedure();
+            var dt = stored.Select(Constants.Constants.discordBotConnStr, "GetPlayerConnected", new List<SqlParameter>());
+
+            if (dt.Rows.Count == 0)
+                return;
+
+            // Cache client guilds for faster lookup
+            var guilds = _client.Guilds;
+
+            foreach (DataRow row in dt.Rows)
+            {
+                if (!ulong.TryParse(row["VoiceChannelID"].ToString(), out var voiceChannelId) ||
+                    !ulong.TryParse(row["TextChannelID"].ToString(), out var textChannelId))
                 {
-                    string voiceChannelId = dr["VoiceChannelID"].ToString();
-                    string textChannelId = dr["TextChannelID"].ToString();
-                    foreach (SocketGuild? guild in _client.Guilds)
+                    // Invalid IDs, skip this row
+                    continue;
+                }
+
+                foreach (var guild in guilds)
+                {
+                    var voiceChannel = guild.GetVoiceChannel(voiceChannelId);
+                    var textChannel = guild.GetTextChannel(textChannelId);
+
+                    if (voiceChannel == null || textChannel == null)
+                        continue;
+
+                    if (voiceChannel.ConnectedUsers.Count == 0)
                     {
-                        SocketVoiceChannel? voiceChannel = guild.VoiceChannels.Where(s => s.Id.ToString().Equals(voiceChannelId)).FirstOrDefault();
-                        SocketTextChannel? textChannel = guild.TextChannels.Where(s => s.Id.ToString().Equals(textChannelId)).FirstOrDefault();
-                        if (voiceChannel != null && textChannel != null)
-                        {
-                            if (voiceChannel.ConnectedUsers.Count > 0)
-                            {
-                                _ = Task.Run(async () =>
-                                {
-                                    await _audioService.StartAsync();
-                                    await Task.Delay(3000);
-
-                                    PlayerChannelBehavior channelBehavior = PlayerChannelBehavior.Join;
-                                    CustomPlayerOptions options = new CustomPlayerOptions();
-                                    options.SelfMute = true;
-                                    options.TextChannel = textChannel;
-                                    PlayerRetrieveOptions retrieveOptions = new PlayerRetrieveOptions(ChannelBehavior: channelBehavior);
-
-                                    await _audioService.Players.JoinAsync<CustomPlayer, CustomPlayerOptions>(voiceChannel, CreatePlayerAsync, options);
-                                });
-
-                                Console.WriteLine($"{guild.Name} Player joined successfully");
-                            }
-                            else
-                            {
-                                Console.WriteLine($"No Connected Users for {voiceChannel.Name} in {guild.Name} so the bot will not join.");
-                            }
-                        }
+                        Console.WriteLine($"No connected users for {voiceChannel.Name} in {guild.Name}, so the bot will not join.");
+                        continue;
                     }
+
+                    // Start the player join in a background task
+                    _ = Task.Run(async () =>
+                    {
+                        await _audioService.StartAsync();
+                        await Task.Delay(3000); // Allow time for startup
+
+                        var options = new CustomPlayerOptions
+                        {
+                            SelfMute = true,
+                            TextChannel = textChannel
+                        };
+
+                        await _audioService.Players.JoinAsync<CustomPlayer, CustomPlayerOptions>(
+                            voiceChannel,
+                            CreatePlayerAsync,
+                            options
+                        );
+                    });
+
+                    Console.WriteLine($"{guild.Name} Player joined successfully");
                 }
             }
         }

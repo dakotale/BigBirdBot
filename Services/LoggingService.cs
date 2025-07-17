@@ -28,7 +28,7 @@ namespace DiscordBot.Services
             All
         }
 
-        public enum Severity
+        public enum Severity : int
         {
             Debug = ConsoleColor.DarkBlue,
             Info = ConsoleColor.DarkGreen,
@@ -36,138 +36,140 @@ namespace DiscordBot.Services
             Error = ConsoleColor.DarkRed
         }
 
-        private readonly OutputType _debugType = OutputType.Console;
-
-        private readonly FilterSeverity _filterSeverity = FilterSeverity.All;
-
+        private readonly OutputType _outputType;
+        private readonly FilterSeverity _filterSeverity;
         private readonly string? _logPath;
+        private readonly LoggingService _self; // For event handlers
 
         public LoggingService(IServiceProvider services)
+            : this(services, OutputType.Console, FilterSeverity.All, null)
         {
-            services.GetRequiredService<CommandService>().Log += LogAsync;
-            services.GetRequiredService<DiscordSocketClient>().Log += LogAsync;
-            services.GetRequiredService<InteractionService>().Log += LogAsync;
         }
 
         public LoggingService(IServiceProvider services, OutputType outputType, FilterSeverity filterSeverity)
+            : this(services, outputType, filterSeverity, null)
         {
-            _debugType = outputType;
-            _filterSeverity = filterSeverity;
-
-            services.GetRequiredService<CommandService>().Log += LogAsync;
-            services.GetRequiredService<DiscordSocketClient>().Log += LogAsync;
         }
 
-        public LoggingService(IServiceProvider services, OutputType outputType, FilterSeverity filterSeverity, string logPath)
+        public LoggingService(IServiceProvider services, OutputType outputType, FilterSeverity filterSeverity, string? logPath)
         {
-            _debugType = outputType;
+            _outputType = outputType;
+            _filterSeverity = filterSeverity;
             _logPath = logPath;
-            _filterSeverity = filterSeverity;
 
-            services.GetRequiredService<CommandService>().Log += LogAsync;
-            services.GetRequiredService<DiscordSocketClient>().Log += LogAsync;
+            var commandService = services.GetRequiredService<CommandService>();
+            var client = services.GetRequiredService<DiscordSocketClient>();
+            var interactionService = services.GetService<InteractionService>();
+
+            commandService.Log += OnDiscordLogAsync;
+            client.Log += OnDiscordLogAsync;
+            if (interactionService != null)
+                interactionService.Log += OnDiscordLogAsync;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining & MethodImplOptions.AggressiveOptimization)]
-        public Task DebugAsync(string message, [CallerMemberName] string caller = "", [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        public Task DebugAsync(string message, [CallerMemberName] string caller = "",
+            [CallerFilePath] string file = "", [CallerLineNumber] int line = 0) =>
+            LogAsync(Severity.Debug, message, caller, file, line);
+
+        public Task InfoAsync(string message, [CallerMemberName] string caller = "",
+            [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
-            return LogAsync(Severity.Debug, message, caller, file, line);
+            string timestampedMessage = $"{DateTime.Now:G} - {message}";
+            return LogAsync(Severity.Info, timestampedMessage, caller, file, line);
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining & MethodImplOptions.AggressiveOptimization)]
-        public Task InfoAsync(string message, [CallerMemberName] string caller = "", [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
-        {
-            StringBuilder sb = new StringBuilder();
-            sb.Append(DateTime.Now.ToLongDateString());
-            sb.Append("-");
-            sb.Append(message);
-            return LogAsync(Severity.Info, sb.ToString(), caller, file, line);
-        }
+        public Task WarningAsync(string message, [CallerMemberName] string caller = "",
+            [CallerFilePath] string file = "", [CallerLineNumber] int line = 0) =>
+            LogAsync(Severity.Warning, message, caller, file, line);
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining & MethodImplOptions.AggressiveOptimization)]
-        public Task WarningAsync(string message, [CallerMemberName] string caller = "", [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
-        {
-            return LogAsync(Severity.Warning, message, caller, file, line);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining & MethodImplOptions.AggressiveOptimization)]
         public Task ErrorAsync(Exception? ex)
         {
-            if (ex == null)
-                return Task.CompletedTask;
+            if (ex == null) return Task.CompletedTask;
 
-            StackTrace st = new StackTrace(ex, true);
-            StackFrame? sf = st.GetFrame(st.FrameCount - 1);
+            var st = new StackTrace(ex, true);
+            var sf = st.GetFrame(st.FrameCount - 1);
 
-            return LogAsync(Severity.Error, $"{ex.GetType().FullName} - {ex.Message}{Environment.NewLine}{ex.StackTrace}", sf!.GetMethod()!.Name, sf.GetFileName()!, sf.GetFileLineNumber());
+            return LogAsync(
+                Severity.Error,
+                $"{ex.GetType().FullName} - {ex.Message}{Environment.NewLine}{ex.StackTrace}",
+                sf?.GetMethod()?.Name ?? "UnknownMethod",
+                sf?.GetFileName() ?? "UnknownFile",
+                sf?.GetFileLineNumber() ?? 0);
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining & MethodImplOptions.AggressiveOptimization)]
-        private static bool ShouldLog(in Severity severity, in FilterSeverity filterSeverity)
+        private static bool ShouldLog(Severity severity, FilterSeverity filterSeverity) => filterSeverity switch
         {
-            return filterSeverity switch
-            {
-                FilterSeverity.All => true,
-                FilterSeverity.NoDebug => severity is not Severity.Debug,
-                FilterSeverity.Extended => severity is Severity.Warning or Severity.Error,
-                FilterSeverity.Production => severity is Severity.Error,
-                FilterSeverity.None => false,
-                _ => throw new ArgumentOutOfRangeException(nameof(filterSeverity), filterSeverity, null)
-            };
-        }
+            FilterSeverity.All => true,
+            FilterSeverity.NoDebug => severity != Severity.Debug,
+            FilterSeverity.Extended => severity == Severity.Warning || severity == Severity.Error,
+            FilterSeverity.Production => severity == Severity.Error,
+            FilterSeverity.None => false,
+            _ => throw new ArgumentOutOfRangeException(nameof(filterSeverity), filterSeverity, null)
+        };
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining & MethodImplOptions.AggressiveOptimization)]
-        private Task LogAsync(Severity severity, string message = "", [CallerMemberName] string caller = "", [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        private Task LogAsync(Severity severity, string message,
+            [CallerMemberName] string caller = "",
+            [CallerFilePath] string file = "",
+            [CallerLineNumber] int line = 0)
         {
-            if (string.IsNullOrEmpty(message) || _debugType == OutputType.None || !ShouldLog(in severity, in _filterSeverity))
+            if (string.IsNullOrWhiteSpace(message) || _outputType == OutputType.None || !ShouldLog(severity, _filterSeverity))
                 return Task.CompletedTask;
 
-            if (_debugType is OutputType.Console or OutputType.All)
+            string prefix = $"{DateTime.Now:HH:mm:ss} [{Path.GetFileNameWithoutExtension(file)}->{caller} L{line}] ";
+
+            if (_outputType == OutputType.Console || _outputType == OutputType.All)
             {
+                var originalColor = Console.ForegroundColor;
                 Console.ForegroundColor = (ConsoleColor)severity;
-                Console.Write($@"{DateTime.Now.ToLongTimeString()} [{Path.GetFileNameWithoutExtension(file)}->{caller} L{line}] ");
+                Console.Write(prefix);
                 Console.ForegroundColor = ConsoleColor.White;
-                Console.Write($@"{message}{Environment.NewLine}");
+                Console.WriteLine(message);
+                Console.ForegroundColor = originalColor;
             }
 
-            if (_logPath != null && _debugType is OutputType.LogFile or OutputType.All)
-                File.WriteAllText(_logPath, $@"[{Path.GetFileNameWithoutExtension(file)}->{caller} L{line}] {message}");
-
-            return Task.CompletedTask;
-        }
-
-        private static Task LogAsync(LogMessage log)
-        {
-            string fileName = @"Logs\ExceptionLog_" + DateTime.Now.Date.ToString("yyyy_MM_dd") + ".txt";
-            string severity = "", source = "", message = "", exception = "", output = "";
-
-            if (!string.IsNullOrEmpty(log.Message))
-                message = log.Message;
-
-            if (log.Exception != null)
+            if (!string.IsNullOrEmpty(_logPath) && (_outputType == OutputType.LogFile || _outputType == OutputType.All))
             {
-                severity = log.Severity.ToString() ?? "";
-                source = string.IsNullOrEmpty(log.Source) ? "" : log.Source;
-                message = string.IsNullOrEmpty(log.Message) ? "" : log.Message;
-                exception = log.Exception.ToString() ?? "";
-
-                output = DateTime.Now.ToString("HH:mm:ss") + ": " + message;
-                output += Environment.NewLine + exception + Environment.NewLine + Environment.NewLine;
-            }
-
-            if (!File.Exists(fileName))
-            {
-                using (StreamWriter sw = File.CreateText(fileName))
+                try
                 {
-                    sw.WriteLine($"Bot Exceptions for {DateTime.Now.ToString("yyyy-MM-dd")}");
+                    // Append text instead of overwriting file
+                    File.AppendAllText(_logPath, prefix + message + Environment.NewLine);
+                }
+                catch (Exception ex)
+                {
+                    // Optionally handle file IO exceptions, maybe fallback to console
+                    Console.WriteLine($"Logging to file failed: {ex.Message}");
                 }
             }
-            using (StreamWriter sw = File.AppendText(fileName))
-            {
-                sw.WriteLine(output);
-            }
 
             return Task.CompletedTask;
+        }
+
+        private Task OnDiscordLogAsync(LogMessage log)
+        {
+            try
+            {
+                string logDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs");
+                Directory.CreateDirectory(logDir);
+
+                string fileName = Path.Combine(logDir, $"ExceptionLog_{DateTime.Now:yyyy_MM_dd}.txt");
+                var output = new StringBuilder();
+
+                if (!string.IsNullOrEmpty(log.Message))
+                    output.AppendLine($"{DateTime.Now:HH:mm:ss}: {log.Message}");
+
+                if (log.Exception != null)
+                    output.AppendLine(log.Exception.ToString());
+
+                if (output.Length > 0)
+                    File.AppendAllText(fileName, output + Environment.NewLine);
+
+                return Task.CompletedTask;
+            }
+            catch
+            {
+                // Swallow exceptions from logging to avoid crash loops
+                return Task.CompletedTask;
+            }
         }
     }
 }

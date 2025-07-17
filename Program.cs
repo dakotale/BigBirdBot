@@ -665,42 +665,45 @@ internal class Program
     }
     private async Task UserVoiceStateUpdated(SocketUser user, SocketVoiceState before, SocketVoiceState after)
     {
-        if (user.IsBot && after.VoiceChannel == null)
-        {
-            foreach (SocketGuildUser? u in before.VoiceChannel.ConnectedUsers)
-                if (u.IsBot)
-                    await u.VoiceChannel.DisconnectAsync();
+        var guild = before.VoiceChannel?.Guild ?? after.VoiceChannel?.Guild;
+        if (guild == null)
+            return;
 
-            StoredProcedure stored = new StoredProcedure();
-            stored.UpdateCreate(Constants.discordBotConnStr, "DeletePlayerConnected", new List<SqlParameter>
+        var serverIdParam = new SqlParameter("@ServerID", guild.Id);
+
+        // Helper method to disconnect all bots in a voice channel
+        async Task DisconnectBotsAsync(SocketVoiceChannel channel)
+        {
+            foreach (var botUser in channel.ConnectedUsers.Where(u => u.IsBot))
             {
-                new SqlParameter("@ServerID", Int64.Parse(before.VoiceChannel.Guild.Id.ToString()))
-            });
+                await botUser.VoiceChannel.DisconnectAsync();
+            }
         }
 
-        if (!user.IsBot)
+        if (user.IsBot)
         {
-            // This should be the voice channel
-            // Commenting out the last part to handle moves or disconnects
-            if (before.VoiceChannel != null && before.VoiceChannel.ConnectedUsers.Where(s => !s.IsBot).ToList().Count == 0 && after.VoiceChannel == null) //&& after.VoiceChannel == null)
+            // If bot left voice channel, disconnect all bots in the previous channel
+            if (after.VoiceChannel == null && before.VoiceChannel != null)
             {
-                foreach (SocketGuildUser? u in before.VoiceChannel.ConnectedUsers)
-                    if (u.IsBot)
-                        await u.VoiceChannel.DisconnectAsync();
+                await DisconnectBotsAsync(before.VoiceChannel);
 
-                StoredProcedure stored = new StoredProcedure();
-
-                if (before.VoiceChannel != null)
+                var stored = new StoredProcedure();
+                stored.UpdateCreate(Constants.discordBotConnStr, "DeletePlayerConnected", new List<SqlParameter> { serverIdParam });
+            }
+        }
+        else
+        {
+            // If a non-bot user leaves voice channel and no other non-bots remain
+            if (before.VoiceChannel != null && after.VoiceChannel == null)
+            {
+                bool anyNonBotLeft = before.VoiceChannel.ConnectedUsers.Any(u => !u.IsBot);
+                if (!anyNonBotLeft)
                 {
-                    stored.UpdateCreate(Constants.discordBotConnStr, "DeletePlayerConnected", new List<SqlParameter>
-                    {
-                        new SqlParameter("@ServerID", Int64.Parse(before.VoiceChannel.Guild.Id.ToString()))
-                    });
+                    await DisconnectBotsAsync(before.VoiceChannel);
 
-                    stored.UpdateCreate(Constants.discordBotConnStr, "DeleteMusicQueueAll", new List<SqlParameter>
-                    {
-                        new SqlParameter("@ServerID", Int64.Parse(before.VoiceChannel.Guild.Id.ToString()))
-                    });
+                    var stored = new StoredProcedure();
+                    stored.UpdateCreate(Constants.discordBotConnStr, "DeletePlayerConnected", new List<SqlParameter> { serverIdParam });
+                    stored.UpdateCreate(Constants.discordBotConnStr, "DeleteMusicQueueAll", new List<SqlParameter> { serverIdParam });
                 }
             }
         }
