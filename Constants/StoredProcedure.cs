@@ -44,6 +44,7 @@ namespace DiscordBot.Constants
 
             conn.Open();
             cmd.ExecuteNonQuery();
+            cmd.Parameters.Clear();
         }
 
     }

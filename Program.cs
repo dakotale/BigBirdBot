@@ -669,7 +669,7 @@ internal class Program
         if (guild == null)
             return;
 
-        var serverIdParam = new SqlParameter("@ServerID", guild.Id);
+        var serverIdParam = new SqlParameter("@ServerID", guild.Id.ToString());
 
         // Helper method to disconnect all bots in a voice channel
         async Task DisconnectBotsAsync(SocketVoiceChannel channel)
@@ -791,7 +791,7 @@ internal class Program
             return;
 
         // Mark the message as NSFW
-        if (reaction.Emote.Name == nsfwMarker.Name && download.Author.IsBot && download.Reactions.Count < 2 && !embed.Any(e => e.Color.Equals(Discord.Color.Blue)))
+        if (reaction.Emote.Name == nsfwMarker.Name && download.Author.IsBot && download.Reactions.Count < 2)
         {
             var connStr = Constants.discordBotConnStr;
             var userId = reaction.User.Value.Id.ToString();
@@ -822,12 +822,14 @@ internal class Program
 
                 if (!keywordRows.AsEnumerable().Any(r => r["NSFW"].ToString() == "1"))
                 {
-                    stored.Select(connStr, "MarkKeywordNSFW", new List<SqlParameter>
+                    var nsfwResult = stored.Select(connStr, "MarkKeywordNSFW", new List<SqlParameter>
                     {
                         new SqlParameter("@Message", messageContent)
                     });
 
-                    await channel.Value.SendMessageAsync(embed:
+                    if (nsfwResult.Rows.Count > 0)
+                    {
+                        await channel.Value.SendMessageAsync(embed:
                         embedNsfw.BuildMessageEmbed(
                             "BigBirdBot - NSFW",
                             $"Thanks {reaction.User.Value.Mention}, the message was marked as NSFW, sorry about that :)",
@@ -835,6 +837,7 @@ internal class Program
                             "BigBirdBot",
                             Discord.Color.Blue
                         ).Build());
+                    }
                 }
             }
 

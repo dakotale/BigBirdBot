@@ -821,8 +821,8 @@ namespace DiscordBot.SlashCommands
             stored.UpdateCreate(Constants.Constants.discordBotConnStr, "AddPlayerConnected", new List<SqlParameter>
             {
                 new SqlParameter("@ServerID", Int64.Parse(Context.Guild.Id.ToString())),
-                new SqlParameter("VoiceChannelID", Int64.Parse(voiceState.VoiceChannel.Id.ToString())),
-                new SqlParameter("TextChannelID", Int64.Parse((Context.Channel as ITextChannel).Id.ToString())),
+                new SqlParameter("@VoiceChannelID", Int64.Parse(voiceState.VoiceChannel.Id.ToString())),
+                new SqlParameter("@TextChannelID", Int64.Parse((Context.Channel as ITextChannel).Id.ToString())),
                 new SqlParameter("@CreatedBy", Context.User.Id.ToString())
             });
         }

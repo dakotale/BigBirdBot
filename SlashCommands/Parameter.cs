@@ -4,6 +4,8 @@ using Discord.WebSocket;
 using DiscordBot.Constants;
 using DiscordBot.Helper;
 using DiscordBot.Misc;
+using System;
+using System.ComponentModel;
 using System.Data;
 using System.Data.SqlClient;
 using System.Net;
@@ -407,6 +409,36 @@ namespace DiscordBot.SlashCommands
             }
 
 
+        }
+
+        [SlashCommand("addreminder", "Have the bot remind you of something")]
+        [EnabledInDm(true)]
+        public async Task HandleReminder(string reminder, [MinValue(1), MaxValue(12)] int monthNumber, [MinValue(1), MaxValue(31)] int dayNumber, [MinValue(2025), MaxValue(2027)] int year,
+                                        [MinValue(1), MaxValue(12)] int hours, [MinValue(0), MaxValue(60)] int minute, [Choice("AM", "AM"), Choice("PM", "PM")] string ampm)
+        {
+            await DeferAsync();
+            EmbedHelper embedHelper = new EmbedHelper();
+            StoredProcedure stored = new StoredProcedure();
+
+            if (ampm.Equals("PM") && hours != 12)
+                hours += 12;
+
+            if (ampm.Equals("AM") && hours == 12)
+                hours -= 12;
+
+            DateTime eventReminder = new DateTime(year, monthNumber, dayNumber, hours, minute, 0);
+
+            stored.UpdateCreate(Constants.Constants.discordBotConnStr, "AddEvent", new List<SqlParameter>
+            {
+                new SqlParameter("@EventName", reminder),
+                new SqlParameter("@EventDescription", reminder),
+                new SqlParameter("@EventDateTime", eventReminder),
+                new SqlParameter("@EventReminderTime", 0),
+                new SqlParameter("@EventChannelSource", Context.Channel.Id.ToString()),
+                new SqlParameter("@CreatedBy", Context.User.Mention.ToString())
+            });
+
+            await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Event Reminder", "Thanks for the reminder, I'll let you know when it gets closer to the date/time ;)", "", Context.User.Username, Discord.Color.Blue).Build(), ephemeral: true);
         }
     }
 }
