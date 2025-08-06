@@ -35,8 +35,11 @@ internal class Program
     private static void Main(string[] args)
     {
         System.Timers.Timer eventTimer;
-        eventTimer = new System.Timers.Timer(60000); // Check every 60 seconds
+        // Start a timer for 60 seconds for scheduled events.
+        eventTimer = new System.Timers.Timer(60000); 
+        // Once the timer reaches 60 seconds, check if there are any scheduled events.
         eventTimer.Elapsed += OnTimedEvent;
+        // Reset them and start it again.
         eventTimer.AutoReset = true;
         eventTimer.Enabled = true;
         eventTimer.Start();
@@ -45,6 +48,7 @@ internal class Program
     public async Task MainAsync()
     {
         await services.GetRequiredService<InteractionHandlerService>().InitializeAsync();
+        // Setup the bot with the token
         await RunBot(client);
     }
 
@@ -71,6 +75,7 @@ internal class Program
 
             await Task.Delay(Timeout.Infinite);
         }
+        // Common exceptions thrown by the Discord.NET API
         catch (Exception ex) when (ex is WebSocketException
                                  || ex is WebSocketClosedException
                                  || ex is GatewayReconnectException)
@@ -83,6 +88,7 @@ internal class Program
         }
     }
 
+    // Supported event-driven events for the bot
     private void RegisterEvents(DiscordSocketClient client)
     {
         // Unsubscribe first to avoid multiple subscriptions on reconnects
@@ -117,6 +123,7 @@ internal class Program
         client.Log += LogMessage;
     }
 
+    // Console message when the bot disconnects to the Discord API
     private async Task OnDisconnectedAsync(Exception arg)
     {
         await loggingService.InfoAsync($"Bot disconnected - {client.ConnectionState}");
@@ -124,12 +131,14 @@ internal class Program
             await loggingService.InfoAsync($"Bot connecting - {client.ConnectionState}");
     }
 
+    // Console message when the bot connects to the Discord API
     private async Task OnConnectedAsync()
     {
         await loggingService.InfoAsync("Bot connected");
         await client.SetGameAsync("/reportbug");
     }
 
+    // When the connection to discord was lost, try to reconnect without breaking everything.
     private async Task HandleReconnectAsync(DiscordSocketClient client, Exception ex)
     {
         await loggingService.InfoAsync($"{ex.GetType().Name}: {ex.Message}");
@@ -449,6 +458,8 @@ internal class Program
             }
         }
     }
+
+    // This runs when a message comes in for the keyword handling
     private async Task MessageReceived(SocketMessage msg)
     {
         if (msg is not { Author.IsBot: false, Author.IsWebhook: false, Channel: SocketGuildChannel msgChannel })
@@ -663,6 +674,8 @@ internal class Program
             });
         }
     }
+
+    // Auto leave if no one is in VC
     private async Task UserVoiceStateUpdated(SocketUser user, SocketVoiceState before, SocketVoiceState after)
     {
         var guild = before.VoiceChannel?.Guild ?? after.VoiceChannel?.Guild;
@@ -772,6 +785,7 @@ internal class Program
     #endregion
 
     #region Emojis and Timed Events
+    // Handle trivia and NSFW keyword stuff
     private async Task HandleReactionAsync(Cacheable<IUserMessage, ulong> message, Cacheable<IMessageChannel, ulong> channel, SocketReaction reaction)
     {
         Emoji triviaA = new Emoji("🇦");
@@ -974,27 +988,46 @@ internal class Program
                 string tableName = dr["ThirstTable"].ToString();
                 tableName = string.Concat(tableName[0].ToString().ToUpper(), tableName.AsSpan(1));
 
-                // Send the DM :)
-                IUser user = await client.GetUserAsync(ulong.Parse(userId));
-
-                if (dr["FilePath"].ToString().Contains("C:\\"))
-                    await user.SendFileAsync(filePath, $"**{tableName} - {DateTime.Now.ToString("MM/dd/yyyy hh:mm tt ET")}**");
-                else
+                try
                 {
-                    if (IsLinkWorking(filePath))
-                        await user.SendMessageAsync($"**{tableName} - {DateTime.Now.ToString("MM/dd/yyyy hh:mm tt ET")}**\n**URL:** {filePath}");
+                    // Send the DM :)
+                    IUser user = await client.GetUserAsync(ulong.Parse(userId));
+
+                    if (dr["FilePath"].ToString().Contains("C:\\"))
+                        await user.SendFileAsync(filePath, $"**{tableName} - {DateTime.Now.ToString("MM/dd/yyyy hh:mm tt ET")}**");
                     else
                     {
-                        storedProcedure.UpdateCreate(Constants.discordBotConnStr, "DeleteThirstURL", new List<SqlParameter> { new SqlParameter("@FilePath", filePath), new SqlParameter("@TableName", "") });
-                        await user.SendMessageAsync($"**{tableName} - {DateTime.Now.ToString("MM/dd/yyyy hh:mm tt ET")}**\n**URL:** {filePath} - This was a dead link and was removed from future postings");
+                        if (IsLinkWorking(filePath))
+                            await user.SendMessageAsync($"**{tableName} - {DateTime.Now.ToString("MM/dd/yyyy hh:mm tt ET")}**\n**URL:** {filePath}");
+                        else
+                        {
+                            storedProcedure.UpdateCreate(Constants.discordBotConnStr, "DeleteThirstURL", new List<SqlParameter> { new SqlParameter("@FilePath", filePath), new SqlParameter("@TableName", "") });
+                            await user.SendMessageAsync($"**{tableName} - {DateTime.Now.ToString("MM/dd/yyyy hh:mm tt ET")}**\n**URL:** {filePath} - This was a dead link and was removed from future postings");
+                        }
                     }
-                }
 
-                storedProcedure.UpdateCreate(connStr, "AddUsersThirstTableLog", new List<SqlParameter>
+                    storedProcedure.UpdateCreate(connStr, "AddUsersThirstTableLog", new List<SqlParameter>
+                    {
+                        new SqlParameter("@UserID", userId),
+                        new SqlParameter("@FilePath", filePath)
+                    });
+                }
+                catch (HttpException ex)
                 {
-                    new SqlParameter("@UserID", userId),
-                    new SqlParameter("@FilePath", filePath)
-                });
+                    // If we reach here, means the user doesn't allow DMs
+                    // Send a DM saying an issue happened
+                    IUser user = await client.GetUserAsync(ulong.Parse("171369791486033920"));
+                    await user.SendMessageAsync($"Something went wrong sending to this user: {userId}, might be an issue with allowing DMs.\nException Message: {ex.Message}");
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    // If we reach here, something really went wrong and should handle it.
+                    // Send a DM saying an issue happened
+                    IUser user = await client.GetUserAsync(ulong.Parse("171369791486033920"));
+                    await user.SendMessageAsync($"Something went wrong sending to this user: {userId}\nException Message: {ex.Message}");
+                    return;
+                }
             }
         }
 
