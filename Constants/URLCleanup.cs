@@ -1,5 +1,8 @@
 namespace DiscordBot.Constants
 {
+    /// <summary>
+    /// Static cleanup of common /fixembed handles.
+    /// </summary>
     public class URLCleanup
     {
         private static readonly Dictionary<string, string> UrlReplacements = new()

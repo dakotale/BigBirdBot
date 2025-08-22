@@ -32,6 +32,16 @@ internal class Program
         //lavaNode = services.GetRequiredService<LavaNode>();
         loggingService.InfoAsync("Services Initialized");
     }
+
+    /// <summary>
+    /// Contains the core to run the bot
+    /// and start a System.Timer of 60 seconds.
+    /// The 60 second timer is for the scheduled 
+    /// event time.
+    /// Either for the Event Reminders or the
+    /// Multi-keyword scheduled DMs.
+    /// </summary>
+    /// <param name="args"></param>
     private static void Main(string[] args)
     {
         System.Timers.Timer eventTimer;
@@ -45,6 +55,11 @@ internal class Program
         eventTimer.Start();
         new Program().MainAsync().GetAwaiter().GetResult();
     }
+
+    /// <summary>
+    /// Main call to form the Bot Instance
+    /// </summary>
+    /// <returns></returns>
     public async Task MainAsync()
     {
         await services.GetRequiredService<InteractionHandlerService>().InitializeAsync();
@@ -52,6 +67,15 @@ internal class Program
         await RunBot(client);
     }
 
+    /// <summary>
+    /// Creates the Bot instance with the 
+    /// token.
+    /// If it's ran straight from VS, the Dev Bot Token
+    /// will be used instead of the Main/Production token
+    /// to prevent disruptions when testing new functionality.
+    /// </summary>
+    /// <param name="client"></param>
+    /// <returns></returns>
     public async Task RunBot(DiscordSocketClient client)
     {
         try
@@ -88,7 +112,12 @@ internal class Program
         }
     }
 
-    // Supported event-driven events for the bot
+    /// <summary>
+    /// Supported event-driven events for the bot.
+    /// Example: OnConnect, Disconnect, UserJoined, Left,
+    ///          ButtonHandler, or Reactions
+    /// </summary>
+    /// <param name="client"></param>
     private void RegisterEvents(DiscordSocketClient client)
     {
         // Unsubscribe first to avoid multiple subscriptions on reconnects
@@ -123,7 +152,11 @@ internal class Program
         client.Log += LogMessage;
     }
 
-    // Console message when the bot disconnects to the Discord API
+    /// <summary>
+    /// Console message when the bot disconnects to the Discord API
+    /// </summary>
+    /// <param name="arg"></param>
+    /// <returns></returns>
     private async Task OnDisconnectedAsync(Exception arg)
     {
         await loggingService.InfoAsync($"Bot disconnected - {client.ConnectionState}");
@@ -131,14 +164,22 @@ internal class Program
             await loggingService.InfoAsync($"Bot connecting - {client.ConnectionState}");
     }
 
-    // Console message when the bot connects to the Discord API
+    /// <summary>
+    /// Console message when the bot connects to the Discord API
+    /// </summary>
+    /// <returns></returns>
     private async Task OnConnectedAsync()
     {
         await loggingService.InfoAsync("Bot connected");
         await client.SetGameAsync("/reportbug");
     }
 
-    // When the connection to discord was lost, try to reconnect without breaking everything.
+    /// <summary>
+    /// When the connection to discord was lost, try to reconnect without breaking everything.
+    /// </summary>
+    /// <param name="client"></param>
+    /// <param name="ex"></param>
+    /// <returns></returns>
     private async Task HandleReconnectAsync(DiscordSocketClient client, Exception ex)
     {
         await loggingService.InfoAsync($"{ex.GetType().Name}: {ex.Message}");
@@ -158,6 +199,22 @@ internal class Program
 
 
     #region DiscordSocketClient Events
+    /// <summary>
+    /// When a user leaves the server, post a notice.
+    /// The notice was requested even though I kinda want 
+    /// to get rid of this because people don't really
+    /// like to have their departure announced but
+    /// the last time I removed this, a couple people
+    /// wanted this back.
+    /// 
+    /// Attempts to find the default Channel
+    /// set by the server, if there are no 
+    /// default channels set, the #general chat
+    /// will be used if there is a chat called that.
+    /// </summary>
+    /// <param name="arg1"></param>
+    /// <param name="arg2"></param>
+    /// <returns></returns>
     private async Task UserLeft(SocketGuild arg1, SocketUser arg2)
     {
         string title = "BigBirdBot - User Left";
@@ -188,7 +245,7 @@ internal class Program
             }
             else
             {
-                List<SocketTextChannel> textChannels = arg1.TextChannels.Where(s => s.Name.Contains("general") || s.Name.Contains("no-mic")).ToList();
+                List<SocketTextChannel> textChannels = arg1.TextChannels.Where(s => s.Name.Contains("general")).ToList();
                 SocketTextChannel firstTextChannel = arg1.GetTextChannel(textChannels[0].Id);
                 SocketTextChannel? channel = client.GetChannel(firstTextChannel.Id) as SocketTextChannel;
 
@@ -198,6 +255,16 @@ internal class Program
             }
         }
     }
+
+    /// <summary>
+    /// When a user joins, add the user to the user table.
+    /// The AddUser vs AddUserByServer difference, 1 userId 
+    /// can be used across multiple servers.
+    /// The AddUser basically groups on UserID where 
+    /// AddUserByServer groups by the UserID and ServerID/ServerUID.
+    /// </summary>
+    /// <param name="arg"></param>
+    /// <returns></returns>
     private async Task UserJoined(SocketGuildUser arg)
     {
         StoredProcedure stored = new StoredProcedure();
@@ -223,6 +290,16 @@ internal class Program
             });
         }
     }
+
+    /// <summary>
+    /// Button Handler is the component aspect of Discord.
+    /// Components are basically the button/dropdown/etc...
+    /// clicks that Discord provides.
+    /// In this case it's when a user clicks on a Role button
+    /// or Pronoun.
+    /// </summary>
+    /// <param name="component"></param>
+    /// <returns></returns>
     private async Task ButtonHandler(SocketMessageComponent component)
     {
         // To prevent the Queue buttons from being picked up by the Handler
@@ -407,6 +484,14 @@ internal class Program
         }
 
     }
+
+    /// <summary>
+    /// When the bot joins a Guild/Server, all the users
+    /// will be populated into the User table and an entry will
+    /// be added for the new server.
+    /// </summary>
+    /// <param name="arg"></param>
+    /// <returns></returns>
     private async Task JoinedGuild(SocketGuild arg)
     {
         StoredProcedure stored = new StoredProcedure();
@@ -459,7 +544,20 @@ internal class Program
         }
     }
 
-    // This runs when a message comes in for the keyword handling
+    /// <summary>
+    /// This runs when a message comes in for the keyword handling.
+    /// Kinda looks like a mess but couldn't clean it up that much
+    /// better because the bot needs to support the following
+    /// scenarios;
+    /// 1. User types a message that contains a keyword.
+    /// 2. The user starts with '-' (old prefix) to add the
+    ///    attachment or message assuming that '-'<word> actually
+    ///    maps to something.
+    /// 3. The link contains a twitter/etc... and needs to be fixed
+    ///    caused Discord embeds are a pain in the ass.
+    /// </summary>
+    /// <param name="msg"></param>
+    /// <returns></returns>
     private async Task MessageReceived(SocketMessage msg)
     {
         if (msg is not { Author.IsBot: false, Author.IsWebhook: false, Channel: SocketGuildChannel msgChannel })
@@ -476,7 +574,7 @@ internal class Program
         var parameters = new List<SqlParameter>();
 
         // Get server status
-        var dt = stored.Select(connStr, "GetServerPrefixByServerID", new List<SqlParameter> {
+        var dt = stored.Select(connStr, "GetServerByID", new List<SqlParameter> {
             new SqlParameter("ServerUID", long.Parse(serverId))
         });
         if (!bool.TryParse(dt.Rows[0]["IsActive"]?.ToString(), out var isServerActive) || !isServerActive)
@@ -660,22 +758,18 @@ internal class Program
                         if (!isNsfw)
                             await output.AddReactionAsync(new Emoji("❌"));
                     }
-
-                    // Audit trail
-                    parameters = new List<SqlParameter> {
-                        new SqlParameter("@ChatKeywordID", int.Parse(row["ChatKeywordID"].ToString())),
-                        new SqlParameter("@MessageText", message),
-                        new SqlParameter("@CreatedBy", userId),
-                        new SqlParameter("@ServerID", long.Parse(serverId))
-                    };
-
-                    stored.UpdateCreate(connStr, "AddAuditKeyword", parameters);
                 }
             });
         }
     }
 
-    // Auto leave if no one is in VC
+    /// <summary>
+    /// Auto leave if no one is in VC.
+    /// </summary>
+    /// <param name="user"></param>
+    /// <param name="before"></param>
+    /// <param name="after"></param>
+    /// <returns></returns>
     private async Task UserVoiceStateUpdated(SocketUser user, SocketVoiceState before, SocketVoiceState after)
     {
         var guild = before.VoiceChannel?.Guild ?? after.VoiceChannel?.Guild;
@@ -721,6 +815,14 @@ internal class Program
             }
         }
     }
+
+    /// <summary>
+    /// Error Log handler, instead of logging in a SQL server or TXT.
+    /// I'm lazy and send it to my private discord to provide the
+    /// exception thrown.
+    /// </summary>
+    /// <param name="message"></param>
+    /// <returns></returns>
     private async Task LogMessage(LogMessage message)
     {
         EmbedHelper embedHelper = new EmbedHelper();
@@ -744,6 +846,11 @@ internal class Program
     #endregion
 
     #region Services Configuration
+    /// <summary>
+    /// The core functionality of each service needed for
+    /// corresponding bot functionality to run.
+    /// </summary>
+    /// <returns></returns>
     private ServiceProvider ConfigureServices()
     {
         return new ServiceCollection()
@@ -785,7 +892,14 @@ internal class Program
     #endregion
 
     #region Emojis and Timed Events
-    // Handle trivia and NSFW keyword stuff
+    /// <summary>
+    /// Handle trivia and NSFW keyword stuff.
+    /// This is the handling for emotes.
+    /// </summary>
+    /// <param name="message"></param>
+    /// <param name="channel"></param>
+    /// <param name="reaction"></param>
+    /// <returns></returns>
     private async Task HandleReactionAsync(Cacheable<IUserMessage, ulong> message, Cacheable<IMessageChannel, ulong> channel, SocketReaction reaction)
     {
         Emoji triviaA = new Emoji("🇦");
@@ -881,7 +995,7 @@ internal class Program
                     return;
 
                 var connStr = Constants.discordBotConnStr;
-                ulong messageId = message.Id;
+                long messageId = Int64.Parse(message.Id.ToString());
                 string userMention = reaction.User.Value.Mention;
                 string reactionName = reaction.Emote.Name;
 
@@ -955,7 +1069,11 @@ internal class Program
 
     }
 
-    // When the timer is kicked off, call this function to pull the EventText or ReminderText from SPs.
+    /// <summary>
+    /// When the timer is kicked off, call this function to pull the EventText or ReminderText from SPs.
+    /// </summary>
+    /// <param name="sender"></param>
+    /// <param name="e"></param>
     private static async void OnTimedEvent(object sender, EventArgs e)
     {
         StoredProcedure storedProcedure = new StoredProcedure();
@@ -1025,7 +1143,8 @@ internal class Program
                     // If we reach here, something really went wrong and should handle it.
                     // Send a DM saying an issue happened
                     IUser user = await client.GetUserAsync(ulong.Parse("171369791486033920"));
-                    await user.SendMessageAsync($"Something went wrong sending to this user: {userId}\nException Message: {ex.Message}");
+                    storedProcedure.UpdateCreate(Constants.discordBotConnStr, "UpdateEventScheduleTimeRequeue", new List<SqlParameter> { new SqlParameter("@UserID", userId) });
+                    await user.SendMessageAsync($"Something went wrong sending to this user: {userId}\nException Message: {ex.Message}\nThe event was requeued to send at {DateTime.Now.AddMinutes(1).ToString("yyyy-MM-dd hh:mm tt")}");
                     return;
                 }
             }
@@ -1035,6 +1154,14 @@ internal class Program
     #endregion
 
     #region Helpers
+    /// <summary>
+    /// Helper to check if the link is dead.
+    /// Kind of a pain in the ass to check because sometimes a link can take 
+    /// longer than a couple seconds to check, a 5 second timeout
+    /// was added to try to avoid false positives.
+    /// </summary>
+    /// <param name="url"></param>
+    /// <returns></returns>
     public static bool IsLinkWorking(string url)
     {
         if (!url.Contains("fxtwitter") && !url.Contains("vxtwitter"))
@@ -1073,6 +1200,14 @@ internal class Program
         }
     }
 
+    /// <summary>
+    /// Helper function to Add Attachments to the SQL database 
+    /// for the keyword matching.
+    /// </summary>
+    /// <param name="msg"></param>
+    /// <param name="tablename"></param>
+    /// <param name="connStr"></param>
+    /// <param name="userId"></param>
     private void AddAttachments(SocketMessage msg, string tablename, string connStr, string userId)
     {
         StoredProcedure stored = new StoredProcedure();
@@ -1101,6 +1236,14 @@ internal class Program
         }
     }
 
+    /// <summary>
+    /// Helper to create a message embed instead of 
+    /// using a constant code of forming the embed.
+    /// </summary>
+    /// <param name="title"></param>
+    /// <param name="color"></param>
+    /// <param name="description"></param>
+    /// <returns></returns>
     private EmbedBuilder CreateMessageEmbed(string title, Color color, string description)
     {
         EmbedBuilder embed = new EmbedBuilder
@@ -1113,6 +1256,14 @@ internal class Program
         return embed;
     }
 
+    /// <summary>
+    /// Helper to check if the URL already exists for the keyword
+    /// </summary>
+    /// <param name="url"></param>
+    /// <param name="tableName"></param>
+    /// <param name="connStr"></param>
+    /// <param name="stored"></param>
+    /// <returns></returns>
     private bool IsUrlNew(string url, string tableName, string connStr, StoredProcedure stored)
     {
         var checkDt = stored.Select(connStr, "CheckIfThirstURLExists", new List<SqlParameter> {

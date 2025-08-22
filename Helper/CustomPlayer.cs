@@ -7,6 +7,12 @@ using Lavalink4NET.Protocol.Payloads.Events;
 
 namespace DiscordBot.Helper
 {
+    /// <summary>
+    /// This is the LavaLink/Audio stuff.
+    /// A custom player provides some additional functionality
+    /// needed like showing the track that is now playing and
+    /// ended.
+    /// </summary>
     public sealed class CustomPlayer : QueuedLavalinkPlayer
     {
         private readonly ITextChannel _textChannel;

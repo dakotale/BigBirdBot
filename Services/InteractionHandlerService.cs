@@ -14,6 +14,12 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace DiscordBot.Services
 {
+    /// <summary>
+    /// Difference between InteractionHandlerService
+    /// and the CommandHandlingService:
+    /// - InteractionHandlerService handles the slash commands.
+    /// - CommandHandlingService handles the '-' commands.
+    /// </summary>
     public class InteractionHandlerService
     {
         private readonly DiscordSocketClient _client;
@@ -134,7 +140,6 @@ namespace DiscordBot.Services
                         string commandName = command.CommandName;
                         Audit audit = new Audit();
                         audit.InsertAudit(commandName, context.User.Id.ToString(), Constants.Constants.discordBotConnStr, (context.Guild is null) ? context.Channel.Id.ToString() : context.Guild.Id.ToString());
-                        audit.InsertAuditChannel(Constants.Constants.discordBotConnStr, (context.Guild is null) ? context.Channel.Id.ToString() : context.Guild.Id.ToString(), (context.Guild is null) ? context.Channel.Name : context.Guild.Name, context.User.Id.ToString());
                         return;
                     }
                 }

@@ -9,6 +9,7 @@ using DiscordBot.Helper;
 
 namespace DiscordBot.SlashCommands
 {
+    // GuildModule decoration limits these commands to only show by the guild below.
     [GuildModule(880569055856185354)]
     public class OwnerCommands : InteractionModuleBase<SocketInteractionContext>
     {
@@ -192,7 +193,7 @@ namespace DiscordBot.SlashCommands
             DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "CheckIfThirstURLExists", new List<SqlParameter>
             {
                 new SqlParameter("@FilePath", fileName),
-                new SqlParameter("TableName", tableName)
+                new SqlParameter("@TableName", tableName)
             });
 
             if (dt.Rows.Count > 0)
@@ -200,7 +201,7 @@ namespace DiscordBot.SlashCommands
                 stored.UpdateCreate(Constants.Constants.discordBotConnStr, "DeleteThirstURL", new List<SqlParameter>
                 {
                     new SqlParameter("@FilePath", fileName),
-                    new SqlParameter("TableName", tableName)
+                    new SqlParameter("@TableName", tableName)
                 });
 
                 EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Delete Successful", $"Image {fileName} was successfully deleted from the {tableName} table.", "", Context.User.Username, Color.Blue, "");

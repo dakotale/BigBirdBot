@@ -1,5 +1,9 @@
 ﻿namespace DiscordBot.Constants
 {
+    /// <summary>
+    /// This probably can be removed, was intended
+    /// to be used for something and it didn't pan out.
+    /// </summary>
     public class Emote
     {
         public const string Hash = "#";

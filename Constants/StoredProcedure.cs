@@ -3,6 +3,11 @@ using System.Data.SqlClient;
 
 namespace DiscordBot.Constants
 {
+    /// <summary>
+    /// Core that runs the Stored Procedures for the bot.
+    /// If the bot returns something -> Use the Select
+    /// If the bot doesn't return something -> Use UpdateCreate
+    /// </summary>
     public class StoredProcedure
     {
         public DataTable Select(string connStr, string spName, List<SqlParameter> parameters)

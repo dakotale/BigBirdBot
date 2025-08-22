@@ -24,7 +24,7 @@ namespace DiscordBot.SlashCommands
 
             string title = "BigBirdBot - Random";
             string desc = $"{Context.User.Mention} rolled a **{i}**";
-            string thumbnailUrl = "";
+            string thumbnailUrl = Context.User.GetAvatarUrl();
             string createdBy = "Command from: " + Context.User.Username;
 
             EmbedHelper embed = new EmbedHelper();
@@ -42,7 +42,7 @@ namespace DiscordBot.SlashCommands
 
         [SlashCommand("poll", "Create a poll for people to vote on.")]
         [EnabledInDm(true)]
-        public async Task HandlePoll([MinLength(1), MaxLength(4000)] string statement, [MinLength(1)] string pollAnswer1, [MinLength(1)] string pollAnswer2, string pollAnswer3 = null, string pollAnswer4 = null, string pollAnswer5 = null, string pollAnswer6 = null, string pollAnswer7 = null, string pollAnswer8 = null, string pollAnswer9 = null, string pollAnswer10 = null)
+        public async Task HandlePoll([MinLength(1), MaxLength(4000)] string statement, [MinLength(1)] string pollAnswer1, [MinLength(1)] string pollAnswer2, string pollAnswer3 = null, string pollAnswer4 = null, string pollAnswer5 = null, string pollAnswer6 = null, string pollAnswer7 = null, string pollAnswer8 = null, string pollAnswer9 = null, string pollAnswer10 = null, Attachment attachment = null)
         {
             await DeferAsync();
             List<Emoji> emojis = new List<Emoji>
@@ -58,6 +58,12 @@ namespace DiscordBot.SlashCommands
                 new Emoji("9️⃣"),
                 new Emoji("🔟")
             };
+
+            string imageUrl = "";
+
+            if (attachment != null)
+                imageUrl = attachment.Url;
+
             List<string> items = new List<string>() { pollAnswer1, pollAnswer2, pollAnswer3, pollAnswer4, pollAnswer5, pollAnswer6, pollAnswer7, pollAnswer8, pollAnswer9, pollAnswer10 };
             items = items.Where(s => !string.IsNullOrEmpty(s)).Select(s => s.Trim()).ToList();
             EmbedHelper embed = new EmbedHelper();
@@ -68,7 +74,7 @@ namespace DiscordBot.SlashCommands
             for (int i = 0; i < items.Count; i++)
                 desc += "\n" + i.ToString() + ". **" + items[i] + "**";
 
-            IUserMessage msg = await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, "", createdByMsg, Discord.Color.Blue).Build());
+            IUserMessage msg = await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, "", createdByMsg, Discord.Color.Blue, imageUrl).Build());
 
             for (int i = 0; i < items.Count; i++)
                 await msg.AddReactionAsync(emojis[i]);
@@ -208,6 +214,8 @@ namespace DiscordBot.SlashCommands
 
             if (hexCode.StartsWith("#"))
                 hexCode = hexCode.Substring(1);
+            else
+                hexCode = "#" + hexCode;
 
             try
             {
@@ -244,7 +252,7 @@ namespace DiscordBot.SlashCommands
             }
             catch (Exception ex)
             {
-                await FollowupAsync(embed: embedHelper.BuildErrorEmbed("Color", ex.Message, Context.User.Username).Build(), ephemeral: true);
+                await FollowupAsync(embed: embedHelper.BuildErrorEmbed("Color", "The color entered was not valid: " +  ex.Message, Context.User.Username).Build(), ephemeral: true);
             }
         }
 
@@ -270,9 +278,10 @@ namespace DiscordBot.SlashCommands
                     return;
                 }
 
-                using (WebClient webClient = new WebClient())
+                using (HttpClient httpClient = new HttpClient())
                 {
-                    webClient.DownloadFileTaskAsync(new Uri(attachment.Url), path).Wait();
+                    var bytes = await httpClient.GetByteArrayAsync(new Uri(attachment.Url));
+                    await File.WriteAllBytesAsync(path, bytes);
                 }
 
                 HttpClient client = new HttpClient();

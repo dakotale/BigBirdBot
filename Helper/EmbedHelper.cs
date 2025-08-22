@@ -2,6 +2,10 @@
 
 namespace DiscordBot.Helper
 {
+    /// <summary>
+    /// Forms the Message Embed to call instead of creating 
+    /// a bunch of copy-paste EmbedBuilders...
+    /// </summary>
     public class EmbedHelper
     {
         public EmbedHelper() { }

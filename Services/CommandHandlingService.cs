@@ -52,7 +52,7 @@ namespace DiscordBot.Services
             string prefix = "";
             SocketGuildChannel? channelId = message.Channel as SocketGuildChannel;
             bool isActive = false;
-            DataTable dtPrefix = stored.Select(Constants.Constants.discordBotConnStr, "GetServerPrefixByServerID", new List<SqlParameter> { new SqlParameter("@ServerUID", Int64.Parse(channelId.Guild.Id.ToString())) });
+            DataTable dtPrefix = stored.Select(Constants.Constants.discordBotConnStr, "GetServerByID", new List<SqlParameter> { new SqlParameter("@ServerUID", Int64.Parse(channelId.Guild.Id.ToString())) });
             foreach (DataRow dr in dtPrefix.Rows)
             {
                 prefix = dr["Prefix"].ToString();
