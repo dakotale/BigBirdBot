@@ -4,11 +4,14 @@ using Discord.WebSocket;
 using DiscordBot.Constants;
 using DiscordBot.Helper;
 using DiscordBot.Misc;
+using Microsoft.Extensions.AI;
+using OpenAI;
 using System;
 using System.ComponentModel;
 using System.Data;
 using System.Data.SqlClient;
 using System.Net;
+using System.Reflection;
 
 namespace DiscordBot.SlashCommands
 {
@@ -448,6 +451,110 @@ namespace DiscordBot.SlashCommands
             });
 
             await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Event Reminder", "Thanks for the reminder, I'll let you know when it gets closer to the date/time ;)", "", Context.User.Username, Discord.Color.Blue).Build(), ephemeral: true);
+        }
+
+        [SlashCommand("chat", "Have a wonderful conversation with the bot.")]
+        [EnabledInDm(true)]
+        public async Task HandleChat(string message, [Choice("Yes", "Yes"), Choice("No", "No")] string canBeShownPublicly, [Choice("Yes", "Yes"), Choice("No", "No")] string startNew)
+        {
+            await DeferAsync();
+            StoredProcedure stored = new StoredProcedure();
+            DataTable dt = new DataTable();
+            EmbedHelper embed = new EmbedHelper();
+            List<ChatMessage> chatMessages = new List<ChatMessage>();
+            string response = string.Empty;
+
+            bool isPublic = (canBeShownPublicly.Equals("Yes") ? true : false);
+            bool isNew = (startNew.Equals("Yes") ? true : false);
+            message = message.Trim();
+
+            string userId = Context.User.Id.ToString();
+            string userName = Context.User.Username;
+            string serverUid = Context.Guild.Id.ToString();
+            string connStr = Constants.Constants.discordBotConnStr;
+            string openAiKey = Constants.Constants.openAiToken;
+            string openAiModel = Constants.Constants.openAiModel;
+
+            try
+            {
+                // 0. If IsNew is true, delete existing messages
+                if (isNew)
+                {
+                    stored.UpdateCreate(connStr, "DeleteBotAIMessage", new List<SqlParameter>
+                    {
+                        new SqlParameter("@UserID", userId),
+                        new SqlParameter("@ServerUID", serverUid)
+                    });
+                }
+                else
+                {
+                    // 0. Pull existing messages (if available) based on UserID and ServerUID
+                    dt = stored.Select(connStr, "GetBotAIMessage", new List<SqlParameter>
+                    {
+                        new SqlParameter("@UserID", userId),
+                        new SqlParameter("@ServerUID", serverUid)
+                    });
+                }
+
+                // 1. add the following code to connect and authenticate to the AI model.
+                // Create the IChatClient
+                IChatClient chatClient = new OpenAIClient(openAiKey).GetChatClient(openAiModel).AsIChatClient();
+
+                // 2. Create a system prompt to provide the AI model with initial role context and instructions about hiking recommendations:
+                // Start the conversation with context for the AI model
+                // See how we can tailor the AI to be silly
+                ChatMessage botPersonality = new ChatMessage(ChatRole.System, "You are a lesbian answering the prompts provided.  Enjoy :)");
+                chatMessages.Add(botPersonality);
+
+                // 3. Create a conversational loop that accepts an input prompt from the user, sends the prompt to the model
+                if (dt.Rows.Count > 0)
+                {
+                    foreach (DataRow dr in dt.Rows)
+                    {
+                        if (dr["ChatRole"].Equals(ChatRole.Assistant.ToString()))
+                            chatMessages.Add(new ChatMessage(ChatRole.Assistant, dr["ChatMessage"].ToString()));
+                        if (dr["ChatRole"].Equals(ChatRole.Tool.ToString()))
+                            chatMessages.Add(new ChatMessage(ChatRole.Tool, dr["ChatMessage"].ToString()));
+                        if (dr["ChatRole"].Equals(ChatRole.System.ToString()))
+                            chatMessages.Add(new ChatMessage(ChatRole.System, dr["ChatMessage"].ToString()));
+                        if (dr["ChatRole"].Equals(ChatRole.User.ToString()))
+                            chatMessages.Add(new ChatMessage(ChatRole.User, dr["ChatMessage"].ToString()));
+                    }
+                }
+                else
+                {
+                    chatMessages.Add(new ChatMessage(ChatRole.User, message));
+                }
+
+                await foreach (ChatResponseUpdate item in chatClient.GetStreamingResponseAsync(chatMessages))
+                {
+                    response += item.Text;
+                }
+
+                response = (response.Length > 4000 ? response.Substring(0, 4000) : response);
+
+                stored.UpdateCreate(connStr, "AddBotAIMessage", new List<SqlParameter>
+                {
+                    new SqlParameter("@UserID", userId),
+                    new SqlParameter("@ServerUID", serverUid),
+                    new SqlParameter("@ChatRole", ChatRole.User.ToString()),
+                    new SqlParameter("@ChatMessage", message)
+                });
+
+                stored.UpdateCreate(connStr, "AddBotAIMessage", new List<SqlParameter>
+                {
+                    new SqlParameter("@UserID", userId),
+                    new SqlParameter("@ServerUID", serverUid),
+                    new SqlParameter("@ChatRole", ChatRole.Assistant.ToString()),
+                    new SqlParameter("@ChatMessage", response)
+                });
+
+                await FollowupAsync(response, ephemeral: !isPublic);
+            }
+            catch (Exception ex)
+            {
+                await FollowupAsync(embed: embed.BuildErrorEmbed("Chat", ex.Message, userName).Build());
+            }
         }
     }
 }
