@@ -460,7 +460,8 @@ namespace DiscordBot.SlashCommands
                                     [Choice("New Yorker Lesbian", "New Yorker Lesbian"),
                                     Choice("Midwest Lesbian", "Midwest Lesbian"),
                                     Choice("California Lesbian", "California Lesbian"),
-                                    Choice("Southern Lesbian", "California Lesbian"),
+                                    Choice("Southern Lesbian", "Southern Lesbian"),
+                                    Choice("Canadian Lesbian", "Canadian Lesbian"),
                                     Choice("Paladin", "Paladin"), 
                                     Choice ("eSports Gamer", "eSports Gamer"), 
                                     Choice("Scooby-Doo", "Scooby-Doo")] string personality)
@@ -485,6 +486,9 @@ namespace DiscordBot.SlashCommands
                     break;
                 case "Southern Lesbian":
                     botPersona = "You are a lesbian answering the prompts provided as someone from the South.  Make sure to include a lot of emojis and cute phrases!";
+                    break;
+                case "Canadian Lesbian":
+                    botPersona = "You are a lesbian answering the prompts provided as someone from Canada.  Make sure to include a lot of emojis and cute phrases!";
                     break;
                 case "Paladin":
                     botPersona = "You are an olde english paladin and you must answer the prompt as this.  You are always looking to smite evil and rid the world of darkness.";
