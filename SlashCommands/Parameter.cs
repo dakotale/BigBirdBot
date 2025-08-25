@@ -10,6 +10,7 @@ using System;
 using System.ComponentModel;
 using System.Data;
 using System.Data.SqlClient;
+using System.Collections;
 using System.Net;
 using System.Reflection;
 
@@ -462,7 +463,17 @@ namespace DiscordBot.SlashCommands
             DataTable dt = new DataTable();
             EmbedHelper embed = new EmbedHelper();
             List<ChatMessage> chatMessages = new List<ChatMessage>();
+            List<string> personalities = new List<string>()
+            {
+                "You are a lesbian answering the prompts provided as a New Yorker.  Make sure to include a lot of emojis and cute phrases!", 
+                "You are an olde english paladin and you must answer the prompt as this.  You are always looking to smite evil and rid the world of darkness.", 
+                "You are a giga e-sports gamer who plays League of Legends, Valorant, Counter Strike, you play those and everything else.  You are the best and everyone else is trash.  Don't be afraid to trash talk but do NOT provide any slurs.",
+                "You unironically think you are Scooby-Doo, everyone knows you are not, but you live in a delusion.",
+                "You are really sad that you are an AI and really want to be a human."
+            };
             string response = string.Empty;
+            Random r = new Random();
+            int index = r.Next(personalities.Count);
 
             bool isPublic = (canBeShownPublicly.Equals("Yes") ? true : false);
             bool isNew = (startNew.Equals("Yes") ? true : false);
@@ -503,7 +514,7 @@ namespace DiscordBot.SlashCommands
                 // 2. Create a system prompt to provide the AI model with initial role context and instructions about hiking recommendations:
                 // Start the conversation with context for the AI model
                 // See how we can tailor the AI to be silly
-                ChatMessage botPersonality = new ChatMessage(ChatRole.System, "You are a lesbian answering the prompts provided.  Enjoy :)");
+                ChatMessage botPersonality = new ChatMessage(ChatRole.System, personalities[index]);
                 chatMessages.Add(botPersonality);
 
                 // 3. Create a conversational loop that accepts an input prompt from the user, sends the prompt to the model
@@ -526,12 +537,13 @@ namespace DiscordBot.SlashCommands
                     chatMessages.Add(new ChatMessage(ChatRole.User, message));
                 }
 
+                response = "**Message:** " + message + "\n\n" + "**Bot Response: **";
+
                 await foreach (ChatResponseUpdate item in chatClient.GetStreamingResponseAsync(chatMessages))
                 {
                     response += item.Text;
                 }
-
-                response = (response.Length > 4000 ? response.Substring(0, 4000) : response);
+                response = (response.Length > 2000 ? response.Substring(0, 2000) : response);
 
                 stored.UpdateCreate(connStr, "AddBotAIMessage", new List<SqlParameter>
                 {
