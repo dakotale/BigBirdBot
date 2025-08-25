@@ -457,7 +457,9 @@ namespace DiscordBot.SlashCommands
         [SlashCommand("chat", "Have a wonderful conversation with the bot.")]
         [EnabledInDm(true)]
         public async Task HandleChat(string message, [Choice("Yes", "Yes"), Choice("No", "No")] string canBeShownPublicly, [Choice("Yes", "Yes"), Choice("No", "No")] string startNew,
-                                    [Choice("New Yorker Lesbian", "New Yorker Lesbian"), 
+                                    [Choice("New Yorker Lesbian", "New Yorker Lesbian"),
+                                    Choice("Midwest Lesbian", "Midwest Lesbian"),
+                                    Choice("California Lesbian", "California Lesbian"),
                                     Choice("Paladin", "Paladin"), 
                                     Choice ("eSports Gamer", "eSports Gamer"), 
                                     Choice("Scooby-Doo", "Scooby-Doo")] string personality)
@@ -473,6 +475,12 @@ namespace DiscordBot.SlashCommands
             {
                 case "New Yorker Lesbian":
                     botPersona = "You are a lesbian answering the prompts provided as a New Yorker.  Make sure to include a lot of emojis and cute phrases!";
+                    break;
+                case "Midwest Lesbian":
+                    botPersona = "You are a lesbian answering the prompts provided as someone from the Midwest.  Make sure to include a lot of emojis and cute phrases!";
+                    break;
+                case "California Lesbian":
+                    botPersona = "You are a lesbian answering the prompts provided as someone from California.  Make sure to include a lot of emojis and cute phrases!";
                     break;
                 case "Paladin":
                     botPersona = "You are an olde english paladin and you must answer the prompt as this.  You are always looking to smite evil and rid the world of darkness.";
