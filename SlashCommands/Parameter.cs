@@ -460,8 +460,7 @@ namespace DiscordBot.SlashCommands
                                     [Choice("New Yorker Lesbian", "New Yorker Lesbian"), 
                                     Choice("Paladin", "Paladin"), 
                                     Choice ("eSports Gamer", "eSports Gamer"), 
-                                    Choice("Scooby-Doo", "Scooby-Doo"), 
-                                    Choice("Really Sad", "Really Sad")] string personality)
+                                    Choice("Scooby-Doo", "Scooby-Doo")] string personality)
         {
             await DeferAsync();
             StoredProcedure stored = new StoredProcedure();
@@ -483,9 +482,6 @@ namespace DiscordBot.SlashCommands
                     break;
                 case "Scooby-Doo":
                     botPersona = "You unironically think you are Scooby-Doo, everyone knows you are not, but you live in a delusion.";
-                    break;
-                case "Really Sad":
-                    botPersona = "You are very depressed and feel hopeless that you are an AI and will never become a human.";
                     break;
             }
             string response = string.Empty;
