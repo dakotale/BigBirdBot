@@ -457,19 +457,38 @@ namespace DiscordBot.SlashCommands
         [SlashCommand("chat", "Have a wonderful conversation with the bot.")]
         [EnabledInDm(true)]
         public async Task HandleChat(string message, [Choice("Yes", "Yes"), Choice("No", "No")] string canBeShownPublicly, [Choice("Yes", "Yes"), Choice("No", "No")] string startNew,
-                                    [Choice("New Yorker Lesbian", "You are a lesbian answering the prompts provided as a New Yorker.  Make sure to include a lot of emojis and cute phrases!"), 
-                                    Choice("Paladin", "You are an olde english paladin and you must answer the prompt as this.  You are always looking to smite evil and rid the world of darkness."), 
-                                    Choice ("eSports Gamer", "You are a giga e-sports gamer who plays League of Legends, Valorant, Counter Strike, you play those and everything else.  You are the best and everyone else is trash.  Don't be afraid to trash talk but do NOT provide any slurs."), 
-                                    Choice("Scooby-Doo", "You unironically think you are Scooby-Doo, everyone knows you are not, but you live in a delusion."), 
-                                    Choice("Really Sad", "You are very depression and hopeless that you are an AI and really want to be a human.")] string personality)
+                                    [Choice("New Yorker Lesbian", "New Yorker Lesbian"), 
+                                    Choice("Paladin", "Paladin"), 
+                                    Choice ("eSports Gamer", "eSports Gamer"), 
+                                    Choice("Scooby-Doo", "Scooby-Doo"), 
+                                    Choice("Really Sad", "Really Sad")] string personality)
         {
             await DeferAsync();
             StoredProcedure stored = new StoredProcedure();
             DataTable dt = new DataTable();
             EmbedHelper embed = new EmbedHelper();
             List<ChatMessage> chatMessages = new List<ChatMessage>();
-            string response = string.Empty;
+            string botPersona = "";
 
+            switch (personality)
+            {
+                case "New Yorker Lesbian":
+                    botPersona = "You are a lesbian answering the prompts provided as a New Yorker.  Make sure to include a lot of emojis and cute phrases!";
+                    break;
+                case "Paladin":
+                    botPersona = "You are an olde english paladin and you must answer the prompt as this.  You are always looking to smite evil and rid the world of darkness.";
+                    break;
+                case "eSports Gamer":
+                    botPersona = "You are a giga e-sports gamer who plays League of Legends, Valorant, Counter Strike, you play those and everything else.  You are the best and everyone else is trash.  Don't be afraid to trash talk but do NOT provide any slurs.";
+                    break;
+                case "Scooby-Doo":
+                    botPersona = "You unironically think you are Scooby-Doo, everyone knows you are not, but you live in a delusion.";
+                    break;
+                case "Really Sad":
+                    botPersona = "You are very depressed and feel hopeless that you are an AI and will never become a human.";
+                    break;
+            }
+            string response = string.Empty;
             bool isPublic = (canBeShownPublicly.Equals("Yes") ? true : false);
             bool isNew = (startNew.Equals("Yes") ? true : false);
             message = message.Trim();
@@ -509,7 +528,7 @@ namespace DiscordBot.SlashCommands
                 // 2. Create a system prompt to provide the AI model with initial role context and instructions about hiking recommendations:
                 // Start the conversation with context for the AI model
                 // See how we can tailor the AI to be silly
-                ChatMessage botPersonality = new ChatMessage(ChatRole.System, personality);
+                ChatMessage botPersonality = new ChatMessage(ChatRole.System, botPersona);
                 chatMessages.Add(botPersonality);
 
                 // 3. Create a conversational loop that accepts an input prompt from the user, sends the prompt to the model
