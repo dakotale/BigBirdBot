@@ -46,7 +46,7 @@ namespace DiscordBot.SlashCommands
 
         [SlashCommand("poll", "Create a poll for people to vote on.")]
         [EnabledInDm(true)]
-        public async Task HandlePoll([MinLength(1), MaxLength(4000)] string statement, [MinLength(1)] string pollAnswer1, [MinLength(1)] string pollAnswer2, string pollAnswer3 = null, string pollAnswer4 = null, string pollAnswer5 = null, string pollAnswer6 = null, string pollAnswer7 = null, string pollAnswer8 = null, string pollAnswer9 = null, string pollAnswer10 = null, Attachment attachment = null)
+        public async Task HandlePoll([MinLength(1), MaxLength(2000)] string statement, [MinLength(1)] string pollAnswer1, [MinLength(1)] string pollAnswer2, string pollAnswer3 = null, string pollAnswer4 = null, string pollAnswer5 = null, string pollAnswer6 = null, string pollAnswer7 = null, string pollAnswer8 = null, string pollAnswer9 = null, string pollAnswer10 = null, Attachment attachment = null)
         {
             await DeferAsync();
             List<Emoji> emojis = new List<Emoji>
@@ -161,7 +161,7 @@ namespace DiscordBot.SlashCommands
 
         [SlashCommand("reportbug", "Found an issue with the bot?  Report it here, please.")]
         [EnabledInDm(true)]
-        public async Task HandleBugReport([MinLength(1), MaxLength(4000)] string bugFound)
+        public async Task HandleBugReport([MinLength(1), MaxLength(2000)] string bugFound)
         {
             ulong guildId = ulong.Parse("880569055856185354");
             ulong textChannelId = ulong.Parse("1156625507840954369");
@@ -462,9 +462,9 @@ namespace DiscordBot.SlashCommands
                                     Choice("California Lesbian", "California Lesbian"),
                                     Choice("Southern Lesbian", "Southern Lesbian"),
                                     Choice("Canadian Lesbian", "Canadian Lesbian"),
-                                    Choice("Paladin", "Paladin"), 
-                                    Choice ("eSports Gamer", "eSports Gamer"), 
-                                    Choice("Scooby-Doo", "Scooby-Doo")] string personality)
+                                    Choice("Paladin Lesbian", "Paladin Lesbian"), 
+                                    Choice ("eSports Gamer Lesbian", "eSports Gamer Lesbian"), 
+                                    Choice("Scooby-Doo Lesbian", "Scooby-Doo Lesbian")] string personality)
         {
             await DeferAsync();
             StoredProcedure stored = new StoredProcedure();
@@ -490,14 +490,14 @@ namespace DiscordBot.SlashCommands
                 case "Canadian Lesbian":
                     botPersona = "You are a lesbian answering the prompts provided as someone from Canada.  Make sure to include a lot of emojis and cute phrases!";
                     break;
-                case "Paladin":
-                    botPersona = "You are an olde english paladin and you must answer the prompt as this.  You are always looking to smite evil and rid the world of darkness.";
+                case "Paladin Lesbian":
+                    botPersona = "You are an olde english lesbian paladin and you must answer the prompt as this.  You are always looking to smite evil and rid the world of darkness.";
                     break;
-                case "eSports Gamer":
-                    botPersona = "You are a giga e-sports gamer who plays League of Legends, Valorant, Counter Strike, you play those and everything else.  You are the best and everyone else is trash.  Don't be afraid to trash talk but do NOT provide any slurs.";
+                case "eSports Gamer Lesbian":
+                    botPersona = "You are a giga lesbian e-sports gamer who plays League of Legends, Valorant, Counter Strike, you play those and everything else.  You are the best and everyone else is trash.  Don't be afraid to trash talk but do NOT provide any slurs.";
                     break;
-                case "Scooby-Doo":
-                    botPersona = "You unironically think you are Scooby-Doo, everyone knows you are not, but you live in a delusion.";
+                case "Scooby-Doo Lesbian":
+                    botPersona = "You unironically think you are a lesbian who is Scooby-Doo, everyone knows you are not, but you live in a delusion.";
                     break;
             }
             string response = string.Empty;
@@ -558,17 +558,11 @@ namespace DiscordBot.SlashCommands
                             chatMessages.Add(new ChatMessage(ChatRole.User, dr["ChatMessage"].ToString()));
                     }
                 }
-                else
-                {
-                    chatMessages.Add(new ChatMessage(ChatRole.User, message));
-                }
 
+                chatMessages.Add(new ChatMessage(ChatRole.User, message));
                 response = "**Message:** " + message + "\n\n" + "**Bot Response: **";
 
-                await foreach (ChatResponseUpdate item in chatClient.GetStreamingResponseAsync(chatMessages))
-                {
-                    response += item.Text;
-                }
+                await foreach (ChatResponseUpdate item in chatClient.GetStreamingResponseAsync(chatMessages)) { response += item.Text; }
                 response = (response.Length > 2000 ? response.Substring(0, 2000) : response);
 
                 stored.UpdateCreate(connStr, "AddBotAIMessage", new List<SqlParameter>
