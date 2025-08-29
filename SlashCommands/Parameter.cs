@@ -6,13 +6,8 @@ using DiscordBot.Helper;
 using DiscordBot.Misc;
 using Microsoft.Extensions.AI;
 using OpenAI;
-using System;
-using System.ComponentModel;
 using System.Data;
 using System.Data.SqlClient;
-using System.Collections;
-using System.Net;
-using System.Reflection;
 
 namespace DiscordBot.SlashCommands
 {
@@ -232,9 +227,9 @@ namespace DiscordBot.SlashCommands
                 {
                     Color roleColor = new Color(color.R, color.G, color.B);
 
-                    if (guild.Roles.Any(s => s.Name.Equals(user)))
+                    if (guild.Roles.Any(s => s.Name.Equals(user.Username)))
                     {
-                        SocketRole role = guild.Roles.First(s => s.Name.Equals(user));
+                        SocketRole role = guild.Roles.First(s => s.Name.Equals(user.Username));
                         await role.ModifyAsync(f => f.Color = roleColor).ConfigureAwait(false);
                     }
                     else
