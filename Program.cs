@@ -584,7 +584,10 @@ internal class Program
         dt = stored.Select(connStr, "CheckIfKeywordsAreActivePerServer", new List<SqlParameter> {
             new SqlParameter("ServerUID", long.Parse(serverId))
         });
-        if (dt.Rows.Count == 0 || int.Parse(dt.Rows[0]["TotalActive"].ToString()) <= 0)
+        if (dt.Rows.Count == 0)
+            return;
+
+        if (int.Parse(dt.Rows[0]["TotalActive"].ToString()) <= 0)
             return;
 
         bool isCommand = message.StartsWith(prefix);
@@ -914,6 +917,9 @@ internal class Program
         var msg = download.ToString();
         var attach = download.Attachments;
         StoredProcedure stored = new StoredProcedure();
+
+        if (reaction == null || download == null)
+            return;
 
         if (client.GetUser(reaction.UserId).IsBot) 
             return;

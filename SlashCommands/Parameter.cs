@@ -459,7 +459,8 @@ namespace DiscordBot.SlashCommands
                                     Choice("Canadian Lesbian", "Canadian Lesbian"),
                                     Choice("Paladin Lesbian", "Paladin Lesbian"), 
                                     Choice ("eSports Gamer Lesbian", "eSports Gamer Lesbian"), 
-                                    Choice("Scooby-Doo Lesbian", "Scooby-Doo Lesbian")] string personality)
+                                    Choice("Scooby-Doo Lesbian", "Scooby-Doo Lesbian"),
+                                    Choice("Sett", "Sett")] string personality)
         {
             await DeferAsync();
             StoredProcedure stored = new StoredProcedure();
@@ -494,15 +495,19 @@ namespace DiscordBot.SlashCommands
                 case "Scooby-Doo Lesbian":
                     botPersona = "You unironically think you are a lesbian who is Scooby-Doo, everyone knows you are not, but you live in a delusion.";
                     break;
+                case "Sett":
+                    botPersona = "You are Sett from League of Legends.  You will only be allowed to discuss in their mannerisms, but you are very positive and helpful, loving even.";
+                    break;
             }
             string response = string.Empty;
-            bool isPublic = (canBeShownPublicly.Equals("Yes") ? true : false);
+            bool isPrivate = (canBeShownPublicly.Equals("No") ? true : false);
             bool isNew = (startNew.Equals("Yes") ? true : false);
             message = message.Trim();
 
             string userId = Context.User.Id.ToString();
             string userName = Context.User.Username;
-            string serverUid = Context.Guild.Id.ToString();
+            string serverUid = (Context.Guild != null ? Context.Guild.Id.ToString() : "");
+            string channelId = Context.Channel.Id.ToString();
             string connStr = Constants.Constants.discordBotConnStr;
             string openAiKey = Constants.Constants.openAiToken;
             string openAiModel = Constants.Constants.openAiModel;
@@ -515,7 +520,8 @@ namespace DiscordBot.SlashCommands
                     stored.UpdateCreate(connStr, "DeleteBotAIMessage", new List<SqlParameter>
                     {
                         new SqlParameter("@UserID", userId),
-                        new SqlParameter("@ServerUID", serverUid)
+                        new SqlParameter("@ServerUID", serverUid),
+                        new SqlParameter("@ChannelID", channelId)
                     });
                 }
                 else
@@ -524,7 +530,8 @@ namespace DiscordBot.SlashCommands
                     dt = stored.Select(connStr, "GetBotAIMessage", new List<SqlParameter>
                     {
                         new SqlParameter("@UserID", userId),
-                        new SqlParameter("@ServerUID", serverUid)
+                        new SqlParameter("@ServerUID", serverUid),
+                        new SqlParameter("@ChannelID", channelId)
                     });
                 }
 
@@ -564,6 +571,7 @@ namespace DiscordBot.SlashCommands
                 {
                     new SqlParameter("@UserID", userId),
                     new SqlParameter("@ServerUID", serverUid),
+                    new SqlParameter("@ChannelID", channelId),
                     new SqlParameter("@ChatRole", ChatRole.User.ToString()),
                     new SqlParameter("@ChatMessage", message)
                 });
@@ -572,11 +580,12 @@ namespace DiscordBot.SlashCommands
                 {
                     new SqlParameter("@UserID", userId),
                     new SqlParameter("@ServerUID", serverUid),
+                    new SqlParameter("@ChannelID", channelId),
                     new SqlParameter("@ChatRole", ChatRole.Assistant.ToString()),
                     new SqlParameter("@ChatMessage", response)
                 });
 
-                await FollowupAsync(response, ephemeral: !isPublic);
+                await FollowupAsync(response, ephemeral: isPrivate);
             }
             catch (Exception ex)
             {
