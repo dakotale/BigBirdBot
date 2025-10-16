@@ -7,7 +7,7 @@ using DiscordBot.Misc;
 using Microsoft.Extensions.AI;
 using OpenAI;
 using System.Data;
-using System.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 
 namespace DiscordBot.SlashCommands
 {
@@ -110,7 +110,7 @@ namespace DiscordBot.SlashCommands
 
                 DateTime birthday = DateTime.Parse(monthNumber.ToString() + "/" + dayNumber.ToString() + "/" + DateTime.Now.Year.ToString());
 
-                storedProcedure.UpdateCreate(Constants.Constants.discordBotConnStr, "AddBirthday", new List<SqlParameter>
+                storedProcedure.UpdateCreate(Constants.Constants.DISCORD_BOT_CONN_STR, "AddBirthday", new List<SqlParameter>
                 {
                     new SqlParameter("@BirthdayDate", birthday),
                     new SqlParameter("@BirthdayUser", user.Mention),
@@ -269,7 +269,7 @@ namespace DiscordBot.SlashCommands
                 string withExt = attachmentName.Split(".", StringSplitOptions.TrimEntries)[1];
                 withoutExt = withoutExt + "_" + DateTime.Now.ToString("yyyyMMdd_HHmmssfffff");
 
-                string path = Constants.Constants.aiDetectorPath + withoutExt + "." + withExt;
+                string path = Constants.Constants.AI_DETECTOR_PATH + withoutExt + "." + withExt;
 
                 if (!attachment.ContentType.Contains("image"))
                 {
@@ -290,8 +290,8 @@ namespace DiscordBot.SlashCommands
                 MultipartFormDataContent content = new MultipartFormDataContent();
                 content.Add(new ByteArrayContent(File.ReadAllBytes(path)), "media", Path.GetFileName(path));
                 content.Add(new StringContent("genai"), "models");
-                content.Add(new StringContent(Constants.Constants.aiApiUserId), "api_user");
-                content.Add(new StringContent(Constants.Constants.aiApiSecretId), "api_secret");
+                content.Add(new StringContent(Constants.Constants.AI_API_USER_ID), "api_user");
+                content.Add(new StringContent(Constants.Constants.AI_API_SECRET_ID), "api_secret");
                 request.Content = content;
 
                 HttpResponseMessage response = await client.SendAsync(request);
@@ -303,7 +303,7 @@ namespace DiscordBot.SlashCommands
                     StoredProcedure stored = new StoredProcedure();
                     DataTable dt = new DataTable();
 
-                    dt = stored.Select(Constants.Constants.discordBotConnStr, "GetAIJSONImageReturn", new List<SqlParameter> { new SqlParameter("@json", responseBody) });
+                    dt = stored.Select(Constants.Constants.DISCORD_BOT_CONN_STR, "GetAIJSONImageReturn", new List<SqlParameter> { new SqlParameter("@json", responseBody) });
 
                     if (dt.Rows.Count > 0)
                     {
@@ -366,14 +366,14 @@ namespace DiscordBot.SlashCommands
                     return;
                 }
 
-                string responseBody = await client.GetStringAsync($"https://api.sightengine.com/1.0/check.json?models=genai&api_user={Constants.Constants.aiApiUserId}&api_secret={Constants.Constants.aiApiSecretId}&url={url}");
+                string responseBody = await client.GetStringAsync($"https://api.sightengine.com/1.0/check.json?models=genai&api_user={Constants.Constants.AI_API_USER_ID}&api_secret={Constants.Constants.AI_API_SECRET_ID}&url={url}");
 
                 if (!string.IsNullOrEmpty(responseBody))
                 {
                     StoredProcedure stored = new StoredProcedure();
                     DataTable dt = new DataTable();
 
-                    dt = stored.Select(Constants.Constants.discordBotConnStr, "GetAIJSONImageReturn", new List<SqlParameter> { new SqlParameter("@json", responseBody) });
+                    dt = stored.Select(Constants.Constants.DISCORD_BOT_CONN_STR, "GetAIJSONImageReturn", new List<SqlParameter> { new SqlParameter("@json", responseBody) });
 
                     if (dt.Rows.Count > 0)
                     {
@@ -436,7 +436,7 @@ namespace DiscordBot.SlashCommands
 
             DateTime eventReminder = new DateTime(year, monthNumber, dayNumber, hours, minute, 0);
 
-            stored.UpdateCreate(Constants.Constants.discordBotConnStr, "AddEvent", new List<SqlParameter>
+            stored.UpdateCreate(Constants.Constants.DISCORD_BOT_CONN_STR, "AddEvent", new List<SqlParameter>
             {
                 new SqlParameter("@EventName", reminder),
                 new SqlParameter("@EventDescription", reminder),
@@ -451,7 +451,7 @@ namespace DiscordBot.SlashCommands
 
         [SlashCommand("chat", "Have a wonderful conversation with the bot.")]
         [EnabledInDm(true)]
-        public async Task HandleChat(string message, [Choice("Yes", "Yes"), Choice("No", "No")] string canBeShownPublicly, [Choice("Yes", "Yes"), Choice("No", "No")] string startNew,
+        public async Task HandleChat(string message, [Choice("Yes", "Yes"), Choice("No", "No")] string startNew,
                                     [Choice("New Yorker Lesbian", "New Yorker Lesbian"),
                                     Choice("Midwest Lesbian", "Midwest Lesbian"),
                                     Choice("California Lesbian", "California Lesbian"),
@@ -500,7 +500,6 @@ namespace DiscordBot.SlashCommands
                     break;
             }
             string response = string.Empty;
-            bool isPrivate = (canBeShownPublicly.Equals("No") ? true : false);
             bool isNew = (startNew.Equals("Yes") ? true : false);
             message = message.Trim();
 
@@ -508,9 +507,9 @@ namespace DiscordBot.SlashCommands
             string userName = Context.User.Username;
             string serverUid = (Context.Guild != null ? Context.Guild.Id.ToString() : "");
             string channelId = Context.Channel.Id.ToString();
-            string connStr = Constants.Constants.discordBotConnStr;
-            string openAiKey = Constants.Constants.openAiToken;
-            string openAiModel = Constants.Constants.openAiModel;
+            string connStr = Constants.Constants.DISCORD_BOT_CONN_STR;
+            string openAiKey = Constants.Constants.OPENAI_TOKEN;
+            string openAiModel = Constants.Constants.OPENAI_MODEL;
 
             try
             {
@@ -585,7 +584,7 @@ namespace DiscordBot.SlashCommands
                     new SqlParameter("@ChatMessage", response)
                 });
 
-                await FollowupAsync(response, ephemeral: isPrivate);
+                await FollowupAsync(response);
             }
             catch (Exception ex)
             {

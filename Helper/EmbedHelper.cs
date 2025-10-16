@@ -52,7 +52,7 @@ namespace DiscordBot.Helper
                 Title = $"BigBirdBot - Error Module: {module}",
                 Color = Color.Red,
                 Description = $"{description}",
-                ThumbnailUrl = Constants.Constants.errorImageUrl,
+                ThumbnailUrl = Constants.Constants.ERROR_IMAGE_URL,
             };
 
             embed.WithFooter(footer => footer.Text = commandFrom)

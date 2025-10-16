@@ -1,5 +1,5 @@
 ﻿using System.Data;
-using System.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 using System.Reflection;
 using Discord;
 using Discord.Commands;
@@ -52,7 +52,7 @@ namespace DiscordBot.Services
             string prefix = "";
             SocketGuildChannel? channelId = message.Channel as SocketGuildChannel;
             bool isActive = false;
-            DataTable dtPrefix = stored.Select(Constants.Constants.discordBotConnStr, "GetServerByID", new List<SqlParameter> { new SqlParameter("@ServerUID", Int64.Parse(channelId.Guild.Id.ToString())) });
+            DataTable dtPrefix = stored.Select(Constants.Constants.DISCORD_BOT_CONN_STR, "GetServerByID", new List<SqlParameter> { new SqlParameter("@ServerUID", Int64.Parse(channelId.Guild.Id.ToString())) });
             foreach (DataRow dr in dtPrefix.Rows)
             {
                 prefix = dr["Prefix"].ToString();
@@ -85,7 +85,7 @@ namespace DiscordBot.Services
             if (result.IsSuccess)
             {
                 Audit audit = new Audit();
-                audit.InsertAudit(command.Value.Name, context.User.Id.ToString(), Constants.Constants.discordBotConnStr, context.Guild.Id.ToString());
+                audit.InsertAudit(command.Value.Name, context.User.Id.ToString(), Constants.Constants.DISCORD_BOT_CONN_STR, context.Guild.Id.ToString());
                 return;
             }
 
@@ -93,31 +93,31 @@ namespace DiscordBot.Services
             if (result.ErrorReason.Contains("The input text has too few parameters"))
             {
                 EmbedHelper embedHelper = new EmbedHelper();
-                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "An additional parameter is required in order to run this command.", Constants.Constants.errorImageUrl, "", Color.Red, "");
+                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "An additional parameter is required in order to run this command.", Constants.Constants.ERROR_IMAGE_URL, "", Color.Red, "");
                 await context.Channel.SendMessageAsync(embed: embed.Build());
             }
             else if (result.ErrorReason.Contains("Failed to parse"))
             {
                 EmbedHelper embedHelper = new EmbedHelper();
-                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "Please enter a whole number for this command.", Constants.Constants.errorImageUrl, "", Color.Red, "");
+                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "Please enter a whole number for this command.", Constants.Constants.ERROR_IMAGE_URL, "", Color.Red, "");
                 await context.Channel.SendMessageAsync(embed: embed.Build());
             }
             else if (result.ErrorReason.Contains("Argument cannot be blank"))
             {
                 EmbedHelper embedHelper = new EmbedHelper();
-                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "The parameter(s) entered are not valid, please run the command with the correct parameters.", Constants.Constants.errorImageUrl, "", Color.Red, "");
+                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "The parameter(s) entered are not valid, please run the command with the correct parameters.", Constants.Constants.ERROR_IMAGE_URL, "", Color.Red, "");
                 await context.Channel.SendMessageAsync(embed: embed.Build());
             }
             else if (result.ErrorReason.Contains("The input text has too many parameters") && command.Value.Name.Equals("Play"))
             {
                 EmbedHelper embedHelper = new EmbedHelper();
-                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "Your text search must be contained in quotes.\nExample: -play \"Video Search\"", Constants.Constants.errorImageUrl, "", Color.Red, "");
+                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "Your text search must be contained in quotes.\nExample: -play \"Video Search\"", Constants.Constants.ERROR_IMAGE_URL, "", Color.Red, "");
                 await context.Channel.SendMessageAsync(embed: embed.Build());
             }
             else
             {
                 EmbedHelper embedHelper = new EmbedHelper();
-                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", result.ErrorReason, Constants.Constants.errorImageUrl, "", Color.Red, "");
+                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", result.ErrorReason, Constants.Constants.ERROR_IMAGE_URL, "", Color.Red, "");
                 await context.Channel.SendMessageAsync(embed: embed.Build());
             }
         }

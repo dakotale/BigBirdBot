@@ -4,7 +4,7 @@ using DiscordBot.Constants;
 using DiscordBot.Helper;
 using DiscordBot.Json;
 using System.Data;
-using System.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 using System.Reflection.Metadata.Ecma335;
 using System.Web;
 
@@ -19,7 +19,7 @@ namespace DiscordBot.SlashCommands
             await DeferAsync();
 
             var stored = new StoredProcedure();
-            var connStr = Constants.Constants.discordBotConnStr;
+            var connStr = Constants.Constants.DISCORD_BOT_CONN_STR;
 
             var dtToken = stored.Select(connStr, "GetTriviaToken", new List<SqlParameter>());
             if (dtToken.Rows.Count == 0)

@@ -2,7 +2,7 @@
 using DiscordBot.Constants;
 using DiscordBot.Helper;
 using System.Data;
-using System.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 using System.Text;
 
 namespace DiscordBot.SlashCommands
@@ -17,12 +17,12 @@ namespace DiscordBot.SlashCommands
             StoredProcedure procedure = new StoredProcedure();
             string result = "";
 
-            DataTable dt = procedure.Select(Constants.Constants.discordBotConnStr, "UpdateTwitterBroken", new List<SqlParameter> { new SqlParameter("@ServerID", Int64.Parse(Context.Guild.Id.ToString())) });
+            DataTable dt = procedure.Select(Constants.Constants.DISCORD_BOT_CONN_STR, "UpdateTwitterBroken", new List<SqlParameter> { new SqlParameter("@ServerID", Int64.Parse(Context.Guild.Id.ToString())) });
 
             if (dt.Rows.Count > 0)
             {
                 foreach (DataRow dr in dt.Rows)
-                    result = dr["Result"].ToString();
+                    result = dr["Result"].ToString() ?? "";
             }
 
             string title = "BigBirdBot - Twitter Embeds";
