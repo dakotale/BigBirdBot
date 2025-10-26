@@ -24,6 +24,8 @@
         public const string OPENAI_MODEL = "gpt-4.1";
         public const string ERROR_LOG_GUILD = "880569055856185354";
         public const string ERROR_LOG_CHANNEL = "1156625507840954369";
+        public const string KAYLA_SERVER_GUILD = "1057033598940745728";
         public const string MY_USER_ID = "171369791486033920";
+        public const string BASE_TEMP_DIR = @"C:\Temp\DiscordBot\";
     }
 }

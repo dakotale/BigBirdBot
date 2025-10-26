@@ -186,8 +186,8 @@ namespace DiscordBot.SlashCommands
             await DeferAsync(ephemeral: true);
 
             EmbedHelper embedHelper = new EmbedHelper();
-            string tableName = chatName.Trim();
-            fileName = @"C:\Temp\DiscordBot\" + tableName + @"\" + fileName.Trim();
+            string tableName = chatName.Trim() + @"\";
+            fileName = string.Concat(Constants.Constants.BASE_TEMP_DIR, tableName, fileName.Trim());
 
             StoredProcedure stored = new StoredProcedure();
             DataTable dt = stored.Select(Constants.Constants.DISCORD_BOT_CONN_STR, "CheckIfThirstURLExists", new List<SqlParameter>
