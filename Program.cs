@@ -592,9 +592,9 @@ internal class Program
 
         if (serverId.Equals(Constants.KAYLA_SERVER_GUILD))
         {
-            int magicNumber = 25;
+            int magicNumber = 2500;
             Random r = new Random();
-            int random = r.Next(1, 101);
+            int random = r.Next(1, 10001);
 
             // Silly item added that if the magic number rolls
             // then the user will be timed out for 1 minute.
@@ -603,6 +603,12 @@ internal class Program
                 SocketGuild guild = client.GetGuild(ulong.Parse(Constants.KAYLA_SERVER_GUILD));
                 SocketGuildUser guildUser = guild.GetUser(msg.Author.Id);
                 await guildUser.SetTimeOutAsync(new TimeSpan(0, 1, 0));
+
+                stored.UpdateCreate(connStr, "AddLandmine", new List<SqlParameter>
+                {
+                    new SqlParameter("@UserID", msg.Author.Id.ToString()),
+                    new SqlParameter("@Username", msg.Author.Username)
+                });
 
                 string landmine = $":bomb: {msg.Author.Mention} stepped on a landmine and has been timed out forever (1 minute)!";
                 await msg.Channel.SendMessageAsync(landmine);
