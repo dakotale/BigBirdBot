@@ -217,52 +217,42 @@ internal class Program
     /// <returns></returns>
     private async Task UserLeft(SocketGuild arg1, SocketUser arg2)
     {
-        try
-        {
-            string title = "BigBirdBot - User Left";
-            string desc = $"{arg2.Username} left the server.";
-            string thumbnailUrl = arg2.GetAvatarUrl(ImageFormat.Png, 256);
-            string createdBy = "BigBirdBot";
-            string imageUrl = "";
-            StoredProcedure stored = new StoredProcedure();
+        string title = "BigBirdBot - User Left";
+        string desc = $"{arg2.Username} left the server.";
+        string thumbnailUrl = arg2.GetAvatarUrl(ImageFormat.Png, 256);
+        string createdBy = "BigBirdBot";
+        string imageUrl = "";
+        StoredProcedure stored = new StoredProcedure();
 
-            if (!arg2.IsBot && !arg2.IsWebhook)
+        if (!arg2.IsBot && !arg2.IsWebhook)
+        {
+            stored.UpdateCreate(Constants.DISCORD_BOT_CONN_STR, "DeleteUser", new List<SqlParameter>
             {
-                stored.UpdateCreate(Constants.DISCORD_BOT_CONN_STR, "DeleteUser", new List<SqlParameter>
-                {
-                    new SqlParameter("@UserID", arg2.Id.ToString()),
-                    new SqlParameter("@ServerID", arg1.Id.ToString())
-                });
+                new SqlParameter("@UserID", arg2.Id.ToString()),
+                new SqlParameter("@ServerID", arg1.Id.ToString())
+            });
 
-                // Let's pull the first channel and hope for the best.....
-                if (arg1.DefaultChannel != null)
-                {
-                    ulong textChannels = arg1.DefaultChannel.Id;
-                    SocketTextChannel firstTextChannel = arg1.GetTextChannel(textChannels);
-                    SocketTextChannel? channel = client.GetChannel(firstTextChannel.Id) as SocketTextChannel;
+            // Let's pull the first channel and hope for the best.....
+            if (arg1.DefaultChannel != null)
+            {
+                ulong textChannels = arg1.DefaultChannel.Id;
+                SocketTextChannel firstTextChannel = arg1.GetTextChannel(textChannels);
+                SocketTextChannel? channel = client.GetChannel(firstTextChannel.Id) as SocketTextChannel;
 
-                    EmbedHelper embed = new EmbedHelper();
-                    if (channel != null && !arg2.IsBot)
-                        await channel.SendMessageAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Color.Gold, imageUrl).Build());
-                }
-                else
-                {
-                    List<SocketTextChannel> textChannels = arg1.TextChannels.Where(s => s.Name.Contains("general")).ToList();
-                    SocketTextChannel firstTextChannel = arg1.GetTextChannel(textChannels[0].Id);
-                    SocketTextChannel? channel = client.GetChannel(firstTextChannel.Id) as SocketTextChannel;
-
-                    EmbedHelper embed = new EmbedHelper();
-                    if (channel != null && !arg2.IsBot)
-                        await channel.SendMessageAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Color.Gold, imageUrl).Build());
-                }
+                EmbedHelper embed = new EmbedHelper();
+                if (channel != null && !arg2.IsBot)
+                    await channel.SendMessageAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Color.Gold, imageUrl).Build());
             }
-        }
-        catch (Discord.Net.HttpException ex)
-        {
-            // This means an exception was thrown relating to user permissions
-            // This can be eaten, probably an easy way to handle this but
-            // asking in the Discord.Net discord, they said to just handle
-            // this through an exception.
+            else
+            {
+                List<SocketTextChannel> textChannels = arg1.TextChannels.Where(s => s.Name.Contains("general")).ToList();
+                SocketTextChannel firstTextChannel = arg1.GetTextChannel(textChannels[0].Id);
+                SocketTextChannel? channel = client.GetChannel(firstTextChannel.Id) as SocketTextChannel;
+
+                EmbedHelper embed = new EmbedHelper();
+                if (channel != null && !arg2.IsBot)
+                    await channel.SendMessageAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Color.Gold, imageUrl).Build());
+            }
         }
     }
 
@@ -1150,27 +1140,15 @@ internal class Program
                 {
                     // If we reach here, means the user doesn't allow DMs
                     // Send a DM saying an issue happened
-                    IUser user = await client.GetUserAsync(ulong.Parse(Constants.MY_USER_ID));
-
-                    if (ex.Message.Contains("Request Entity"))
-                    {
-                        dt = storedProcedure.Select(Constants.DISCORD_BOT_CONN_STR, "UpdateEventScheduleTimeRequeue", new List<SqlParameter>
-                        {
-                            new SqlParameter("@UserID", userId)
-                        });
-
-                        await user.SendMessageAsync($"Something went wrong sending to this user: {userId} - {user.Username}, resending again for a new random pull of images.\nException Message: {ex.Message}");
-                    }
-                    else
-                        await user.SendMessageAsync($"Something went wrong sending to this user: {userId} - {user.Username}, might be an issue with allowing DMs.\nException Message: {ex.Message}");
-                        
+                    IUser user = await client.GetUserAsync(ulong.Parse("171369791486033920"));
+                    await user.SendMessageAsync($"Something went wrong sending to this user: {userId}, might be an issue with allowing DMs.\nException Message: {ex.Message}");
                     return;
                 }
                 catch (Exception ex)
                 {
                     // If we reach here, something really went wrong and should handle it.
                     // Send a DM saying an issue happened
-                    IUser user = await client.GetUserAsync(ulong.Parse(Constants.MY_USER_ID));
+                    IUser user = await client.GetUserAsync(ulong.Parse("171369791486033920"));
                     storedProcedure.UpdateCreate(Constants.DISCORD_BOT_CONN_STR, "UpdateEventScheduleTimeRequeue", new List<SqlParameter> { new SqlParameter("@UserID", userId) });
                     await user.SendMessageAsync($"Something went wrong sending to this user: {userId}\nException Message: {ex.Message}\nThe event was requeued to send at {DateTime.Now.AddMinutes(1).ToString("yyyy-MM-dd hh:mm tt")}");
                     return;
