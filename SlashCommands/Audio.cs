@@ -1,5 +1,5 @@
 ﻿using System.Data;
-using Microsoft.Data.SqlClient;
+using System.Data.SqlClient;
 using Discord;
 using Discord.Interactions;
 using DiscordBot.Constants;
@@ -355,7 +355,7 @@ namespace DiscordBot.SlashCommands
             {
                 await player.SetVolumeAsync(vol / 100f).ConfigureAwait(false);
 
-                procedure.UpdateCreate(Constants.Constants.DISCORD_BOT_CONN_STR, "UpdateVolume", new List<SqlParameter>
+                procedure.UpdateCreate(Constants.Constants.discordBotConnStr, "UpdateVolume", new List<SqlParameter>
                     {
                         new SqlParameter("@ServerUID", guildId),
                         new SqlParameter("@Volume", volume)
@@ -591,7 +591,7 @@ namespace DiscordBot.SlashCommands
             }
             else
             {
-                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Swap Error", "Both elements must be present in the queue.", Constants.Constants.ERROR_IMAGE_URL, "", Color.Red, "");
+                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Swap Error", "Both elements must be present in the queue.", Constants.Constants.errorImageUrl, "", Color.Red, "");
                 await FollowupAsync(embed: embed.Build()).ConfigureAwait(false);
             }
         }
@@ -618,7 +618,7 @@ namespace DiscordBot.SlashCommands
             else
             {
                 EmbedHelper embedHelper = new EmbedHelper();
-                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "The queue must have more than one element in it to shuffle.", Constants.Constants.ERROR_IMAGE_URL, "", Color.Red, "");
+                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "The queue must have more than one element in it to shuffle.", Constants.Constants.errorImageUrl, "", Color.Red, "");
                 await FollowupAsync(embed: embed.Build()).ConfigureAwait(false);
             }
         }
@@ -637,7 +637,7 @@ namespace DiscordBot.SlashCommands
             }
 
             StoredProcedure stored = new StoredProcedure();
-            stored.UpdateCreate(Constants.Constants.DISCORD_BOT_CONN_STR, "DeleteMusicQueueAll", new List<SqlParameter>
+            stored.UpdateCreate(Constants.Constants.discordBotConnStr, "DeleteMusicQueueAll", new List<SqlParameter>
             {
                 new SqlParameter("@ServerID", Int64.Parse(Context.Guild.Id.ToString()))
             });
@@ -651,7 +651,7 @@ namespace DiscordBot.SlashCommands
             else
             {
                 EmbedHelper embedHelper = new EmbedHelper();
-                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "The queue must have one element to clear.", Constants.Constants.ERROR_IMAGE_URL, "", Color.Red, "");
+                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "The queue must have one element to clear.", Constants.Constants.errorImageUrl, "", Color.Red, "");
                 await FollowupAsync(embed: embed.Build()).ConfigureAwait(false);
             }
         }
@@ -681,7 +681,7 @@ namespace DiscordBot.SlashCommands
             catch
             {
                 EmbedHelper embedHelper = new EmbedHelper();
-                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "The element does not exist in the queue.", Constants.Constants.ERROR_IMAGE_URL, "", Color.Red, "");
+                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "The element does not exist in the queue.", Constants.Constants.errorImageUrl, "", Color.Red, "");
                 await FollowupAsync(embed: embed.Build()).ConfigureAwait(false);
             }
         }
@@ -718,13 +718,13 @@ namespace DiscordBot.SlashCommands
                 else
                 {
                     EmbedHelper embedHelper = new EmbedHelper();
-                    await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Error", "Please enter a valid seek time.\n**Example: -seek 00:00:30**\nAbove example would seek 30 seconds into the video.", Constants.Constants.ERROR_IMAGE_URL, "", Color.Red, "").Build()).ConfigureAwait(false);
+                    await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Error", "Please enter a valid seek time.\n**Example: -seek 00:00:30**\nAbove example would seek 30 seconds into the video.", Constants.Constants.errorImageUrl, "", Color.Red, "").Build()).ConfigureAwait(false);
                 }
             }
             catch (Exception exception)
             {
                 EmbedHelper embedHelper = new EmbedHelper();
-                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", exception.Message, Constants.Constants.ERROR_IMAGE_URL, "", Color.Red, "");
+                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", exception.Message, Constants.Constants.errorImageUrl, "", Color.Red, "");
                 await FollowupAsync(embed: embed.Build());
             }
         }
@@ -785,7 +785,7 @@ namespace DiscordBot.SlashCommands
             if (lavaTrack != null)
             {
                 StoredProcedure stored = new StoredProcedure();
-                stored.UpdateCreate(Constants.Constants.DISCORD_BOT_CONN_STR, "AddMusic", new List<SqlParameter>
+                stored.UpdateCreate(Constants.Constants.discordBotConnStr, "AddMusic", new List<SqlParameter>
                 {
                     new SqlParameter("@ServerID", Int64.Parse(serverId.ToString())),
                     new SqlParameter("@VideoID", lavaTrack.Identifier),
@@ -803,7 +803,7 @@ namespace DiscordBot.SlashCommands
             StoredProcedure procedure = new StoredProcedure();
             int volume = 50;
 
-            DataTable dt = procedure.Select(Constants.Constants.DISCORD_BOT_CONN_STR, "GetVolume", new List<SqlParameter>
+            DataTable dt = procedure.Select(Constants.Constants.discordBotConnStr, "GetVolume", new List<SqlParameter>
             {
                 new SqlParameter("@ServerUID", guildId)
             });
@@ -818,7 +818,7 @@ namespace DiscordBot.SlashCommands
         private void AddPlayerConnected(IVoiceState? voiceState)
         {
             StoredProcedure stored = new StoredProcedure();
-            stored.UpdateCreate(Constants.Constants.DISCORD_BOT_CONN_STR, "AddPlayerConnected", new List<SqlParameter>
+            stored.UpdateCreate(Constants.Constants.discordBotConnStr, "AddPlayerConnected", new List<SqlParameter>
             {
                 new SqlParameter("@ServerID", Int64.Parse(Context.Guild.Id.ToString())),
                 new SqlParameter("@VoiceChannelID", Int64.Parse(voiceState.VoiceChannel.Id.ToString())),
@@ -831,12 +831,12 @@ namespace DiscordBot.SlashCommands
         private void DeletePlayerConnected(long serverId)
         {
             StoredProcedure stored = new StoredProcedure();
-            stored.UpdateCreate(Constants.Constants.DISCORD_BOT_CONN_STR, "DeletePlayerConnected", new List<SqlParameter>
+            stored.UpdateCreate(Constants.Constants.discordBotConnStr, "DeletePlayerConnected", new List<SqlParameter>
             {
                 new SqlParameter("@ServerID", Int64.Parse(serverId.ToString()))
             });
 
-            stored.UpdateCreate(Constants.Constants.DISCORD_BOT_CONN_STR, "DeleteMusicQueueAll", new List<SqlParameter>
+            stored.UpdateCreate(Constants.Constants.discordBotConnStr, "DeleteMusicQueueAll", new List<SqlParameter>
             {
                 new SqlParameter("@ServerID", Int64.Parse(serverId.ToString()))
             });

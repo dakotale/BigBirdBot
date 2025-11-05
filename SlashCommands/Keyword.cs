@@ -1,5 +1,5 @@
 ﻿using System.Data;
-using Microsoft.Data.SqlClient;
+using System.Data.SqlClient;
 using System.Net;
 using Discord;
 using Discord.Interactions;
@@ -42,12 +42,12 @@ namespace DiscordBot.SlashCommands
 
                             StoredProcedure procedure = new StoredProcedure();
 
-                            procedure.UpdateCreate(Constants.Constants.DISCORD_BOT_CONN_STR, "AddChatKeywordAction", new List<SqlParameter>
+                            procedure.UpdateCreate(Constants.Constants.discordBotConnStr, "AddChatKeywordAction", new List<System.Data.SqlClient.SqlParameter>
                             {
-                                new SqlParameter("@ServerID", serverId),
-                                new SqlParameter("@Keyword", word),
-                                new SqlParameter("@CreatedBy", createdBy),
-                                new SqlParameter("@Action", path)
+                                new System.Data.SqlClient.SqlParameter("@ServerID", serverId),
+                                new System.Data.SqlClient.SqlParameter("@Keyword", word),
+                                new System.Data.SqlClient.SqlParameter("@CreatedBy", createdBy),
+                                new System.Data.SqlClient.SqlParameter("@Action", path)
                             });
 
                             string title = "BigBirdBot - Keyword Added";
@@ -73,12 +73,12 @@ namespace DiscordBot.SlashCommands
 
                                 StoredProcedure procedure = new StoredProcedure();
 
-                                procedure.UpdateCreate(Constants.Constants.DISCORD_BOT_CONN_STR, "AddChatKeywordAction", new List<SqlParameter>
+                                procedure.UpdateCreate(Constants.Constants.discordBotConnStr, "AddChatKeywordAction", new List<System.Data.SqlClient.SqlParameter>
                                 {
-                                    new SqlParameter("@ServerID", serverId),
-                                    new SqlParameter("@Keyword", word),
-                                    new SqlParameter("@CreatedBy", createdBy),
-                                    new SqlParameter("@Action", action)
+                                    new System.Data.SqlClient.SqlParameter("@ServerID", serverId),
+                                    new System.Data.SqlClient.SqlParameter("@Keyword", word),
+                                    new System.Data.SqlClient.SqlParameter("@CreatedBy", createdBy),
+                                    new System.Data.SqlClient.SqlParameter("@Action", action)
                                 });
 
                                 string title = "BigBirdBot - Keyword Added";
@@ -94,7 +94,7 @@ namespace DiscordBot.SlashCommands
                             {
                                 string title = "BigBirdBot - Error";
                                 string desc = $"Maximum number of characters for the action is 50 characters and the action is 2000 characters.";
-                                string thumbnailUrl = Constants.Constants.ERROR_IMAGE_URL;
+                                string thumbnailUrl = Constants.Constants.errorImageUrl;
                                 string imageUrl = "";
                                 string createdBy = "Command from: " + Context.User.Username;
 
@@ -106,7 +106,7 @@ namespace DiscordBot.SlashCommands
                         {
                             string title = "BigBirdBot - Error";
                             string desc = $"To add a chat keyword action, enter a word and action/attachment.";
-                            string thumbnailUrl = Constants.Constants.ERROR_IMAGE_URL;
+                            string thumbnailUrl = Constants.Constants.errorImageUrl;
                             string imageUrl = "";
                             string createdBy = "Command from: " + Context.User.Username;
 
@@ -119,7 +119,7 @@ namespace DiscordBot.SlashCommands
                 {
                     string title = "BigBirdBot - Error";
                     string desc = $"To add a chat keyword action, enter a word and action.";
-                    string thumbnailUrl = Constants.Constants.ERROR_IMAGE_URL;
+                    string thumbnailUrl = Constants.Constants.errorImageUrl;
                     string imageUrl = "";
                     string createdBy = "Command from: " + Context.User.Username;
 
@@ -131,7 +131,7 @@ namespace DiscordBot.SlashCommands
             {
                 string title = "BigBirdBot - Error";
                 string desc = $"Keyword added resulted in an error.\n" + e.Message;
-                string thumbnailUrl = Constants.Constants.ERROR_IMAGE_URL;
+                string thumbnailUrl = Constants.Constants.errorImageUrl;
                 string imageUrl = "";
                 string createdBy = "Command from: " + Context.User.Username;
 
@@ -184,7 +184,7 @@ namespace DiscordBot.SlashCommands
                     categoryIdList = guild.CategoryChannels.Where(s => s.Name.ToLower() == "thirsting" || s.Name.ToLower() == "stanning" || s.Name.ToLower() == "keyword multi").ToList(); // prod: thirsting
                 }
 
-                DataTable dtCheck = stored.Select(Constants.Constants.DISCORD_BOT_CONN_STR, "CheckKeywordExistsThirstMap", new List<SqlParameter>
+                DataTable dtCheck = stored.Select(Constants.Constants.discordBotConnStr, "CheckKeywordExistsThirstMap", new List<SqlParameter>
                 {
                     new SqlParameter("@Keyword", keyword)
                 });
@@ -200,7 +200,7 @@ namespace DiscordBot.SlashCommands
 
                     DataRow dr = dtCheck.Rows[0];
 
-                    stored.UpdateCreate(Constants.Constants.DISCORD_BOT_CONN_STR, "AddThirstCommand", new List<SqlParameter>
+                    stored.UpdateCreate(Constants.Constants.discordBotConnStr, "AddThirstCommand", new List<System.Data.SqlClient.SqlParameter>
                     {
                         new SqlParameter("@ServerID", serverId),
                         new SqlParameter("@Keyword", keyword),
@@ -212,7 +212,7 @@ namespace DiscordBot.SlashCommands
                 else
                 {
                     // Add Thirst Command
-                    stored.UpdateCreate(Constants.Constants.DISCORD_BOT_CONN_STR, "AddThirstCommand", new List<SqlParameter>
+                    stored.UpdateCreate(Constants.Constants.discordBotConnStr, "AddThirstCommand", new List<System.Data.SqlClient.SqlParameter>
                     {
                         new SqlParameter("@ServerID", serverId),
                         new SqlParameter("@Keyword", keyword),
@@ -269,7 +269,7 @@ namespace DiscordBot.SlashCommands
 
                 string tableName = keyword.Trim();
 
-                DataTable dt = stored.Select(Constants.Constants.DISCORD_BOT_CONN_STR, "AddEventScheduledTime", new List<SqlParameter>
+                DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "AddEventScheduledTime", new List<SqlParameter>
                 {
                     new SqlParameter("@UserID", Int64.Parse(user.Id.ToString())),
                     new SqlParameter("@TableName", tableName)
@@ -287,7 +287,7 @@ namespace DiscordBot.SlashCommands
             catch (Exception e)
             {
                 EmbedHelper embedHelper = new EmbedHelper();
-                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", e.Message, Constants.Constants.ERROR_IMAGE_URL, "", Color.Red, "");
+                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", e.Message, Constants.Constants.errorImageUrl, "", Color.Red, "");
                 await FollowupAsync(embed: embed.Build(), ephemeral: true);
             }
         }
@@ -305,7 +305,7 @@ namespace DiscordBot.SlashCommands
 
                 string tableName = Context.Channel.Name.Trim();
 
-                DataTable dt = stored.Select(Constants.Constants.DISCORD_BOT_CONN_STR, "AddEventScheduledTime", new List<SqlParameter>
+                DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "AddEventScheduledTime", new List<SqlParameter>
                 {
                     new SqlParameter("@UserID", Int64.Parse(Context.User.Id.ToString())),
                     new SqlParameter("@TableName", tableName)
@@ -323,7 +323,7 @@ namespace DiscordBot.SlashCommands
             catch (Exception e)
             {
                 EmbedHelper embedHelper = new EmbedHelper();
-                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", e.Message, Constants.Constants.ERROR_IMAGE_URL, "", Color.Red, "");
+                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", e.Message, Constants.Constants.errorImageUrl, "", Color.Red, "");
                 await FollowupAsync(embed: embed.Build(), ephemeral: true);
             }
         }
@@ -335,7 +335,7 @@ namespace DiscordBot.SlashCommands
             await DeferAsync(ephemeral: true);
 
             StoredProcedure stored = new StoredProcedure();
-            string connStr = Constants.Constants.DISCORD_BOT_CONN_STR;
+            string connStr = Constants.Constants.discordBotConnStr;
             List<string> multipleKeywords = new List<string>();
             URLCleanup cleanup = new URLCleanup();
 
@@ -381,7 +381,7 @@ namespace DiscordBot.SlashCommands
                                     string userId = Context.User.Id.ToString();
                                     foreach (DataRow dr in dt.Rows)
                                     {
-                                        stored.UpdateCreate(connStr, "AddThirstByMap", new List<SqlParameter>
+                                        stored.UpdateCreate(connStr, "AddThirstByMap", new List<System.Data.SqlClient.SqlParameter>
                                         {
                                             new SqlParameter("@FilePath", u),
                                             new SqlParameter("@TableName", dr["TableName"].ToString()),
@@ -411,7 +411,7 @@ namespace DiscordBot.SlashCommands
                                 string userId = Context.User.Id.ToString();
                                 foreach (DataRow dr in dt.Rows)
                                 {
-                                    stored.UpdateCreate(connStr, "AddThirstByMap", new List<SqlParameter>
+                                    stored.UpdateCreate(connStr, "AddThirstByMap", new List<System.Data.SqlClient.SqlParameter>
                                     {
                                         new SqlParameter("@FilePath", url),
                                         new SqlParameter("@TableName", dr["TableName"].ToString()),
@@ -440,7 +440,7 @@ namespace DiscordBot.SlashCommands
         {
             await DeferAsync(ephemeral: true);
             StoredProcedure stored = new StoredProcedure();
-            string connStr = Constants.Constants.DISCORD_BOT_CONN_STR;
+            string connStr = Constants.Constants.discordBotConnStr;
             List<string> multipleKeywords = new List<string>();
 
             List<IAttachment?> attachments = new List<IAttachment>();
@@ -490,7 +490,7 @@ namespace DiscordBot.SlashCommands
                                 client.DownloadFileAsync(new Uri(attachment.Url), path);
                             }
 
-                            stored.UpdateCreate(connStr, "AddThirstByMap", new List<SqlParameter>
+                            stored.UpdateCreate(connStr, "AddThirstByMap", new List<System.Data.SqlClient.SqlParameter>
                             {
                                 new SqlParameter("@FilePath", path),
                                 new SqlParameter("@TableName", dr["TableName"].ToString()),
@@ -518,7 +518,7 @@ namespace DiscordBot.SlashCommands
         public async Task HandleKeywordList()
         {
             await DeferAsync();
-            string connStr = Constants.Constants.DISCORD_BOT_CONN_STR;
+            string connStr = Constants.Constants.discordBotConnStr;
             long serverId = Int64.Parse(Context.Guild.Id.ToString());
             int i = 1;
 
@@ -552,7 +552,7 @@ namespace DiscordBot.SlashCommands
             StoredProcedure stored = new StoredProcedure();
             string description = "";
 
-            DataTable dt = stored.Select(Constants.Constants.DISCORD_BOT_CONN_STR, "GetThirstMapByServerID", new List<SqlParameter>
+            DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "GetThirstMapByServerID", new List<SqlParameter>
             {
                 new SqlParameter("@ServerID", Int64.Parse(Context.Guild.Id.ToString()))
             });
@@ -588,10 +588,10 @@ namespace DiscordBot.SlashCommands
 
                         StoredProcedure procedure = new StoredProcedure();
 
-                        DataTable dt = procedure.Select(Constants.Constants.DISCORD_BOT_CONN_STR, "GetChatAction", new List<SqlParameter>
+                        DataTable dt = procedure.Select(Constants.Constants.discordBotConnStr, "GetChatAction", new List<System.Data.SqlClient.SqlParameter>
                         {
-                            new SqlParameter("@ServerID", serverId),
-                            new SqlParameter("@Message", word)
+                            new System.Data.SqlClient.SqlParameter("@ServerID", serverId),
+                            new System.Data.SqlClient.SqlParameter("@Message", word)
                         });
 
                         if (dt.Rows.Count > 0)
@@ -608,11 +608,11 @@ namespace DiscordBot.SlashCommands
                                     client.DownloadFileAsync(new Uri(attachment.Url), path);
                                 }
 
-                                procedure.UpdateCreate(Constants.Constants.DISCORD_BOT_CONN_STR, "UpdateChatAction", new List<SqlParameter>
+                                procedure.UpdateCreate(Constants.Constants.discordBotConnStr, "UpdateChatAction", new List<System.Data.SqlClient.SqlParameter>
                                 {
-                                    new SqlParameter("@ServerID", serverId),
-                                    new SqlParameter("@Keyword", word),
-                                    new SqlParameter("@Action", path)
+                                    new System.Data.SqlClient.SqlParameter("@ServerID", serverId),
+                                    new System.Data.SqlClient.SqlParameter("@Keyword", word),
+                                    new System.Data.SqlClient.SqlParameter("@Action", path)
                                 });
 
                                 string title = "BigBirdBot - Keyword Updated";
@@ -629,7 +629,7 @@ namespace DiscordBot.SlashCommands
                         {
                             string title = "BigBirdBot - Error";
                             string desc = $"This keyword does not exist for this server.";
-                            string thumbnailUrl = Constants.Constants.ERROR_IMAGE_URL;
+                            string thumbnailUrl = Constants.Constants.errorImageUrl;
                             string imageUrl = "";
                             string createdByMsg = "Command from: " + Context.User.Username;
 
@@ -650,19 +650,19 @@ namespace DiscordBot.SlashCommands
 
                                 StoredProcedure procedure = new StoredProcedure();
 
-                                DataTable dt = procedure.Select(Constants.Constants.DISCORD_BOT_CONN_STR, "GetChatAction", new List<SqlParameter>
+                                DataTable dt = procedure.Select(Constants.Constants.discordBotConnStr, "GetChatAction", new List<System.Data.SqlClient.SqlParameter>
                                 {
-                                    new SqlParameter("@ServerID", serverId),
-                                    new SqlParameter("@Message", word)
+                                    new System.Data.SqlClient.SqlParameter("@ServerID", serverId),
+                                    new System.Data.SqlClient.SqlParameter("@Message", word)
                                 });
 
                                 if (dt.Rows.Count > 0)
                                 {
-                                    procedure.UpdateCreate(Constants.Constants.DISCORD_BOT_CONN_STR, "UpdateChatAction", new List<SqlParameter>
+                                    procedure.UpdateCreate(Constants.Constants.discordBotConnStr, "UpdateChatAction", new List<System.Data.SqlClient.SqlParameter>
                                     {
-                                        new SqlParameter("@ServerID", serverId),
-                                        new SqlParameter("@Keyword", word),
-                                        new SqlParameter("@Action", action)
+                                        new System.Data.SqlClient.SqlParameter("@ServerID", serverId),
+                                        new System.Data.SqlClient.SqlParameter("@Keyword", word),
+                                        new System.Data.SqlClient.SqlParameter("@Action", action)
                                     });
 
                                     string title = "BigBirdBot - Keyword Updated";
@@ -678,7 +678,7 @@ namespace DiscordBot.SlashCommands
                                 {
                                     string title = "BigBirdBot - Error";
                                     string desc = $"This keyword does not exist for this server.";
-                                    string thumbnailUrl = Constants.Constants.ERROR_IMAGE_URL;
+                                    string thumbnailUrl = Constants.Constants.errorImageUrl;
                                     string imageUrl = "";
                                     string createdByMsg = "Command from: " + Context.User.Username;
 
@@ -690,7 +690,7 @@ namespace DiscordBot.SlashCommands
                             {
                                 string title = "BigBirdBot - Error";
                                 string desc = $"Maximum number of characters for the action is 50 characters and the action is 2000 characters.";
-                                string thumbnailUrl = Constants.Constants.ERROR_IMAGE_URL;
+                                string thumbnailUrl = Constants.Constants.errorImageUrl;
                                 string imageUrl = "";
                                 string createdBy = "Command from: " + Context.User.Username;
 
@@ -702,7 +702,7 @@ namespace DiscordBot.SlashCommands
                         {
                             string title = "BigBirdBot - Error";
                             string desc = $"To add a chat keyword action, enter a word and action.";
-                            string thumbnailUrl = Constants.Constants.ERROR_IMAGE_URL;
+                            string thumbnailUrl = Constants.Constants.errorImageUrl;
                             string imageUrl = "";
                             string createdBy = "Command from: " + Context.User.Username;
 
@@ -719,19 +719,19 @@ namespace DiscordBot.SlashCommands
 
                     StoredProcedure procedure = new StoredProcedure();
 
-                    DataTable dt = procedure.Select(Constants.Constants.DISCORD_BOT_CONN_STR, "GetChatAction", new List<SqlParameter>
+                    DataTable dt = procedure.Select(Constants.Constants.discordBotConnStr, "GetChatAction", new List<System.Data.SqlClient.SqlParameter>
                     {
-                        new SqlParameter("@ServerID", serverId),
-                        new SqlParameter("@Message", word)
+                        new System.Data.SqlClient.SqlParameter("@ServerID", serverId),
+                        new System.Data.SqlClient.SqlParameter("@Message", word)
                     });
 
                     if (dt.Rows.Count > 0)
                     {
-                        procedure.UpdateCreate(Constants.Constants.DISCORD_BOT_CONN_STR, "UpdateChatAction", new List<SqlParameter>
+                        procedure.UpdateCreate(Constants.Constants.discordBotConnStr, "UpdateChatAction", new List<System.Data.SqlClient.SqlParameter>
                         {
-                            new SqlParameter("@ServerID", serverId),
-                            new SqlParameter("@Keyword", word),
-                            new SqlParameter("@Action", "")
+                            new System.Data.SqlClient.SqlParameter("@ServerID", serverId),
+                            new System.Data.SqlClient.SqlParameter("@Keyword", word),
+                            new System.Data.SqlClient.SqlParameter("@Action", "")
                         });
 
                         string title = "BigBirdBot - Keyword Updated";
@@ -747,7 +747,7 @@ namespace DiscordBot.SlashCommands
                     {
                         string title = "BigBirdBot - Error";
                         string desc = $"This keyword does not exist for this server.";
-                        string thumbnailUrl = Constants.Constants.ERROR_IMAGE_URL;
+                        string thumbnailUrl = Constants.Constants.errorImageUrl;
                         string imageUrl = "";
                         string createdByMsg = "Command from: " + Context.User.Username;
 
@@ -759,7 +759,7 @@ namespace DiscordBot.SlashCommands
                 {
                     string title = "BigBirdBot - Error";
                     string desc = $"To add a chat keyword action, enter a word and action.";
-                    string thumbnailUrl = Constants.Constants.ERROR_IMAGE_URL;
+                    string thumbnailUrl = Constants.Constants.errorImageUrl;
                     string imageUrl = "";
                     string createdBy = "Command from: " + Context.User.Username;
 
@@ -771,7 +771,7 @@ namespace DiscordBot.SlashCommands
             {
                 string title = "BigBirdBot - Error";
                 string desc = $"Keyword added resulted in an error.\n" + e.Message;
-                string thumbnailUrl = Constants.Constants.ERROR_IMAGE_URL;
+                string thumbnailUrl = Constants.Constants.errorImageUrl;
                 string imageUrl = "";
                 string createdBy = "Command from: " + Context.User.Username;
 
@@ -792,7 +792,7 @@ namespace DiscordBot.SlashCommands
             long serverId = Int64.Parse(Context.Guild.Id.ToString());
             string result = "";
 
-            DataTable dt = procedure.Select(Constants.Constants.DISCORD_BOT_CONN_STR, "TurnAllOnOffKeywordsByServer", new List<SqlParameter>
+            DataTable dt = procedure.Select(Constants.Constants.discordBotConnStr, "TurnAllOnOffKeywordsByServer", new List<SqlParameter>
             {
                 new SqlParameter("@ServerID", serverId)
             });
@@ -823,18 +823,18 @@ namespace DiscordBot.SlashCommands
 
             StoredProcedure procedure = new StoredProcedure();
 
-            DataTable dt = procedure.Select(Constants.Constants.DISCORD_BOT_CONN_STR, "GetChatAction", new List<SqlParameter>
+            DataTable dt = procedure.Select(Constants.Constants.discordBotConnStr, "GetChatAction", new List<System.Data.SqlClient.SqlParameter>
             {
-                new SqlParameter("@ServerID", serverId),
-                new SqlParameter("@Message", keyword.Trim())
+                new System.Data.SqlClient.SqlParameter("@ServerID", serverId),
+                new System.Data.SqlClient.SqlParameter("@Message", keyword.Trim())
             });
 
             if (dt.Rows.Count > 0)
             {
-                procedure.UpdateCreate(Constants.Constants.DISCORD_BOT_CONN_STR, "DisableChatKeyword", new List<SqlParameter>
+                procedure.UpdateCreate(Constants.Constants.discordBotConnStr, "DisableChatKeyword", new List<System.Data.SqlClient.SqlParameter>
                 {
-                    new SqlParameter("@ServerID", serverId),
-                    new SqlParameter("@Keyword", keyword.Trim())
+                    new System.Data.SqlClient.SqlParameter("@ServerID", serverId),
+                    new System.Data.SqlClient.SqlParameter("@Keyword", keyword.Trim())
                 });
 
                 string title = "BigBirdBot - Keyword Disabled";
@@ -850,7 +850,7 @@ namespace DiscordBot.SlashCommands
             {
                 string title = "BigBirdBot - Error";
                 string desc = $"This keyword does not exist for this server.";
-                string thumbnailUrl = Constants.Constants.ERROR_IMAGE_URL;
+                string thumbnailUrl = Constants.Constants.errorImageUrl;
                 string imageUrl = "";
                 string createdByMsg = "Command from: " + Context.User.Username;
 
@@ -871,7 +871,7 @@ namespace DiscordBot.SlashCommands
             url = url.Trim();
 
             StoredProcedure stored = new StoredProcedure();
-            DataTable dt = stored.Select(Constants.Constants.DISCORD_BOT_CONN_STR, "CheckIfThirstURLExists", new List<SqlParameter>
+            DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "CheckIfThirstURLExists", new List<SqlParameter>
             {
                 new SqlParameter("@FilePath", url),
                 new SqlParameter("TableName", tableName)
@@ -879,7 +879,7 @@ namespace DiscordBot.SlashCommands
 
             if (dt.Rows.Count > 0)
             {
-                stored.UpdateCreate(Constants.Constants.DISCORD_BOT_CONN_STR, "DeleteThirstURL", new List<SqlParameter>
+                stored.UpdateCreate(Constants.Constants.discordBotConnStr, "DeleteThirstURL", new List<SqlParameter>
                     {
                         new SqlParameter("@FilePath", url),
                         new SqlParameter("TableName", tableName)
@@ -890,7 +890,7 @@ namespace DiscordBot.SlashCommands
             }
             else
             {
-                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "The URL doesn't exist in the table provided or the table doesn't exist.", Constants.Constants.ERROR_IMAGE_URL, Context.User.Username, Color.Red, "");
+                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "The URL doesn't exist in the table provided or the table doesn't exist.", Constants.Constants.errorImageUrl, Context.User.Username, Color.Red, "");
                 await FollowupAsync(embed: embed.Build(), ephemeral: true);
             }
         }
@@ -904,7 +904,7 @@ namespace DiscordBot.SlashCommands
 
             StoredProcedure stored = new StoredProcedure();
             EmbedHelper embedHelper = new EmbedHelper();
-            DataTable dt = stored.Select(Constants.Constants.DISCORD_BOT_CONN_STR, "CheckKeywordExistsThirstMapByServer", new List<SqlParameter>
+            DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "CheckKeywordExistsThirstMapByServer", new List<SqlParameter>
             {
                 new SqlParameter("@Keyword", keyword.Trim()),
                 new SqlParameter("@ServerID", Int64.Parse(Context.Guild.Id.ToString()))
@@ -914,7 +914,7 @@ namespace DiscordBot.SlashCommands
             {
                 foreach (DataRow dr in dt.Rows)
                 {
-                    stored.UpdateCreate(Constants.Constants.DISCORD_BOT_CONN_STR, "DeleteThirstCommand", new List<SqlParameter>
+                    stored.UpdateCreate(Constants.Constants.discordBotConnStr, "DeleteThirstCommand", new List<SqlParameter>
                     {
                         new SqlParameter("@ChatKeywordID", int.Parse(dr["ChatKeywordID"].ToString())),
                         new SqlParameter("@TableName", dr["TableName"].ToString())
@@ -926,7 +926,7 @@ namespace DiscordBot.SlashCommands
             }
             else
             {
-                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "The multi-keyword entered does not exist.", Constants.Constants.ERROR_IMAGE_URL, "", Color.Red, "");
+                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "The multi-keyword entered does not exist.", Constants.Constants.errorImageUrl, "", Color.Red, "");
                 await FollowupAsync(embed: embed.Build(), ephemeral: true);
             }
         }
@@ -943,14 +943,14 @@ namespace DiscordBot.SlashCommands
 
             if (string.IsNullOrEmpty(chatName))
             {
-                dt = stored.Select(Constants.Constants.DISCORD_BOT_CONN_STR, "DeleteEventScheduledTime", new List<SqlParameter>
+                dt = stored.Select(Constants.Constants.discordBotConnStr, "DeleteEventScheduledTime", new List<SqlParameter>
                 {
                     new SqlParameter("@UserID", user.Id.ToString())
                 });
             }
             else
             {
-                dt = stored.Select(Constants.Constants.DISCORD_BOT_CONN_STR, "DeleteEventScheduledTime", new List<SqlParameter>
+                dt = stored.Select(Constants.Constants.discordBotConnStr, "DeleteEventScheduledTime", new List<SqlParameter>
                 {
                     new SqlParameter("@UserID", user.Id.ToString()),
                     new SqlParameter("@TableName", chatName.Trim())
@@ -969,7 +969,7 @@ namespace DiscordBot.SlashCommands
         {
             await DeferAsync(ephemeral: true);
             StoredProcedure stored = new StoredProcedure();
-            string connStr = Constants.Constants.DISCORD_BOT_CONN_STR;
+            string connStr = Constants.Constants.discordBotConnStr;
             string userId = Context.User.Id.ToString();
             long serverId = Int64.Parse(Context.Guild.Id.ToString());
 
@@ -1000,7 +1000,7 @@ namespace DiscordBot.SlashCommands
             EmbedHelper embedHelper = new EmbedHelper();
             StoredProcedure stored = new StoredProcedure();
 
-            DataTable dt = stored.Select(Constants.Constants.DISCORD_BOT_CONN_STR, "UpdateEventScheduleTimeRequeue", new List<SqlParameter>
+            DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "UpdateEventScheduleTimeRequeue", new List<SqlParameter>
             {
                 new SqlParameter("@UserID", user.Id.ToString())
             });
@@ -1017,7 +1017,7 @@ namespace DiscordBot.SlashCommands
         {
             await DeferAsync(ephemeral: true);
             StoredProcedure stored = new StoredProcedure();
-            string connStr = Constants.Constants.DISCORD_BOT_CONN_STR;
+            string connStr = Constants.Constants.discordBotConnStr;
             string userId = Context.User.Id.ToString();
             long serverId = Int64.Parse(Context.Guild.Id.ToString());
 

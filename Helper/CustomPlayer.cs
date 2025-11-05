@@ -1,4 +1,4 @@
-﻿using Microsoft.Data.SqlClient;
+﻿using System.Data.SqlClient;
 using Discord;
 using DiscordBot.Constants;
 using Lavalink4NET.Players;
@@ -54,7 +54,7 @@ namespace DiscordBot.Helper
 
             if (queueItem != null && queueItem.Track != null)
             {
-                stored.UpdateCreate(Constants.Constants.DISCORD_BOT_CONN_STR, "DeleteMusicQueue", new List<SqlParameter>
+                stored.UpdateCreate(Constants.Constants.discordBotConnStr, "DeleteMusicQueue", new List<SqlParameter>
                 {
                     new SqlParameter("@URL", (queueItem.Track.Uri != null) ? queueItem.Track.Uri.OriginalString : "")
                 });

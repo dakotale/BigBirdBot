@@ -1,5 +1,5 @@
 ﻿using System.Data;
-using Microsoft.Data.SqlClient;
+using System.Data.SqlClient;
 using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
@@ -16,7 +16,7 @@ namespace DiscordBot.SlashCommands
         public async Task HandlePronoun()
         {
             StoredProcedure stored = new StoredProcedure();
-            string connStr = Constants.Constants.DISCORD_BOT_CONN_STR;
+            string connStr = Constants.Constants.discordBotConnStr;
             DataTable dt = new DataTable();
             EmbedHelper embed = new EmbedHelper();
             await DeferAsync();
@@ -38,7 +38,7 @@ namespace DiscordBot.SlashCommands
         public async Task HandleRoles()
         {
             StoredProcedure stored = new StoredProcedure();
-            string connStr = Constants.Constants.DISCORD_BOT_CONN_STR;
+            string connStr = Constants.Constants.discordBotConnStr;
             DataTable dt = new DataTable();
             EmbedHelper embed = new EmbedHelper();
             await DeferAsync();
@@ -68,7 +68,7 @@ namespace DiscordBot.SlashCommands
             StoredProcedure stored = new StoredProcedure();
             EmbedHelper embed = new EmbedHelper();
             DataTable dt = new DataTable();
-            string connStr = Constants.Constants.DISCORD_BOT_CONN_STR;
+            string connStr = Constants.Constants.discordBotConnStr;
             long serverId = Int64.Parse(Context.Guild.Id.ToString());
             SocketGuild guild = Context.Client.GetGuild(ulong.Parse(serverId.ToString()));
 
@@ -124,7 +124,7 @@ namespace DiscordBot.SlashCommands
             StoredProcedure stored = new StoredProcedure();
             EmbedHelper embed = new EmbedHelper();
             DataTable dt = new DataTable();
-            string connStr = Constants.Constants.DISCORD_BOT_CONN_STR;
+            string connStr = Constants.Constants.discordBotConnStr;
             long serverId = Int64.Parse(Context.Guild.Id.ToString());
             SocketGuild guild = Context.Client.GetGuild(ulong.Parse(serverId.ToString()));
 
@@ -149,7 +149,7 @@ namespace DiscordBot.SlashCommands
             await DeferAsync(ephemeral: true);
 
             StoredProcedure stored = new StoredProcedure();
-            string connStr = Constants.Constants.DISCORD_BOT_CONN_STR;
+            string connStr = Constants.Constants.discordBotConnStr;
             EmbedHelper embed = new EmbedHelper();
 
             long serverId = Int64.Parse(Context.Guild.Id.ToString());

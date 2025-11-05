@@ -1,5 +1,5 @@
 ﻿using System.Data;
-using Microsoft.Data.SqlClient;
+using System.Data.SqlClient;
 using System.Net;
 using System.Net.WebSockets;
 using System.Text;
@@ -83,9 +83,9 @@ internal class Program
             await loggingService.InfoAsync("Starting Bot");
 
 #if DEBUG
-        var token = Constants.DEV_BOT_TOKEN;
+        var token = Constants.devBotToken;
 #else
-            var token = Constants.BOT_TOKEN;
+            var token = Constants.botToken;
 #endif
             await client.LoginAsync(TokenType.Bot, token);
 
@@ -226,7 +226,7 @@ internal class Program
 
         if (!arg2.IsBot && !arg2.IsWebhook)
         {
-            stored.UpdateCreate(Constants.DISCORD_BOT_CONN_STR, "DeleteUser", new List<SqlParameter>
+            stored.UpdateCreate(Constants.discordBotConnStr, "DeleteUser", new List<SqlParameter>
             {
                 new SqlParameter("@UserID", arg2.Id.ToString()),
                 new SqlParameter("@ServerID", arg1.Id.ToString())
@@ -271,7 +271,7 @@ internal class Program
 
         if (!arg.IsBot && !arg.IsWebhook)
         {
-            stored.UpdateCreate(Constants.DISCORD_BOT_CONN_STR, "AddUser", new List<SqlParameter>
+            stored.UpdateCreate(Constants.discordBotConnStr, "AddUser", new List<SqlParameter>
             {
                 new SqlParameter("@UserID", arg.Id.ToString()),
                 new SqlParameter("@Username", arg.Username),
@@ -280,7 +280,7 @@ internal class Program
                 new SqlParameter("@Nickname", arg.Nickname)
             });
 
-            stored.UpdateCreate(Constants.DISCORD_BOT_CONN_STR, "AddUserByServer", new List<SqlParameter>
+            stored.UpdateCreate(Constants.discordBotConnStr, "AddUserByServer", new List<SqlParameter>
             {
                 new SqlParameter("@UserID", arg.Id.ToString()),
                 new SqlParameter("@Username", arg.Username),
@@ -306,7 +306,7 @@ internal class Program
         if (!component.Data.CustomId.Contains("_"))
         {
             StoredProcedure stored = new StoredProcedure();
-            string connStr = Constants.DISCORD_BOT_CONN_STR;
+            string connStr = Constants.discordBotConnStr;
             DataTable dt = new DataTable();
             EmbedHelper embed = new EmbedHelper();
 
@@ -497,7 +497,7 @@ internal class Program
         StoredProcedure stored = new StoredProcedure();
         EmbedHelper embedHelper = new EmbedHelper();
 
-        DataTable dt = stored.Select(Constants.DISCORD_BOT_CONN_STR, "GetServers", new List<SqlParameter>());
+        DataTable dt = stored.Select(Constants.discordBotConnStr, "GetServers", new List<SqlParameter>());
         List<string> serverIds = new List<string>();
         foreach (DataRow dr in dt.Rows)
         {
@@ -506,7 +506,7 @@ internal class Program
 
         if (serverIds.Where(s => s.Equals(arg.Id.ToString())).Count() == 0)
         {
-            stored.UpdateCreate(Constants.DISCORD_BOT_CONN_STR, "AddServer", new List<SqlParameter>
+            stored.UpdateCreate(Constants.discordBotConnStr, "AddServer", new List<SqlParameter>
             {
                 new SqlParameter("@ServerUID", Int64.Parse(arg.Id.ToString())),
                 new SqlParameter("@ServerName", arg.Name),
@@ -514,7 +514,7 @@ internal class Program
             });
         }
 
-        using (SqlConnection conn = new SqlConnection(Constants.DISCORD_BOT_CONN_STR))
+        using (SqlConnection conn = new SqlConnection(Constants.discordBotConnStr))
         {
             await arg.DownloadUsersAsync().ConfigureAwait(false);
             if (arg.Users.Count > 0)
@@ -523,7 +523,7 @@ internal class Program
                 {
                     if (!user.IsBot && !user.IsWebhook)
                     {
-                        stored.UpdateCreate(Constants.DISCORD_BOT_CONN_STR, "AddUser", new List<SqlParameter>
+                        stored.UpdateCreate(Constants.discordBotConnStr, "AddUser", new List<SqlParameter>
                         {
                             new SqlParameter("@UserID", user.Id.ToString()),
                             new SqlParameter("@Username", user.Username),
@@ -537,8 +537,8 @@ internal class Program
             }
             else
             {
-                ulong guildId = ulong.Parse(Constants.ERROR_LOG_GUILD);
-                ulong textChannelId = ulong.Parse(Constants.ERROR_LOG_CHANNEL);
+                ulong guildId = ulong.Parse("880569055856185354");
+                ulong textChannelId = ulong.Parse("1156625507840954369");
                 await client.GetGuild(guildId).GetTextChannel(textChannelId).SendMessageAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - New Server Added", $"Bot was added to {arg.Name} and no users were found on DownloadUsersAsync call.\nThe owner is {arg.Owner}", "", "BigBirdBot", Discord.Color.Red, null, null).Build()).ConfigureAwait(false);
             }
         }
@@ -564,7 +564,7 @@ internal class Program
             return;
 
         string message = msg.Content.Trim().ToLower();
-        string connStr = Constants.DISCORD_BOT_CONN_STR;
+        string connStr = Constants.discordBotConnStr;
         string serverId = msgChannel.Guild.Id.ToString();
         string userId = msg.Author.Id.ToString();
         string prefix = "-";
@@ -798,7 +798,7 @@ internal class Program
                 await DisconnectBotsAsync(before.VoiceChannel);
 
                 var stored = new StoredProcedure();
-                stored.UpdateCreate(Constants.DISCORD_BOT_CONN_STR, "DeletePlayerConnected", new List<SqlParameter> { serverIdParam });
+                stored.UpdateCreate(Constants.discordBotConnStr, "DeletePlayerConnected", new List<SqlParameter> { serverIdParam });
             }
         }
         else
@@ -812,8 +812,8 @@ internal class Program
                     await DisconnectBotsAsync(before.VoiceChannel);
 
                     var stored = new StoredProcedure();
-                    stored.UpdateCreate(Constants.DISCORD_BOT_CONN_STR, "DeletePlayerConnected", new List<SqlParameter> { serverIdParam });
-                    stored.UpdateCreate(Constants.DISCORD_BOT_CONN_STR, "DeleteMusicQueueAll", new List<SqlParameter> { serverIdParam });
+                    stored.UpdateCreate(Constants.discordBotConnStr, "DeletePlayerConnected", new List<SqlParameter> { serverIdParam });
+                    stored.UpdateCreate(Constants.discordBotConnStr, "DeleteMusicQueueAll", new List<SqlParameter> { serverIdParam });
                 }
             }
         }
@@ -830,8 +830,8 @@ internal class Program
     {
         EmbedHelper embedHelper = new EmbedHelper();
         // Send an error to the specific server and channel
-        ulong guildId = ulong.Parse(Constants.ERROR_LOG_GUILD);
-        ulong textChannelId = ulong.Parse(Constants.ERROR_LOG_CHANNEL);
+        ulong guildId = ulong.Parse("880569055856185354");
+        ulong textChannelId = ulong.Parse("1156625507840954369");
 
         if (message.Exception != null)
         {
@@ -878,8 +878,8 @@ internal class Program
             .AddLavalink()
             .ConfigureLavalink(x =>
             {
-                x.BaseAddress = new Uri(Constants.LAVALINK_URL);
-                x.Passphrase = Constants.LAVALINK_PWD;
+                x.BaseAddress = new Uri(Constants.lavalinkUrl);
+                x.Passphrase = Constants.lavaLinkPwd;
                 x.BufferSize = 2048;
                 x.Label = "BigBirdBot";
                 x.ReadyTimeout = TimeSpan.FromMinutes(15);
@@ -912,23 +912,22 @@ internal class Program
         Emoji nsfwMarker = new Emoji("❌");
         EmbedHelper embedNsfw = new EmbedHelper();
 
-        var download = await message.GetOrDownloadAsync().ConfigureAwait(false);
-
-        if (reaction == null || download == null)
-            return;
-
-        if (client.GetUser(reaction.UserId).IsBot)
-            return;
-
+        var download = message.GetOrDownloadAsync().Result;
         IReadOnlyCollection<IEmbed> embed = download.Embeds;
         var msg = download.ToString();
         var attach = download.Attachments;
         StoredProcedure stored = new StoredProcedure();
 
+        if (reaction == null || download == null)
+            return;
+
+        if (client.GetUser(reaction.UserId).IsBot) 
+            return;
+
         // Mark the message as NSFW
         if (reaction.Emote.Name == nsfwMarker.Name && download.Author.IsBot && download.Reactions.Count < 2)
         {
-            var connStr = Constants.DISCORD_BOT_CONN_STR;
+            var connStr = Constants.discordBotConnStr;
             var userId = reaction.User.Value.Id.ToString();
             var messageId = download.Id.ToString();
 
@@ -993,6 +992,7 @@ internal class Program
             }
         }
 
+
         if (reaction.Emote.Name == triviaA.Name || reaction.Emote.Name == triviaB.Name || reaction.Emote.Name == triviaC.Name || reaction.Emote.Name == triviaD.Name)
         {
             try
@@ -1000,7 +1000,7 @@ internal class Program
                 if (embed.Count == 0)
                     return;
 
-                var connStr = Constants.DISCORD_BOT_CONN_STR;
+                var connStr = Constants.discordBotConnStr;
                 long messageId = Int64.Parse(message.Id.ToString());
                 string userMention = reaction.User.Value.Mention;
                 string reactionName = reaction.Emote.Name;
@@ -1066,7 +1066,7 @@ internal class Program
                     errorEmbed.BuildMessageEmbed(
                         "BigBirdBot - Error",
                         ex.Message,
-                        Constants.ERROR_IMAGE_URL,
+                        Constants.errorImageUrl,
                         "",
                         Color.Red
                     ).Build());
@@ -1083,7 +1083,7 @@ internal class Program
     private static async void OnTimedEvent(object sender, EventArgs e)
     {
         StoredProcedure storedProcedure = new StoredProcedure();
-        string connStr = Constants.DISCORD_BOT_CONN_STR;
+        string connStr = Constants.discordBotConnStr;
         DataTable dt = new DataTable();
 
         // 1. Check Event falls into specific timeframe
@@ -1095,7 +1095,7 @@ internal class Program
             foreach (DataRow dr in dt.Rows)
             {
                 IMessageChannel channel = (IMessageChannel)client.GetChannel(ulong.Parse(dr["EventChannelSource"].ToString()));
-                storedProcedure.UpdateCreate(Constants.DISCORD_BOT_CONN_STR, "DeleteEvent", new List<SqlParameter> { new SqlParameter("@EventID", dr["EventID"].ToString()) });
+                storedProcedure.UpdateCreate(Constants.discordBotConnStr, "DeleteEvent", new List<SqlParameter> { new SqlParameter("@EventID", dr["EventID"].ToString()) });
 
                 await channel.SendMessageAsync(dr["EventText"].ToString());
             }
@@ -1125,7 +1125,7 @@ internal class Program
                             await user.SendMessageAsync($"**{tableName} - {DateTime.Now.ToString("MM/dd/yyyy hh:mm tt ET")}**\n**URL:** {filePath}");
                         else
                         {
-                            storedProcedure.UpdateCreate(Constants.DISCORD_BOT_CONN_STR, "DeleteThirstURL", new List<SqlParameter> { new SqlParameter("@FilePath", filePath), new SqlParameter("@TableName", "") });
+                            storedProcedure.UpdateCreate(Constants.discordBotConnStr, "DeleteThirstURL", new List<SqlParameter> { new SqlParameter("@FilePath", filePath), new SqlParameter("@TableName", "") });
                             await user.SendMessageAsync($"**{tableName} - {DateTime.Now.ToString("MM/dd/yyyy hh:mm tt ET")}**\n**URL:** {filePath} - This was a dead link and was removed from future postings");
                         }
                     }
@@ -1149,7 +1149,7 @@ internal class Program
                     // If we reach here, something really went wrong and should handle it.
                     // Send a DM saying an issue happened
                     IUser user = await client.GetUserAsync(ulong.Parse("171369791486033920"));
-                    storedProcedure.UpdateCreate(Constants.DISCORD_BOT_CONN_STR, "UpdateEventScheduleTimeRequeue", new List<SqlParameter> { new SqlParameter("@UserID", userId) });
+                    storedProcedure.UpdateCreate(Constants.discordBotConnStr, "UpdateEventScheduleTimeRequeue", new List<SqlParameter> { new SqlParameter("@UserID", userId) });
                     await user.SendMessageAsync($"Something went wrong sending to this user: {userId}\nException Message: {ex.Message}\nThe event was requeued to send at {DateTime.Now.AddMinutes(1).ToString("yyyy-MM-dd hh:mm tt")}");
                     return;
                 }

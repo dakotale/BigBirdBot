@@ -1,5 +1,5 @@
 ﻿using System.Data;
-using Microsoft.Data.SqlClient;
+using System.Data.SqlClient;
 using Discord;
 using Discord.Interactions;
 using Discord.Net.Extensions.Interactions;
@@ -31,7 +31,7 @@ namespace DiscordBot.SlashCommands
 
                 // GetServer ulong IDs
                 // var test = Context.Client.GetGuild(id).Users.Where(s => s.IsBot == false).ToList();
-                DataTable dt = stored.Select(Constants.Constants.DISCORD_BOT_CONN_STR, "GetServersNonNullDefaultChannel", new List<SqlParameter>());
+                DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "GetServersNonNullDefaultChannel", new List<SqlParameter>());
                 EmbedHelper embedHelper = new EmbedHelper();
                 foreach (DataRow dr in dt.Rows)
                 {
@@ -80,7 +80,7 @@ namespace DiscordBot.SlashCommands
             await DeferAsync(ephemeral: true);
             StoredProcedure stored = new StoredProcedure();
 
-            DataTable dt = stored.Select(Constants.Constants.DISCORD_BOT_CONN_STR, "GetScheduledEventUsers", new List<SqlParameter>());
+            DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "GetScheduledEventUsers", new List<SqlParameter>());
             EmbedHelper embedHelper = new EmbedHelper();
             string description = "";
 
@@ -98,7 +98,7 @@ namespace DiscordBot.SlashCommands
         {
             await DeferAsync(ephemeral: true);
             StoredProcedure stored = new StoredProcedure();
-            DataTable dt = stored.Select(Constants.Constants.DISCORD_BOT_CONN_STR, "GetPlayerConnected", new List<SqlParameter>());
+            DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "GetPlayerConnected", new List<SqlParameter>());
             EmbedHelper embed = new EmbedHelper();
 
             string title = "BigBirdBot - Players Connected";
@@ -135,7 +135,7 @@ namespace DiscordBot.SlashCommands
 
                 // GetServer ulong IDs
                 // var test = Context.Client.GetGuild(id).Users.Where(s => s.IsBot == false).ToList();
-                DataTable dt = stored.Select(Constants.Constants.DISCORD_BOT_CONN_STR, "GetServers", new List<SqlParameter>());
+                DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "GetServers", new List<SqlParameter>());
 
                 foreach (DataRow dr in dt.Rows)
                 {
@@ -147,7 +147,7 @@ namespace DiscordBot.SlashCommands
                         {
                             foreach (SocketGuildUser? u in users)
                             {
-                                stored.UpdateCreate(Constants.Constants.DISCORD_BOT_CONN_STR, "AddUser", new List<SqlParameter>
+                                stored.UpdateCreate(Constants.Constants.discordBotConnStr, "AddUser", new List<SqlParameter>
                                 {
                                     new SqlParameter("@UserID", u.Id.ToString()),
                                     new SqlParameter("@Username", u.Username),
@@ -156,7 +156,7 @@ namespace DiscordBot.SlashCommands
                                     new SqlParameter("@Nickname", u.Nickname)
                                 });
 
-                                stored.UpdateCreate(Constants.Constants.DISCORD_BOT_CONN_STR, "AddUserByServer", new List<SqlParameter>
+                                stored.UpdateCreate(Constants.Constants.discordBotConnStr, "AddUserByServer", new List<SqlParameter>
                                 {
                                     new SqlParameter("@UserID", u.Id.ToString()),
                                     new SqlParameter("@Username", u.Username),
@@ -190,7 +190,7 @@ namespace DiscordBot.SlashCommands
             fileName = @"C:\Temp\DiscordBot\" + tableName + @"\" + fileName.Trim();
 
             StoredProcedure stored = new StoredProcedure();
-            DataTable dt = stored.Select(Constants.Constants.DISCORD_BOT_CONN_STR, "CheckIfThirstURLExists", new List<SqlParameter>
+            DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "CheckIfThirstURLExists", new List<SqlParameter>
             {
                 new SqlParameter("@FilePath", fileName),
                 new SqlParameter("@TableName", tableName)
@@ -198,7 +198,7 @@ namespace DiscordBot.SlashCommands
 
             if (dt.Rows.Count > 0)
             {
-                stored.UpdateCreate(Constants.Constants.DISCORD_BOT_CONN_STR, "DeleteThirstURL", new List<SqlParameter>
+                stored.UpdateCreate(Constants.Constants.discordBotConnStr, "DeleteThirstURL", new List<SqlParameter>
                 {
                     new SqlParameter("@FilePath", fileName),
                     new SqlParameter("@TableName", tableName)
@@ -209,7 +209,7 @@ namespace DiscordBot.SlashCommands
             }
             else
             {
-                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "The image doesn't exist in the table provided or the table doesn't exist.", Constants.Constants.ERROR_IMAGE_URL, Context.User.Username, Color.Red, "");
+                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "The image doesn't exist in the table provided or the table doesn't exist.", Constants.Constants.errorImageUrl, Context.User.Username, Color.Red, "");
                 await FollowupAsync(embed: embed.Build(), ephemeral: true);
             }
         }
