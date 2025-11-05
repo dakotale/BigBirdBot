@@ -1,4 +1,9 @@
-﻿using Discord;
+﻿using System.Data;
+using Microsoft.Data.SqlClient;
+using System.Net;
+using System.Net.WebSockets;
+using System.Text;
+using Discord;
 using Discord.Commands;
 using Discord.Interactions;
 using Discord.Net;
@@ -9,14 +14,8 @@ using DiscordBot.Services;
 using Fergun.Interactive;
 using KillersLibrary.Services;
 using Lavalink4NET.Extensions;
-using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using System.ComponentModel;
-using System.Data;
-using System.Net;
-using System.Net.WebSockets;
-using System.Text;
 
 internal class Program
 {
@@ -590,23 +589,6 @@ internal class Program
         });
         if (!bool.TryParse(dt.Rows[0]["IsActive"]?.ToString(), out var isServerActive) || !isServerActive)
             return;
-
-        if (serverId.Equals("1057033598940745728"))
-        {
-            int magicNumber = 25;
-            Random r = new Random();
-            int random = r.Next(1, 101);
-
-            if (random == magicNumber)
-            {
-                SocketGuild guild = client.GetGuild(ulong.Parse("1057033598940745728"));
-                SocketGuildUser guildUser = guild.GetUser(msg.Author.Id);
-                await guildUser.SetTimeOutAsync(new TimeSpan(0, 1, 0));
-
-                string landmine = $":bomb: {msg.Author.Mention} stepped on a landmine and has been timed out forever (1 minute)!";
-                await msg.Channel.SendMessageAsync(landmine);
-            }
-        }
 
         // Check if keyword system is active
         dt = stored.Select(connStr, "CheckIfKeywordsAreActivePerServer", new List<SqlParameter> {
