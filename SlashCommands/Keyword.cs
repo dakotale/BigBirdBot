@@ -30,7 +30,7 @@ namespace DiscordBot.SlashCommands
                         }
                         else
                         {
-                            string path = string.Concat(Constants.Constants.BASE_TEMP_DIR, @"KeywordAttachment\", attachment.Filename);
+                            string path = @"C:\Temp\DiscordBot\KeywordAttachment\" + attachment.Filename;
                             using (WebClient client = new WebClient())
                             {
                                 client.DownloadFileAsync(new Uri(attachment.Url), path);
@@ -222,7 +222,7 @@ namespace DiscordBot.SlashCommands
                     });
 
                     // Create directory on the server
-                    Directory.CreateDirectory(Constants.Constants.BASE_TEMP_DIR + chatName);
+                    Directory.CreateDirectory(@"C:\Temp\DiscordBot\" + chatName);
                 }
 
                 // Have it not create a channel
@@ -483,7 +483,7 @@ namespace DiscordBot.SlashCommands
                             string withExt = attachmentName.Split(".", StringSplitOptions.TrimEntries)[1];
                             withoutExt = withoutExt + "_" + DateTime.Now.ToString("yyyyMMdd_HHmmssfffff");
 
-                            string path = string.Concat(Constants.Constants.BASE_TEMP_DIR, tablename, @"\", withoutExt, ".", withExt);
+                            string path = @"C:\Temp\DiscordBot\" + tablename + @"\" + withoutExt + "." + withExt;
 
                             using (WebClient client = new WebClient())
                             {
@@ -602,7 +602,7 @@ namespace DiscordBot.SlashCommands
                             }
                             else
                             {
-                                string path = string.Concat(Constants.Constants.BASE_TEMP_DIR, @"KeywordAttachment\", attachment.Filename);
+                                string path = @"C:\Temp\DiscordBot\KeywordAttachment\" + attachment.Filename;
                                 using (WebClient client = new WebClient())
                                 {
                                     client.DownloadFileAsync(new Uri(attachment.Url), path);

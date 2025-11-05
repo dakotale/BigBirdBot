@@ -12,6 +12,7 @@ using Lavalink4NET.Extensions;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using System.ComponentModel;
 using System.Data;
 using System.Net;
 using System.Net.WebSockets;
@@ -590,17 +591,15 @@ internal class Program
         if (!bool.TryParse(dt.Rows[0]["IsActive"]?.ToString(), out var isServerActive) || !isServerActive)
             return;
 
-        if (serverId.Equals(Constants.KAYLA_SERVER_GUILD))
+        if (serverId.Equals("1057033598940745728"))
         {
             int magicNumber = 25;
             Random r = new Random();
             int random = r.Next(1, 101);
 
-            // Silly item added that if the magic number rolls
-            // then the user will be timed out for 1 minute.
             if (random == magicNumber)
             {
-                SocketGuild guild = client.GetGuild(ulong.Parse(Constants.KAYLA_SERVER_GUILD));
+                SocketGuild guild = client.GetGuild(ulong.Parse("1057033598940745728"));
                 SocketGuildUser guildUser = guild.GetUser(msg.Author.Id);
                 await guildUser.SetTimeOutAsync(new TimeSpan(0, 1, 0));
 
@@ -1267,7 +1266,7 @@ internal class Program
             string withExt = attachmentName.Split(".", StringSplitOptions.TrimEntries)[1];
             withoutExt = withoutExt + "_" + DateTime.Now.ToString("yyyyMMdd_HHmmssfffff");
 
-            string path = string.Concat(Constants.BASE_TEMP_DIR, tablename, @"\", withoutExt, ".", withExt);
+            string path = @"C:\Temp\DiscordBot\" + tablename + @"\" + withoutExt + "." + withExt;
 
             using (WebClient client = new WebClient())
             {
