@@ -912,17 +912,18 @@ internal class Program
         Emoji nsfwMarker = new Emoji("❌");
         EmbedHelper embedNsfw = new EmbedHelper();
 
-        var download = message.GetOrDownloadAsync().Result;
-        IReadOnlyCollection<IEmbed> embed = download.Embeds;
-        var msg = download.ToString();
-        var attach = download.Attachments;
-        StoredProcedure stored = new StoredProcedure();
-
+        var download = await message.GetOrDownloadAsync().ConfigureAwait(false);
+    
         if (reaction == null || download == null)
             return;
 
         if (client.GetUser(reaction.UserId).IsBot) 
             return;
+
+        IReadOnlyCollection<IEmbed> embed = download.Embeds;
+        var msg = download.ToString();
+        var attach = download.Attachments;
+        StoredProcedure stored = new StoredProcedure();
 
         // Mark the message as NSFW
         if (reaction.Emote.Name == nsfwMarker.Name && download.Author.IsBot && download.Reactions.Count < 2)
@@ -991,7 +992,6 @@ internal class Program
                 return;
             }
         }
-
 
         if (reaction.Emote.Name == triviaA.Name || reaction.Emote.Name == triviaB.Name || reaction.Emote.Name == triviaC.Name || reaction.Emote.Name == triviaD.Name)
         {
@@ -1072,7 +1072,6 @@ internal class Program
                     ).Build());
             }
         }
-
     }
 
     /// <summary>
