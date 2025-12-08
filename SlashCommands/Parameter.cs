@@ -21,7 +21,7 @@ namespace DiscordBot.SlashCommands
             Random r = new Random();
             int i = r.Next(1, number + 1);
 
-            string title = "BigBirdBot - Random";
+            string title = "Random";
             string desc = $"{Context.User.Mention} rolled a **{i}**";
             string thumbnailUrl = Context.User.GetAvatarUrl();
             string createdBy = "Command from: " + Context.User.Username;
@@ -66,7 +66,7 @@ namespace DiscordBot.SlashCommands
             List<string> items = new List<string>() { pollAnswer1, pollAnswer2, pollAnswer3, pollAnswer4, pollAnswer5, pollAnswer6, pollAnswer7, pollAnswer8, pollAnswer9, pollAnswer10 };
             items = items.Where(s => !string.IsNullOrEmpty(s)).Select(s => s.Trim()).ToList();
             EmbedHelper embed = new EmbedHelper();
-            string title = "BigBirdBot - Poll";
+            string title = "Poll";
             string desc = $"Poll Item: **{statement.Trim()}**\n\nChoices:";
             string createdByMsg = "Command from: " + Context.User.Username;
 
@@ -98,7 +98,7 @@ namespace DiscordBot.SlashCommands
 
                     EmbedBuilder embed = new EmbedBuilder
                     {
-                        Title = "BigBirdBot - Birthday",
+                        Title = "Birthday",
                         Color = Color.Gold,
                         Description = "A **birthday** role was created, please have an administrator add the users to this role before running this command again."
                     };
@@ -117,7 +117,7 @@ namespace DiscordBot.SlashCommands
                     new SqlParameter("@BirthdayGuild", Context.Guild.Id.ToString())
                 });
 
-                await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Birthday Added", $"{user.DisplayName} birthday was added to the bot.", "", Context.User.Username, Discord.Color.Blue).Build());
+                await FollowupAsync(embed: embedHelper.BuildMessageEmbed("Birthday Added", $"{user.DisplayName} birthday was added to the bot.", "", Context.User.Username, Discord.Color.Blue).Build());
             }
             catch (Exception e)
             {
@@ -138,7 +138,7 @@ namespace DiscordBot.SlashCommands
 
                 EmbedBuilder embed = new EmbedBuilder
                 {
-                    Title = $"BigBirdBot - {user.Username}'s Avatar",
+                    Title = $"{user.Username}'s Avatar",
                     Color = Color.Blue,
                     ImageUrl = user.GetDisplayAvatarUrl(size: 1024) ?? user.GetDefaultAvatarUrl()
                 };
@@ -181,7 +181,7 @@ namespace DiscordBot.SlashCommands
             };
 
             EmbedHelper embed = new EmbedHelper();
-            string title = "BigBirdBot - Poll";
+            string title = "Poll";
             string desc = $"Poll Item: **Best day for {user.Mention}/{user.DisplayName}'s campaign?**\n\nChoices:";
             string createdByMsg = "Command from: " + Context.User.Username;
 
@@ -244,7 +244,7 @@ namespace DiscordBot.SlashCommands
                         await (user as IGuildUser).AddRoleAsync(role).ConfigureAwait(false);
                     }
 
-                    await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Role Color", $"Color was updated successfully", "", Context.User.Username, Discord.Color.Blue).Build(), ephemeral: true);
+                    await FollowupAsync(embed: embedHelper.BuildMessageEmbed("Role Color", $"Color was updated successfully", "", Context.User.Username, Discord.Color.Blue).Build(), ephemeral: true);
                 }
                 else
                     await FollowupAsync(embed: embedHelper.BuildErrorEmbed("Color", "The hex code entered was not valid.\nExample: #607c8c", Context.User.Username).Build(), ephemeral: true);
@@ -323,7 +323,7 @@ namespace DiscordBot.SlashCommands
                                 if (detectionRate > 75.0)
                                     description = $"**This image was created with AI based on the percentage matching of {detectionRate.ToString() + "%"}.**";
 
-                                await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - AI Detection", description, "", Context.User.Username, Discord.Color.Blue, attachment.Url).Build());
+                                await FollowupAsync(embed: embedHelper.BuildMessageEmbed("AI Detection", description, "", Context.User.Username, Discord.Color.Blue, attachment.Url).Build());
                             }
                             else
                             {
@@ -393,7 +393,7 @@ namespace DiscordBot.SlashCommands
                                 if (detectionRate > 75.0)
                                     description = $"**This image was created with AI based on the percentage matching of {detectionRate.ToString() + "%"}.**";
 
-                                await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - AI Detection", description, "", Context.User.Username, Discord.Color.Blue, url: url).Build());
+                                await FollowupAsync(embed: embedHelper.BuildMessageEmbed("AI Detection", description, "", Context.User.Username, Discord.Color.Blue, url: url).Build());
                             }
                             else
                             {
@@ -446,7 +446,7 @@ namespace DiscordBot.SlashCommands
                 new SqlParameter("@CreatedBy", Context.User.Mention.ToString())
             });
 
-            await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Event Reminder", "Thanks for the reminder, I'll let you know when it gets closer to the date/time ;)", "", Context.User.Username, Discord.Color.Blue).Build(), ephemeral: true);
+            await FollowupAsync(embed: embedHelper.BuildMessageEmbed("Event Reminder", "Thanks for the reminder, I'll let you know when it gets closer to the date/time ;)", "", Context.User.Username, Discord.Color.Blue).Build(), ephemeral: true);
         }
 
         [SlashCommand("chat", "Have a wonderful conversation with the bot.")]

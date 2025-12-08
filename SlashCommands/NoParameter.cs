@@ -25,7 +25,7 @@ namespace DiscordBot.SlashCommands
                     result = dr["Result"].ToString();
             }
 
-            string title = "BigBirdBot - Twitter Embeds";
+            string title = "Twitter Embeds";
             string desc = result;
             string thumbnailUrl = "";
             string imageUrl = "";
@@ -50,7 +50,7 @@ namespace DiscordBot.SlashCommands
                 sb.AppendLine($"{i}. https://www.color-hex.com/color/{color}\n");
             }
 
-            string title = "BigBirdBot - Generate Palette";
+            string title = "Generate Palette";
             string embedCreatedBy = $"Command from: {Context.User.Username}";
 
             EmbedHelper embed = new EmbedHelper();

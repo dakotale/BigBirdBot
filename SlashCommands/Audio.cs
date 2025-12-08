@@ -78,7 +78,7 @@ namespace DiscordBot.SlashCommands
 
             EmbedBuilder embed = new EmbedBuilder
             {
-                Title = $"BigBirdBot Music - Leave",
+                Title = $"Music - Leave",
                 Color = Color.Blue,
                 Description = $"Bye, have a beautiful time",
                 ThumbnailUrl = "https://static.wikia.nocookie.net/americandad/images/d/d0/Officer_Pena.jpg/revision/latest?cb=20100228182532",
@@ -324,7 +324,7 @@ namespace DiscordBot.SlashCommands
             DeletePlayerConnected(Int64.Parse(Context.Guild.Id.ToString()));
             EmbedBuilder result = new EmbedBuilder
             {
-                Title = $"BigBirdBot Music - Leave",
+                Title = $"Music - Leave",
                 Color = Color.Blue,
                 Description = $"Bye, have a beautiful time",
                 ThumbnailUrl = "https://static.wikia.nocookie.net/americandad/images/d/d0/Officer_Pena.jpg/revision/latest?cb=20100228182532",
@@ -402,7 +402,7 @@ namespace DiscordBot.SlashCommands
 
             EmbedBuilder npEmbed = new EmbedBuilder()
             {
-                Title = $"BigBirdBot Music - Now Playing: **{track.Title}**",
+                Title = $"Music - Now Playing: **{track.Title}**",
                 Color = Color.Blue,
             };
 
@@ -445,7 +445,7 @@ namespace DiscordBot.SlashCommands
 
                 EmbedBuilder npEmbed = new EmbedBuilder()
                 {
-                    Title = $"BigBirdBot Music - Queue: **{track.Title}**",
+                    Title = $"Music - Queue: **{track.Title}**",
                     Color = Color.Blue,
                 };
 
@@ -468,12 +468,12 @@ namespace DiscordBot.SlashCommands
 
                     if (i % 10 == 0)
                     {
-                        pages.Add(new PageBuilder().WithTitle($"**BigBirdBot - Queue ({player.Queue.Count} total items)**").WithDescription(queue).WithColor(Discord.Color.Blue).WithCurrentTimestamp());
+                        pages.Add(new PageBuilder().WithTitle($"**Queue ({player.Queue.Count} total items)**").WithDescription(queue).WithColor(Discord.Color.Blue).WithCurrentTimestamp());
                         queue = "";
                     }
                 }
 
-                pages.Add(new PageBuilder().WithTitle($"**BigBirdBot - Queue ({player.Queue.Count} total items)**").WithDescription(queue).WithColor(Discord.Color.Blue).WithCurrentTimestamp());
+                pages.Add(new PageBuilder().WithTitle($"**Queue ({player.Queue.Count} total items)**").WithDescription(queue).WithColor(Discord.Color.Blue).WithCurrentTimestamp());
 
                 StaticPaginator paginator = new StaticPaginatorBuilder()
                     .AddUser(Context.User)
@@ -512,7 +512,7 @@ namespace DiscordBot.SlashCommands
 
             EmbedBuilder result = new EmbedBuilder
             {
-                Title = $"BigBirdBot Music - Loop",
+                Title = $"Music - Loop",
                 Color = Color.Blue,
                 Description = $"Looping {track.Title} {times.ToString()} times.",
                 ThumbnailUrl = "",
@@ -548,7 +548,7 @@ namespace DiscordBot.SlashCommands
 
             EmbedBuilder result = new EmbedBuilder
             {
-                Title = $"BigBirdBot Music - Repeat",
+                Title = $"Music - Repeat",
                 Color = Color.Blue,
                 Description = $"Repeating {track.Title}",
                 ThumbnailUrl = "",
@@ -591,7 +591,7 @@ namespace DiscordBot.SlashCommands
             }
             else
             {
-                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Swap Error", "Both elements must be present in the queue.", Constants.Constants.errorImageUrl, "", Color.Red, "");
+                EmbedBuilder embed = embedHelper.BuildMessageEmbed("Swap Error", "Both elements must be present in the queue.", Constants.Constants.errorImageUrl, "", Color.Red, "");
                 await FollowupAsync(embed: embed.Build()).ConfigureAwait(false);
             }
         }
@@ -618,7 +618,7 @@ namespace DiscordBot.SlashCommands
             else
             {
                 EmbedHelper embedHelper = new EmbedHelper();
-                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "The queue must have more than one element in it to shuffle.", Constants.Constants.errorImageUrl, "", Color.Red, "");
+                EmbedBuilder embed = embedHelper.BuildMessageEmbed("Error", "The queue must have more than one element in it to shuffle.", Constants.Constants.errorImageUrl, "", Color.Red, "");
                 await FollowupAsync(embed: embed.Build()).ConfigureAwait(false);
             }
         }
@@ -651,7 +651,7 @@ namespace DiscordBot.SlashCommands
             else
             {
                 EmbedHelper embedHelper = new EmbedHelper();
-                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "The queue must have one element to clear.", Constants.Constants.errorImageUrl, "", Color.Red, "");
+                EmbedBuilder embed = embedHelper.BuildMessageEmbed("Error", "The queue must have one element to clear.", Constants.Constants.errorImageUrl, "", Color.Red, "");
                 await FollowupAsync(embed: embed.Build()).ConfigureAwait(false);
             }
         }
@@ -681,7 +681,7 @@ namespace DiscordBot.SlashCommands
             catch
             {
                 EmbedHelper embedHelper = new EmbedHelper();
-                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "The element does not exist in the queue.", Constants.Constants.errorImageUrl, "", Color.Red, "");
+                EmbedBuilder embed = embedHelper.BuildMessageEmbed("Error", "The element does not exist in the queue.", Constants.Constants.errorImageUrl, "", Color.Red, "");
                 await FollowupAsync(embed: embed.Build()).ConfigureAwait(false);
             }
         }
@@ -718,13 +718,13 @@ namespace DiscordBot.SlashCommands
                 else
                 {
                     EmbedHelper embedHelper = new EmbedHelper();
-                    await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Error", "Please enter a valid seek time.\n**Example: -seek 00:00:30**\nAbove example would seek 30 seconds into the video.", Constants.Constants.errorImageUrl, "", Color.Red, "").Build()).ConfigureAwait(false);
+                    await FollowupAsync(embed: embedHelper.BuildMessageEmbed("Error", "Please enter a valid seek time.\n**Example: -seek 00:00:30**\nAbove example would seek 30 seconds into the video.", Constants.Constants.errorImageUrl, "", Color.Red, "").Build()).ConfigureAwait(false);
                 }
             }
             catch (Exception exception)
             {
                 EmbedHelper embedHelper = new EmbedHelper();
-                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", exception.Message, Constants.Constants.errorImageUrl, "", Color.Red, "");
+                EmbedBuilder embed = embedHelper.BuildMessageEmbed("Error", exception.Message, Constants.Constants.errorImageUrl, "", Color.Red, "");
                 await FollowupAsync(embed: embed.Build());
             }
         }
@@ -767,7 +767,7 @@ namespace DiscordBot.SlashCommands
         {
             EmbedBuilder embed = new EmbedBuilder
             {
-                Title = $"BigBirdBot Music - {title}",
+                Title = $"Music - {title}",
                 Color = Color.Blue,
                 Description = $"{description}",
                 ImageUrl = artwork

@@ -15,6 +15,7 @@
         public const string aiApiUserId = "1741944096";
         public const string aiApiSecretId = "JLtYDfz2ghw3czdAn3yEee5T7a45zAUM";
         public const string aiDetectorPath = @"C:\Temp\DiscordBot\AIDetector\";
+        public const string avatarTempPath = @"C:\Temp\DiscordBot\avatartemp\";
         public const string openAiToken = "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";
         public const string openAiModel = "gpt-4.1";
     }

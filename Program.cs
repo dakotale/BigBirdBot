@@ -217,7 +217,7 @@ internal class Program
     /// <returns></returns>
     private async Task UserLeft(SocketGuild arg1, SocketUser arg2)
     {
-        string title = "BigBirdBot - User Left";
+        string title = "User Left";
         string desc = $"{arg2.Username} left the server.";
         string thumbnailUrl = arg2.GetAvatarUrl(ImageFormat.Png, 256);
         string createdBy = "BigBirdBot";
@@ -362,7 +362,7 @@ internal class Program
                         new SqlParameter("@RoleID", Int64.Parse(component.Data.CustomId)),
                         new SqlParameter("@ServerID", Int64.Parse(component.GuildId.Value.ToString()))
                     });
-                    await component.RespondAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Role Selection", $"Role was successfully removed for {component.User.Username}", "", component.User.Username, Discord.Color.Blue).Build(), ephemeral: true);
+                    await component.RespondAsync(embed: embed.BuildMessageEmbed("Role Selection", $"Role was successfully removed for {component.User.Username}", "", component.User.Username, Discord.Color.Blue).Build(), ephemeral: true);
                 }
                 // They don't have the role and now are going to delete it
                 else
@@ -396,7 +396,7 @@ internal class Program
                         new SqlParameter("@ServerID", Int64.Parse(component.GuildId.Value.ToString()))
                     });
 
-                    await component.RespondAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Role Selection", $"Role was successfully added for {component.User.Username}", "", component.User.Username, Discord.Color.Blue).Build(), ephemeral: true);
+                    await component.RespondAsync(embed: embed.BuildMessageEmbed("Role Selection", $"Role was successfully added for {component.User.Username}", "", component.User.Username, Discord.Color.Blue).Build(), ephemeral: true);
                 }
             }
             else
@@ -404,7 +404,8 @@ internal class Program
                 dt = stored.Select(connStr, "GetPronounUsersByID", new List<SqlParameter>
                 {
                     new SqlParameter("@UserID", Int64.Parse(component.User.Id.ToString())),
-                    new SqlParameter("@PronounID", int.Parse(component.Data.CustomId))
+                    new SqlParameter("@PronounID", int.Parse(component.Data.CustomId)),
+                    new SqlParameter("@ServerID", Int64.Parse(component.GuildId.ToString()))
                 });
 
                 DataTable dtPronouns = new DataTable();
@@ -443,7 +444,7 @@ internal class Program
                         new SqlParameter("@PronounID", int.Parse(component.Data.CustomId))
                     });
 
-                    await component.RespondAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Pronoun Selection", $"Pronouns were successfully removed for {component.User.Username}", "", component.User.Username, Discord.Color.Blue).Build(), ephemeral: true);
+                    await component.RespondAsync(embed: embed.BuildMessageEmbed("Pronoun Selection", $"Pronouns were successfully removed for {component.User.Username}", "", component.User.Username, Discord.Color.Blue).Build(), ephemeral: true);
                 }
                 else
                 {
@@ -475,10 +476,11 @@ internal class Program
                     // Add Pronoun for User
                     stored.UpdateCreate(connStr, "AddPronounUsers", new List<SqlParameter>
                     {
+                        new SqlParameter("@ServerID", Int64.Parse(component.GuildId.ToString())),
                         new SqlParameter("@UserID", Int64.Parse(component.User.Id.ToString())),
                         new SqlParameter("@PronounID", int.Parse(component.Data.CustomId))
                     });
-                    await component.RespondAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Pronoun Selection", $"Pronouns were successfully added for {component.User.Username}.", "", component.User.Username, Discord.Color.Blue).Build(), ephemeral: true);
+                    await component.RespondAsync(embed: embed.BuildMessageEmbed("Pronoun Selection", $"Pronouns were successfully added for {component.User.Username}.", "", component.User.Username, Discord.Color.Blue).Build(), ephemeral: true);
                 }
             }
         }
@@ -539,7 +541,7 @@ internal class Program
             {
                 ulong guildId = ulong.Parse("880569055856185354");
                 ulong textChannelId = ulong.Parse("1156625507840954369");
-                await client.GetGuild(guildId).GetTextChannel(textChannelId).SendMessageAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - New Server Added", $"Bot was added to {arg.Name} and no users were found on DownloadUsersAsync call.\nThe owner is {arg.Owner}", "", "BigBirdBot", Discord.Color.Red, null, null).Build()).ConfigureAwait(false);
+                await client.GetGuild(guildId).GetTextChannel(textChannelId).SendMessageAsync(embed: embedHelper.BuildMessageEmbed("New Server Added", $"Bot was added to {arg.Name} and no users were found on DownloadUsersAsync call.\nThe owner is {arg.Owner}", "", "BigBirdBot", Discord.Color.Red, null, null).Build()).ConfigureAwait(false);
             }
         }
     }
@@ -841,7 +843,7 @@ internal class Program
             {
                 if (client.GetGuild(guildId).GetTextChannel(textChannelId) != null && message.Message.Length > 0)
                 {
-                    await client.GetGuild(guildId).GetTextChannel(textChannelId).SendMessageAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Exception Thrown", $"Exception: {exception}\nMessage: {message.Message}", "", "BigBirdBot", Discord.Color.Red, null, null).Build());
+                    await client.GetGuild(guildId).GetTextChannel(textChannelId).SendMessageAsync(embed: embedHelper.BuildMessageEmbed("Exception Thrown", $"Exception: {exception}\nMessage: {message.Message}", "", "BigBirdBot", Discord.Color.Red, null, null).Build());
                 }
             }
         }
@@ -966,7 +968,7 @@ internal class Program
                     {
                         await channel.Value.SendMessageAsync(embed:
                         embedNsfw.BuildMessageEmbed(
-                            "BigBirdBot - NSFW",
+                            "NSFW",
                             $"Thanks {reaction.User.Value.Mention}, the message was marked as NSFW, sorry about that :)",
                             "",
                             "BigBirdBot",
@@ -1035,7 +1037,7 @@ internal class Program
                 {
                     await channel.Value.SendMessageAsync(embed:
                         embedHelper.BuildMessageEmbed(
-                            "BigBirdBot - Correct",
+                            "Correct",
                             $"{userMention} answered correctly with **{correctAnswer}**!",
                             "",
                             "BigBirdBot",
@@ -1051,7 +1053,7 @@ internal class Program
                 {
                     await channel.Value.SendMessageAsync(embed:
                         embedHelper.BuildMessageEmbed(
-                            "BigBirdBot - Wrong",
+                            "Wrong",
                             $"{userMention}, you didn't answer correctly. Try again!",
                             "",
                             "BigBirdBot",
@@ -1064,7 +1066,7 @@ internal class Program
                 var errorEmbed = new EmbedHelper();
                 await channel.Value.SendMessageAsync(embed:
                     errorEmbed.BuildMessageEmbed(
-                        "BigBirdBot - Error",
+                        "Error",
                         ex.Message,
                         Constants.errorImageUrl,
                         "",
@@ -1253,7 +1255,7 @@ internal class Program
     {
         EmbedBuilder embed = new EmbedBuilder
         {
-            Title = "BigBirdBot - " + title,
+            Title = "" + title,
             Color = color,
             Description = description
         }.WithCurrentTimestamp();

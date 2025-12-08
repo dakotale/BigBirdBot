@@ -67,7 +67,7 @@ namespace DiscordBot.Helper
         {
             EmbedBuilder embed = new EmbedBuilder
             {
-                Title = $"BigBirdBot Music - {title}",
+                Title = $"Music - {title}",
                 Color = Color.Blue,
                 Description = $"{description}",
                 ImageUrl = artwork

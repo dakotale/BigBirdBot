@@ -49,7 +49,7 @@ namespace DiscordBot.Helper
         {
             EmbedBuilder embed = new EmbedBuilder
             {
-                Title = $"BigBirdBot - Error Module: {module}",
+                Title = $"Error Module: {module}",
                 Color = Color.Red,
                 Description = $"{description}",
                 ThumbnailUrl = Constants.Constants.errorImageUrl,

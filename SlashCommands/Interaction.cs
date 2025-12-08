@@ -65,7 +65,7 @@ namespace DiscordBot.SlashCommands
                     // Build embed
                     var embed = new EmbedBuilder
                     {
-                        Title = "BigBirdBot - Trivia",
+                        Title = "Trivia",
                         ThumbnailUrl = "https://www.mtzion.lib.il.us/kids-teens/question-mark.jpg/@@images/image.jpeg",
                         Color = Color.Green,
                         Footer = new EmbedFooterBuilder { Text = $"Command from: {Context.User.Username}" }

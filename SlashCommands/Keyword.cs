@@ -50,7 +50,7 @@ namespace DiscordBot.SlashCommands
                                 new System.Data.SqlClient.SqlParameter("@Action", path)
                             });
 
-                            string title = "BigBirdBot - Keyword Added";
+                            string title = "Keyword Added";
                             string desc = $"Successfully added Keyword -> **{word}** \nAction -> Attachment added";
                             string thumbnailUrl = "";
                             string imageUrl = "";
@@ -81,7 +81,7 @@ namespace DiscordBot.SlashCommands
                                     new System.Data.SqlClient.SqlParameter("@Action", action)
                                 });
 
-                                string title = "BigBirdBot - Keyword Added";
+                                string title = "Keyword Added";
                                 string desc = $"Successfully added Keyword -> **{word}** \nAction -> {action}";
                                 string thumbnailUrl = "";
                                 string imageUrl = "";
@@ -92,7 +92,7 @@ namespace DiscordBot.SlashCommands
                             }
                             else
                             {
-                                string title = "BigBirdBot - Error";
+                                string title = "Error";
                                 string desc = $"Maximum number of characters for the action is 50 characters and the action is 2000 characters.";
                                 string thumbnailUrl = Constants.Constants.errorImageUrl;
                                 string imageUrl = "";
@@ -104,7 +104,7 @@ namespace DiscordBot.SlashCommands
                         }
                         else
                         {
-                            string title = "BigBirdBot - Error";
+                            string title = "Error";
                             string desc = $"To add a chat keyword action, enter a word and action/attachment.";
                             string thumbnailUrl = Constants.Constants.errorImageUrl;
                             string imageUrl = "";
@@ -117,7 +117,7 @@ namespace DiscordBot.SlashCommands
                 }
                 else
                 {
-                    string title = "BigBirdBot - Error";
+                    string title = "Error";
                     string desc = $"To add a chat keyword action, enter a word and action.";
                     string thumbnailUrl = Constants.Constants.errorImageUrl;
                     string imageUrl = "";
@@ -129,7 +129,7 @@ namespace DiscordBot.SlashCommands
             }
             catch (Exception e)
             {
-                string title = "BigBirdBot - Error";
+                string title = "Error";
                 string desc = $"Keyword added resulted in an error.\n" + e.Message;
                 string thumbnailUrl = Constants.Constants.errorImageUrl;
                 string imageUrl = "";
@@ -179,7 +179,7 @@ namespace DiscordBot.SlashCommands
                 if (categoryIdList.Count == 0 && createChannel.Equals("Yes"))
                 {
                     await guild.CreateCategoryChannelAsync("Keyword Multi");
-                    title = "BigBirdBot - Keyword Multi Information";
+                    title = "Keyword Multi Information";
                     desc = "The channel category does not exist, creating one for you to store the multiple action keyword channels.\n**NOTE**: For a channel to not be created, pass 'no' into the command arguments.\n";
                     categoryIdList = guild.CategoryChannels.Where(s => s.Name.ToLower() == "thirsting" || s.Name.ToLower() == "stanning" || s.Name.ToLower() == "keyword multi").ToList(); // prod: thirsting
                 }
@@ -229,18 +229,18 @@ namespace DiscordBot.SlashCommands
                 if (createChannel.Equals("No"))
                 {
                     // Output when we are all good
-                    title = "BigBirdBot - " + chatName + " Information";
+                    title = "" + chatName + " Information";
                     desc = $"Keyword Added: **{keyword}**\nAdd Command: **-{addCommand}**";
                     await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, "", createdByMsg, Color.Blue).Build(), ephemeral: true);
                 }
                 else
                 {
-                    title = "BigBirdBot - " + chatName + " Information";
+                    title = "" + chatName + " Information";
                     desc = $"Keyword Added: **{keyword}**\nAdd Command: **-{addCommand}**";
                     await guild.CreateTextChannelAsync(textChannelName, tcp => tcp.CategoryId = categoryId).Result.SendMessageAsync(embed: embed.BuildMessageEmbed(title, desc, "", createdByMsg, Color.Blue).Build()).Result.PinAsync();
 
                     // Output when we are all good
-                    title = "BigBirdBot - Added Keyword Multi Command";
+                    title = "Added Keyword Multi Command";
                     desc = "Added command successfully, please check the **" + chatName + "** channel created.";
                     await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, "", createdByMsg, Color.Blue).Build());
                 }
@@ -248,7 +248,7 @@ namespace DiscordBot.SlashCommands
             catch (Exception ex)
             {
                 EmbedHelper embed = new EmbedHelper();
-                string title = "BigBirdBot - Keyword Multi Error";
+                string title = "Keyword Multi Error";
                 string desc = ex.Message;
                 string createdByMsg = "Command from: " + Context.User.Username;
                 await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, "", createdByMsg, Color.Red).Build(), ephemeral: true);
@@ -279,7 +279,7 @@ namespace DiscordBot.SlashCommands
                 {
                     foreach (DataRow dr in dt.Rows)
                     {
-                        EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Multiple Keyword User Added", $"{tableName} was successfully added and **{user.Username}** will start receiving this on {DateTime.Parse(dr["ScheduleTime"].ToString()).ToString("MM/dd/yyyy hh:mm t")} ET.\nThe current list of multi people/characters for this user are; *{dr["ScheduledEventTable"].ToString()}*", "", Context.User.Username, Color.Blue, "");
+                        EmbedBuilder embed = embedHelper.BuildMessageEmbed("Multiple Keyword User Added", $"{tableName} was successfully added and **{user.Username}** will start receiving this on {DateTime.Parse(dr["ScheduleTime"].ToString()).ToString("MM/dd/yyyy hh:mm t")} ET.\nThe current list of multi people/characters for this user are; *{dr["ScheduledEventTable"].ToString()}*", "", Context.User.Username, Color.Blue, "");
                         await FollowupAsync(embed: embed.Build(), ephemeral: true);
                     }
                 }
@@ -287,7 +287,7 @@ namespace DiscordBot.SlashCommands
             catch (Exception e)
             {
                 EmbedHelper embedHelper = new EmbedHelper();
-                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", e.Message, Constants.Constants.errorImageUrl, "", Color.Red, "");
+                EmbedBuilder embed = embedHelper.BuildMessageEmbed("Error", e.Message, Constants.Constants.errorImageUrl, "", Color.Red, "");
                 await FollowupAsync(embed: embed.Build(), ephemeral: true);
             }
         }
@@ -315,7 +315,7 @@ namespace DiscordBot.SlashCommands
                 {
                     foreach (DataRow dr in dt.Rows)
                     {
-                        EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Multiple Keyword User Added", $"{tableName} was successfully added and **{Context.User.Username}** will start receiving this on {DateTime.Parse(dr["ScheduleTime"].ToString()).ToString("MM/dd/yyyy hh:mm t")} ET.\nThe current list of multi people/characters for you are; *{dr["ScheduledEventTable"].ToString()}*", "", Context.User.Username, Color.Blue, "");
+                        EmbedBuilder embed = embedHelper.BuildMessageEmbed("Multiple Keyword User Added", $"{tableName} was successfully added and **{Context.User.Username}** will start receiving this on {DateTime.Parse(dr["ScheduleTime"].ToString()).ToString("MM/dd/yyyy hh:mm t")} ET.\nThe current list of multi people/characters for you are; *{dr["ScheduledEventTable"].ToString()}*", "", Context.User.Username, Color.Blue, "");
                         await FollowupAsync(embed: embed.Build(), ephemeral: true);
                     }
                 }
@@ -323,7 +323,7 @@ namespace DiscordBot.SlashCommands
             catch (Exception e)
             {
                 EmbedHelper embedHelper = new EmbedHelper();
-                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", e.Message, Constants.Constants.errorImageUrl, "", Color.Red, "");
+                EmbedBuilder embed = embedHelper.BuildMessageEmbed("Error", e.Message, Constants.Constants.errorImageUrl, "", Color.Red, "");
                 await FollowupAsync(embed: embed.Build(), ephemeral: true);
             }
         }
@@ -426,7 +426,7 @@ namespace DiscordBot.SlashCommands
 
             EmbedBuilder embed = new EmbedBuilder
             {
-                Title = "BigBirdBot - Added Links",
+                Title = "Added Links",
                 Color = Color.Blue,
                 Description = $"Added link(s) successfully for **{keyword}**."
             };
@@ -503,7 +503,7 @@ namespace DiscordBot.SlashCommands
 
             EmbedBuilder embed = new EmbedBuilder
             {
-                Title = "BigBirdBot - Added Image",
+                Title = "Added Image",
                 Color = Color.Blue,
                 Description = $"Added attachment(s) successfully for **{keyword}**."
             };
@@ -539,7 +539,7 @@ namespace DiscordBot.SlashCommands
                 }
 
                 EmbedHelper embed = new EmbedHelper();
-                await FollowupAsync(embed: embed.BuildMessageEmbed("BigBirdBot - List of Active Keywords", output, "", Context.User.Username, Discord.Color.Green).Build());
+                await FollowupAsync(embed: embed.BuildMessageEmbed("List of Active Keywords", output, "", Context.User.Username, Discord.Color.Green).Build());
             }
         }
 
@@ -564,7 +564,7 @@ namespace DiscordBot.SlashCommands
                     description += "- " + dr["TableList"].ToString() + Environment.NewLine;
                 }
 
-                await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Multi-Keyword List", "List of available multi-keyword tables:\n" + description, "", Context.User.Username, Discord.Color.Blue).Build());
+                await FollowupAsync(embed: embedHelper.BuildMessageEmbed("Multi-Keyword List", "List of available multi-keyword tables:\n" + description, "", Context.User.Username, Discord.Color.Blue).Build());
             }
         }
         #endregion
@@ -615,7 +615,7 @@ namespace DiscordBot.SlashCommands
                                     new System.Data.SqlClient.SqlParameter("@Action", path)
                                 });
 
-                                string title = "BigBirdBot - Keyword Updated";
+                                string title = "Keyword Updated";
                                 string desc = $"Successfully updated Keyword -> **{word}**\n Action -> Attachment added.";
                                 string thumbnailUrl = "";
                                 string imageUrl = "";
@@ -627,7 +627,7 @@ namespace DiscordBot.SlashCommands
                         }
                         else
                         {
-                            string title = "BigBirdBot - Error";
+                            string title = "Error";
                             string desc = $"This keyword does not exist for this server.";
                             string thumbnailUrl = Constants.Constants.errorImageUrl;
                             string imageUrl = "";
@@ -665,7 +665,7 @@ namespace DiscordBot.SlashCommands
                                         new System.Data.SqlClient.SqlParameter("@Action", action)
                                     });
 
-                                    string title = "BigBirdBot - Keyword Updated";
+                                    string title = "Keyword Updated";
                                     string desc = $"Successfully updated Keyword -> **{word}**\n Action -> {action}";
                                     string thumbnailUrl = "";
                                     string imageUrl = "";
@@ -676,7 +676,7 @@ namespace DiscordBot.SlashCommands
                                 }
                                 else
                                 {
-                                    string title = "BigBirdBot - Error";
+                                    string title = "Error";
                                     string desc = $"This keyword does not exist for this server.";
                                     string thumbnailUrl = Constants.Constants.errorImageUrl;
                                     string imageUrl = "";
@@ -688,7 +688,7 @@ namespace DiscordBot.SlashCommands
                             }
                             else
                             {
-                                string title = "BigBirdBot - Error";
+                                string title = "Error";
                                 string desc = $"Maximum number of characters for the action is 50 characters and the action is 2000 characters.";
                                 string thumbnailUrl = Constants.Constants.errorImageUrl;
                                 string imageUrl = "";
@@ -700,7 +700,7 @@ namespace DiscordBot.SlashCommands
                         }
                         else
                         {
-                            string title = "BigBirdBot - Error";
+                            string title = "Error";
                             string desc = $"To add a chat keyword action, enter a word and action.";
                             string thumbnailUrl = Constants.Constants.errorImageUrl;
                             string imageUrl = "";
@@ -734,7 +734,7 @@ namespace DiscordBot.SlashCommands
                             new System.Data.SqlClient.SqlParameter("@Action", "")
                         });
 
-                        string title = "BigBirdBot - Keyword Updated";
+                        string title = "Keyword Updated";
                         string desc = $"Successfully enabled Keyword -> **{word}**\n";
                         string thumbnailUrl = "";
                         string imageUrl = "";
@@ -745,7 +745,7 @@ namespace DiscordBot.SlashCommands
                     }
                     else
                     {
-                        string title = "BigBirdBot - Error";
+                        string title = "Error";
                         string desc = $"This keyword does not exist for this server.";
                         string thumbnailUrl = Constants.Constants.errorImageUrl;
                         string imageUrl = "";
@@ -757,7 +757,7 @@ namespace DiscordBot.SlashCommands
                 }
                 else
                 {
-                    string title = "BigBirdBot - Error";
+                    string title = "Error";
                     string desc = $"To add a chat keyword action, enter a word and action.";
                     string thumbnailUrl = Constants.Constants.errorImageUrl;
                     string imageUrl = "";
@@ -769,7 +769,7 @@ namespace DiscordBot.SlashCommands
             }
             catch (Exception e)
             {
-                string title = "BigBirdBot - Error";
+                string title = "Error";
                 string desc = $"Keyword added resulted in an error.\n" + e.Message;
                 string thumbnailUrl = Constants.Constants.errorImageUrl;
                 string imageUrl = "";
@@ -803,7 +803,7 @@ namespace DiscordBot.SlashCommands
                     result = dr["Result"].ToString();
             }
 
-            string title = "BigBirdBot - Keywords Updated";
+            string title = "Keywords Updated";
             string desc = result;
             string thumbnailUrl = "";
             string imageUrl = "";
@@ -837,7 +837,7 @@ namespace DiscordBot.SlashCommands
                     new System.Data.SqlClient.SqlParameter("@Keyword", keyword.Trim())
                 });
 
-                string title = "BigBirdBot - Keyword Disabled";
+                string title = "Keyword Disabled";
                 string desc = $"Successfully disabled Keyword -> **{keyword.Trim()}**";
                 string thumbnailUrl = "";
                 string imageUrl = "";
@@ -848,7 +848,7 @@ namespace DiscordBot.SlashCommands
             }
             else
             {
-                string title = "BigBirdBot - Error";
+                string title = "Error";
                 string desc = $"This keyword does not exist for this server.";
                 string thumbnailUrl = Constants.Constants.errorImageUrl;
                 string imageUrl = "";
@@ -885,12 +885,12 @@ namespace DiscordBot.SlashCommands
                         new SqlParameter("TableName", tableName)
                     });
 
-                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Delete Successful", $"URL {url} was successfully deleted from the {tableName} table.", "", Context.User.Username, Color.Blue, "");
+                EmbedBuilder embed = embedHelper.BuildMessageEmbed("Delete Successful", $"URL {url} was successfully deleted from the {tableName} table.", "", Context.User.Username, Color.Blue, "");
                 await FollowupAsync(embed: embed.Build(), ephemeral: true);
             }
             else
             {
-                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "The URL doesn't exist in the table provided or the table doesn't exist.", Constants.Constants.errorImageUrl, Context.User.Username, Color.Red, "");
+                EmbedBuilder embed = embedHelper.BuildMessageEmbed("Error", "The URL doesn't exist in the table provided or the table doesn't exist.", Constants.Constants.errorImageUrl, Context.User.Username, Color.Red, "");
                 await FollowupAsync(embed: embed.Build(), ephemeral: true);
             }
         }
@@ -920,13 +920,13 @@ namespace DiscordBot.SlashCommands
                         new SqlParameter("@TableName", dr["TableName"].ToString())
                     });
 
-                    EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Delete Successful", "The multi-keyword provided was removed successfully.", "", "", Color.Blue, "");
+                    EmbedBuilder embed = embedHelper.BuildMessageEmbed("Delete Successful", "The multi-keyword provided was removed successfully.", "", "", Color.Blue, "");
                     await FollowupAsync(embed: embed.Build(), ephemeral: true);
                 }
             }
             else
             {
-                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "The multi-keyword entered does not exist.", Constants.Constants.errorImageUrl, "", Color.Red, "");
+                EmbedBuilder embed = embedHelper.BuildMessageEmbed("Error", "The multi-keyword entered does not exist.", Constants.Constants.errorImageUrl, "", Color.Red, "");
                 await FollowupAsync(embed: embed.Build(), ephemeral: true);
             }
         }
@@ -959,7 +959,7 @@ namespace DiscordBot.SlashCommands
 
             foreach (DataRow dr in dt.Rows)
             {
-                await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Multi-Keyword User Removed", dr["Message"].ToString(), "", Context.User.Username, Discord.Color.Blue).Build(), ephemeral: true);
+                await FollowupAsync(embed: embedHelper.BuildMessageEmbed("Multi-Keyword User Removed", dr["Message"].ToString(), "", Context.User.Username, Discord.Color.Blue).Build(), ephemeral: true);
             }
         }
 
@@ -981,7 +981,7 @@ namespace DiscordBot.SlashCommands
 
             EmbedBuilder embed = new EmbedBuilder
             {
-                Title = "BigBirdBot - Exclude from Keyword",
+                Title = "Exclude from Keyword",
                 Color = Color.Blue,
                 Description = $"You are removed from being excluded on keywords."
             };
@@ -1007,7 +1007,7 @@ namespace DiscordBot.SlashCommands
 
             foreach (DataRow dr in dt.Rows)
             {
-                await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Event Requeue", dr["Message"].ToString(), "", Context.User.Username, Discord.Color.Blue).Build(), ephemeral: true);
+                await FollowupAsync(embed: embedHelper.BuildMessageEmbed("Event Requeue", dr["Message"].ToString(), "", Context.User.Username, Discord.Color.Blue).Build(), ephemeral: true);
             }
         }
 
@@ -1029,7 +1029,7 @@ namespace DiscordBot.SlashCommands
 
             EmbedBuilder embed = new EmbedBuilder
             {
-                Title = "BigBirdBot - Exclude from Keyword",
+                Title = "Exclude from Keyword",
                 Color = Color.Blue,
                 Description = $"You have been excluded from keywords."
             };

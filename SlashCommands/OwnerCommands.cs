@@ -52,7 +52,7 @@ namespace DiscordBot.SlashCommands
                                     if (permissions.SendMessages)
                                     {
                                         serverList.Add(guild.Name);
-                                        await textChannel.SendMessageAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Announcement", message, "", "BigBirdBot", Discord.Color.Gold, imageUrl).Build()).ConfigureAwait(false);
+                                        await textChannel.SendMessageAsync(embed: embedHelper.BuildMessageEmbed("Announcement", message, "", "BigBirdBot", Discord.Color.Gold, imageUrl).Build()).ConfigureAwait(false);
                                     }
                                     else
                                         serverListNoPerms.Add(guild.Name);
@@ -88,7 +88,7 @@ namespace DiscordBot.SlashCommands
                 foreach (DataRow dr in dt.Rows)
                     description += "- " + dr["Username"].ToString() + " - " + dr["ScheduledEventTable"].ToString() + " - " + DateTime.Parse(dr["EventDateTime"].ToString()).ToString("MM/dd hh:mm tt") + "\n";
 
-            await FollowupAsync(embed: embedHelper.BuildMessageEmbed("BigBirdBot - Scheduled List", description, "", Context.User.Username, Discord.Color.Blue).Build(), ephemeral: true).ConfigureAwait(false);
+            await FollowupAsync(embed: embedHelper.BuildMessageEmbed("Scheduled List", description, "", Context.User.Username, Discord.Color.Blue).Build(), ephemeral: true).ConfigureAwait(false);
         }
 
         [SlashCommand("connplayers", "List of all connected players in voice channels.")]
@@ -101,7 +101,7 @@ namespace DiscordBot.SlashCommands
             DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "GetPlayerConnected", new List<SqlParameter>());
             EmbedHelper embed = new EmbedHelper();
 
-            string title = "BigBirdBot - Players Connected";
+            string title = "Players Connected";
             string desc = "";
             string thumbnailUrl = "";
             string imageUrl = "";
@@ -204,13 +204,60 @@ namespace DiscordBot.SlashCommands
                     new SqlParameter("@TableName", tableName)
                 });
 
-                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Delete Successful", $"Image {fileName} was successfully deleted from the {tableName} table.", "", Context.User.Username, Color.Blue, "");
+                EmbedBuilder embed = embedHelper.BuildMessageEmbed("Delete Successful", $"Image {fileName} was successfully deleted from the {tableName} table.", "", Context.User.Username, Color.Blue, "");
                 await FollowupAsync(embed: embed.Build(), ephemeral: true);
             }
             else
             {
-                EmbedBuilder embed = embedHelper.BuildMessageEmbed("BigBirdBot - Error", "The image doesn't exist in the table provided or the table doesn't exist.", Constants.Constants.errorImageUrl, Context.User.Username, Color.Red, "");
+                EmbedBuilder embed = embedHelper.BuildMessageEmbed("Error", "The image doesn't exist in the table provided or the table doesn't exist.", Constants.Constants.errorImageUrl, Context.User.Username, Color.Red, "");
                 await FollowupAsync(embed: embed.Build(), ephemeral: true);
+            }
+        }
+
+        [SlashCommand("editbotavatar", "Change the bot's avatar from the blue bird to anything you would like.")]
+        [EnabledInDm(false)]
+        [RequireOwner]
+        public async Task HandleBotAvatar(Attachment attachment)
+        {
+            await DeferAsync(ephemeral: true);
+            EmbedHelper embed = new EmbedHelper();
+
+            // 10MB is the max attachment size for free users
+            if (attachment.ContentType.StartsWith("image/") && attachment.Size < 10000000)
+            {
+                try
+                {
+                    // Download into memory to avoid file locks and race conditions with async file download
+                    using (var httpClient = new HttpClient())
+                    {
+                        byte[] imageBytes = await httpClient.GetByteArrayAsync(attachment.Url).ConfigureAwait(false);
+
+                        // Create image from memory stream and set avatar while the stream is open
+                        using (var ms = new MemoryStream(imageBytes))
+                        {
+                            var image = new Image(ms);
+                            await Context.Client.CurrentUser.ModifyAsync(user => user.Avatar = image).ConfigureAwait(false);
+                        }
+                    }
+
+                    await FollowupAsync(embed: embed.BuildMessageEmbed("Edit Bot Avatar", "The bot's avatar was successfully updated.", "", Context.User.Username, Discord.Color.Blue, attachment.Url).Build(), ephemeral: true).ConfigureAwait(false);
+                }
+                catch (HttpRequestException ex)
+                {
+                    await FollowupAsync(embed: embed.BuildErrorEmbed("Edit Bot Avatar", $"Failed to download the provided image: {ex.Message}", Context.User.Username).Build(), ephemeral: true).ConfigureAwait(false);
+                }
+                catch (IOException ex)
+                {
+                    await FollowupAsync(embed: embed.BuildErrorEmbed("Edit Bot Avatar", $"File access error while processing avatar: {ex.Message}", Context.User.Username).Build(), ephemeral: true).ConfigureAwait(false);
+                }
+                catch (System.Exception ex)
+                {
+                    await FollowupAsync(embed: embed.BuildErrorEmbed("Edit Bot Avatar", $"Unexpected error: {ex.Message}", Context.User.Username).Build(), ephemeral: true).ConfigureAwait(false);
+                }
+            }
+            else
+            {
+                await FollowupAsync(embed: embed.BuildErrorEmbed("Edit Bot Avatar", "The provided attachment is not a valid avatar image.", Context.User.Username).Build(), ephemeral: true).ConfigureAwait(false);
             }
         }
 

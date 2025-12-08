@@ -1,10 +1,12 @@
-﻿using System.Data;
-using System.Data.SqlClient;
-using Discord;
+﻿using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 using DiscordBot.Constants;
 using DiscordBot.Helper;
+using System.Data;
+using System.Data.SqlClient;
+using System.IO;
+using System.Net;
 
 namespace DiscordBot.SlashCommands
 {
@@ -29,7 +31,7 @@ namespace DiscordBot.SlashCommands
             foreach (DataRow dr in dt.Rows)
                 builder.WithButton(dr["Pronoun"].ToString(), dr["ID"].ToString());
 
-            await FollowupAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Pronoun Selection", "Please select from the list of available pronouns.", "", Context.User.Username, Discord.Color.Blue).Build(), components: builder.Build()).ConfigureAwait(false);
+            await FollowupAsync(embed: embed.BuildMessageEmbed("Pronoun Selection", "Please select from the list of available pronouns.", "", Context.User.Username, Discord.Color.Blue).Build(), components: builder.Build()).ConfigureAwait(false);
         }
 
         [SlashCommand("roles", "Select a list of available roles.")]
@@ -53,7 +55,7 @@ namespace DiscordBot.SlashCommands
                 foreach (DataRow dr in dt.Rows)
                     builder.WithButton(dr["RoleName"].ToString(), dr["RoleID"].ToString());
 
-                await FollowupAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Role Selection", "Please select from the list of available roles.", "", Context.User.Username, Discord.Color.Blue).Build(), components: builder.Build()).ConfigureAwait(false);
+                await FollowupAsync(embed: embed.BuildMessageEmbed("Role Selection", "Please select from the list of available roles.", "", Context.User.Username, Discord.Color.Blue).Build(), components: builder.Build()).ConfigureAwait(false);
             }
             else
                 await FollowupAsync(embed: embed.BuildErrorEmbed("Roles", "There are no roles available to select.", Context.User.Username).Build());
@@ -112,7 +114,7 @@ namespace DiscordBot.SlashCommands
                 }
             }
 
-            await FollowupAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Multi-Keyword Role Added", "Role was added successfully.", "", Context.User.Username, Discord.Color.Blue).Build(), ephemeral: true);
+            await FollowupAsync(embed: embed.BuildMessageEmbed("Multi-Keyword Role Added", "Role was added successfully.", "", Context.User.Username, Discord.Color.Blue).Build(), ephemeral: true);
         }
 
         [SlashCommand("delkeymultiroles", "Delete a role based on channels in the multiple action keyword category.")]
@@ -138,7 +140,7 @@ namespace DiscordBot.SlashCommands
                 });
             }
 
-            await FollowupAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Multi-Keyword Role Deleted", "Role was deleted successfully.", "", Context.User.Username, Discord.Color.Blue).Build(), ephemeral: true);
+            await FollowupAsync(embed: embed.BuildMessageEmbed("Multi-Keyword Role Deleted", "Role was deleted successfully.", "", Context.User.Username, Discord.Color.Blue).Build(), ephemeral: true);
         }
 
         [SlashCommand("addrole", "Add a role for the bot to handle when the roles command is ran.")]
@@ -174,7 +176,19 @@ namespace DiscordBot.SlashCommands
                 });
             }
 
-            await FollowupAsync(embed: embed.BuildMessageEmbed("BigBirdBot - Role Added to Role Selection", "Role was added successfully.", "", Context.User.Username, Discord.Color.Blue).Build(), ephemeral: true).ConfigureAwait(false);
+            await FollowupAsync(embed: embed.BuildMessageEmbed("Role Added to Role Selection", "Role was added successfully.", "", Context.User.Username, Discord.Color.Blue).Build(), ephemeral: true).ConfigureAwait(false);
+        }
+
+        [SlashCommand("editbotnickname", "Change the bot's nickname from BigBirdBot to anything you would like.")]
+        [EnabledInDm(false)]
+        [Discord.Interactions.RequireUserPermission(ChannelPermission.ManageRoles)]
+        public async Task HandleBotNickname(string nickName)
+        {
+            await DeferAsync(ephemeral: true);
+            EmbedHelper embed = new EmbedHelper();
+
+            await Context.Guild.CurrentUser.ModifyAsync(s => s.Nickname = nickName);
+            await FollowupAsync(embed: embed.BuildMessageEmbed("Edit Bot Nickname", "The bot's nickname was successfully updated to **" + nickName + "**.", "", Context.User.Username, Discord.Color.Blue).Build(), ephemeral: true).ConfigureAwait(false);
         }
     }
 }
