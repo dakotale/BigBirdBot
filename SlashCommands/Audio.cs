@@ -892,7 +892,7 @@ namespace DiscordBot.SlashCommands
             await player.SetVolumeAsync(volume).ConfigureAwait(false);
 
             // Build and send embed
-            var embed = BuildTrackEmbed("Queued", track, artist, albumName, duration, volume);
+            var embed = await BuildTrackEmbedAsync("Queued", track, artist, albumName, duration, volume);
             await FollowupAsync(embed: embed.Build()).ConfigureAwait(false);
         }
 
@@ -998,15 +998,14 @@ namespace DiscordBot.SlashCommands
             return ValueTask.FromResult(new CustomPlayer(properties));
         }
 
-        private EmbedBuilder BuildTrackEmbed(string title, LavalinkTrack track, string artist, string albumName, TimeSpan duration, float volume)
+        private async Task<EmbedBuilder> BuildTrackEmbedAsync(string title, LavalinkTrack track, string artist, string albumName, TimeSpan duration, float volume)
         {
-            string msg = $"Track Name: **{track.Title}**" +
-                         $"\nArtist: {(string.IsNullOrEmpty(artist) ? $"**{track.Author}**" : artist)}" +
-                         $"{(string.IsNullOrEmpty(albumName) ? "" : $"\nAlbum: **{albumName}**")}" +
-                         $"\nURL: {track.Uri}" +
-                         $"\nDuration: **{duration:hh\\:mm\\:ss}**" +
-                         $"\nSource: **{track.SourceName}**" +
-                         $"\nVolume: **{volume * 100}%**";
+            QueuedLavalinkPlayer? player = await GetPlayerAsync(connectToVoiceChannel: false).ConfigureAwait(false);
+            string msg = $"**[{duration:hh\\:mm\\:ss}] {(string.IsNullOrEmpty(artist) ? $"{track.Author}" : artist)}**\n" +
+                         $"**{track.Title}**\n" +
+                         $"{track.Uri}\n" +
+                         $"**{track.SourceName.ToUpper()} | Volume: {volume * 100}%**\n" +
+                         $"**Total in Queue: {(player != null ? player.Queue.Count : 0)}**";
 
             return BuildMusicEmbed(title, msg);
         }

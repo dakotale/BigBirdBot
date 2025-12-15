@@ -35,7 +35,7 @@ namespace DiscordBot.Helper
             if (track?.Track.Duration != null)
                 duration = new TimeSpan(track.Track.Duration.Hours, track.Track.Duration.Minutes, track.Track.Duration.Seconds);
 
-            string msg = $"Track Name: **{track?.Track.Title}**\nURL: {track?.Track.Uri}\nDuration: **{duration}**\nSource: **{track?.Track.SourceName}**";
+            string msg = $"**[{duration}]**\n**{track?.Track.Title}**\n{track?.Track.Uri}\n{track?.Track.SourceName.ToUpper()}";
 
             if (track.Track.ArtworkUri != null)
                 artworkUrl = track.Track.ArtworkUri.ToString();

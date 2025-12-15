@@ -12,7 +12,9 @@ namespace DiscordBot.Constants
             ["twitter.com"] = "dl.fxtwitter.com",
             ["x.com"] = "dl.fxtwitter.com",
             ["tiktok.com"] = "vxtiktok.com",
-            ["bsky.app"] = "bskx.app"
+            ["bsky.app"] = "bskx.app",
+            ["reddit.com"] = "rxddit.com",
+            ["www.reddit.com"] = "rxddit.com"
         };
 
         private static readonly string[] SocialMediaDomains = UrlReplacements.Keys
