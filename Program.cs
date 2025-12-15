@@ -1179,7 +1179,7 @@ internal class Program
             var request = (HttpWebRequest)WebRequest.Create(url);
             request.AllowAutoRedirect = true;
             request.Method = "GET";
-            request.Timeout = 5000; // Set a timeout to avoid hanging
+            request.Timeout = 15000; // Set a timeout to avoid hanging
 
             using var response = (HttpWebResponse)request.GetResponse();
             using var reader = new StreamReader(response.GetResponseStream(), Encoding.ASCII);
