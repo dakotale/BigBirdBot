@@ -1,0 +1,2 @@
+﻿CREATE USER [discordbot] WITHOUT LOGIN;
+
