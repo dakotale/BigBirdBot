@@ -349,118 +349,13 @@ namespace DiscordBot.SlashCommands
             
         }
 
-        [SlashCommand("detectaibyurl", "Provide a URL through the bot to get the percentage chance the image URL is AI.")]
-        [EnabledInDm(true)]
-        public async Task HandleAIByURL(string url)
-        {
-            await DeferAsync();
-            EmbedHelper embedHelper = new EmbedHelper();
-
-            try
-            {
-                HttpClient client = new HttpClient();
-
-                if (!url.Contains("https") || url.Contains("discordapp.net"))
-                {
-                    await FollowupAsync(embed: embedHelper.BuildErrorEmbed("AI Detection Error", "**The request does not have a proper URL and failed when sending to the detection endpoint.**", Context.User.Username).Build());
-                    return;
-                }
-
-                string responseBody = await client.GetStringAsync($"https://api.sightengine.com/1.0/check.json?models=genai&api_user={Constants.Constants.aiApiUserId}&api_secret={Constants.Constants.aiApiSecretId}&url={url}");
-
-                if (!string.IsNullOrEmpty(responseBody))
-                {
-                    StoredProcedure stored = new StoredProcedure();
-                    DataTable dt = new DataTable();
-
-                    dt = stored.Select(Constants.Constants.discordBotConnStr, "GetAIJSONImageReturn", new List<SqlParameter> { new SqlParameter("@json", responseBody) });
-
-                    if (dt.Rows.Count > 0)
-                    {
-                        foreach (DataRow dr in dt.Rows)
-                        {
-                            if (dr["Status"].ToString().Equals("success"))
-                            {
-                                var detectionRate = double.Parse(dr["PercentageChance"].ToString());
-                                string description = "";
-
-                                if (detectionRate <= 25.0)
-                                    description = $"**There is a small chance ({detectionRate.ToString() + "%"}) this image is AI and would be safe to assume it is not AI.**";
-                                if (detectionRate > 25.0 && detectionRate <= 50.0)
-                                    description = $"**There is a chance ({detectionRate.ToString() + "%"}) this image is AI and should be investigated further.**";
-                                if (detectionRate > 50.0 && detectionRate <= 75.0)
-                                    description = $"**There is a high chance ({detectionRate.ToString() + "%"}) this image is AI and should be investigated further.**";
-                                if (detectionRate > 75.0)
-                                    description = $"**This image was created with AI based on the percentage matching of {detectionRate.ToString() + "%"}.**";
-
-                                await FollowupAsync(embed: embedHelper.BuildMessageEmbed("AI Detection", description, "", Context.User.Username, Discord.Color.Blue, url: url).Build());
-                            }
-                            else
-                            {
-                                await FollowupAsync(embed: embedHelper.BuildErrorEmbed("AI Detection Error", "**The request failed when sending to the detection endpoint.**", Context.User.Username).Build());
-                            }
-                        }
-                    }
-                    else
-                    {
-                        await FollowupAsync(embed: embedHelper.BuildErrorEmbed("AI Detection Error", "**There was no response returned from the detection endpoint.**", Context.User.Username).Build());
-                    }
-                }
-                else
-                {
-                    await FollowupAsync(embed: embedHelper.BuildErrorEmbed("AI Detection Error", "**There was no response returned from the detection endpoint.**", Context.User.Username).Build());
-                }
-            }
-            catch (Exception ex)
-            {
-                await FollowupAsync(embed: embedHelper.BuildErrorEmbed("AI Detection Error", ex.Message, Context.User.Username).Build());
-            }
-
-
-        }
-
-        [SlashCommand("addreminder", "Have the bot remind you of something")]
-        [EnabledInDm(true)]
-        public async Task HandleReminder(string reminder, [MinValue(1), MaxValue(12)] int monthNumber, [MinValue(1), MaxValue(31)] int dayNumber, [MinValue(2025), MaxValue(2027)] int year,
-                                        [MinValue(1), MaxValue(12)] int hours, [MinValue(0), MaxValue(60)] int minute, [Choice("AM", "AM"), Choice("PM", "PM")] string ampm)
-        {
-            await DeferAsync();
-            EmbedHelper embedHelper = new EmbedHelper();
-            StoredProcedure stored = new StoredProcedure();
-
-            if (ampm.Equals("PM") && hours != 12)
-                hours += 12;
-
-            if (ampm.Equals("AM") && hours == 12)
-                hours -= 12;
-
-            DateTime eventReminder = new DateTime(year, monthNumber, dayNumber, hours, minute, 0);
-
-            stored.UpdateCreate(Constants.Constants.discordBotConnStr, "AddEvent", new List<SqlParameter>
-            {
-                new SqlParameter("@EventName", reminder),
-                new SqlParameter("@EventDescription", reminder),
-                new SqlParameter("@EventDateTime", eventReminder),
-                new SqlParameter("@EventReminderTime", 0),
-                new SqlParameter("@EventChannelSource", Context.Channel.Id.ToString()),
-                new SqlParameter("@CreatedBy", Context.User.Mention.ToString())
-            });
-
-            await FollowupAsync(embed: embedHelper.BuildMessageEmbed("Event Reminder", "Thanks for the reminder, I'll let you know when it gets closer to the date/time ;)", "", Context.User.Username, Discord.Color.Blue).Build(), ephemeral: true);
-        }
-
         [SlashCommand("chat", "Have a wonderful conversation with the bot.")]
         [EnabledInDm(true)]
-        public async Task HandleChat(string message, [Choice("Yes", "Yes"), Choice("No", "No")] string canBeShownPublicly, [Choice("Yes", "Yes"), Choice("No", "No")] string startNew,
-                                    [Choice("New Yorker Lesbian", "New Yorker Lesbian"),
-                                    Choice("Midwest Lesbian", "Midwest Lesbian"),
-                                    Choice("California Lesbian", "California Lesbian"),
-                                    Choice("Southern Lesbian", "Southern Lesbian"),
-                                    Choice("Canadian Lesbian", "Canadian Lesbian"),
-                                    Choice("Paladin Lesbian", "Paladin Lesbian"), 
-                                    Choice ("eSports Gamer Lesbian", "eSports Gamer Lesbian"), 
-                                    Choice("Scooby-Doo Lesbian", "Scooby-Doo Lesbian"),
-                                    Choice("Sett", "Sett")] string personality)
+        public async Task HandleChat(string message, [Choice("Yes", "Yes"), Choice("No", "No")] string startNew,
+                                    [Choice ("eSports Gamer Lesbian", "eSports Gamer Lesbian"), 
+                                    Choice("Sett", "Sett"),
+                                    Choice("T. M. Opera O", "T. M. Opera O"),
+                                    Choice("Meisho Doto", "Meisho Doto")] string personality)
         {
             await DeferAsync();
             StoredProcedure stored = new StoredProcedure();
@@ -471,36 +366,20 @@ namespace DiscordBot.SlashCommands
 
             switch (personality)
             {
-                case "New Yorker Lesbian":
-                    botPersona = "You are a lesbian answering the prompts provided as a New Yorker.  Make sure to include a lot of emojis and cute phrases!";
-                    break;
-                case "Midwest Lesbian":
-                    botPersona = "You are a lesbian answering the prompts provided as someone from the Midwest.  Make sure to include a lot of emojis and cute phrases!";
-                    break;
-                case "California Lesbian":
-                    botPersona = "You are a lesbian answering the prompts provided as someone from California.  Make sure to include a lot of emojis and cute phrases!";
-                    break;
-                case "Southern Lesbian":
-                    botPersona = "You are a lesbian answering the prompts provided as someone from the South.  Make sure to include a lot of emojis and cute phrases!";
-                    break;
-                case "Canadian Lesbian":
-                    botPersona = "You are a lesbian answering the prompts provided as someone from Canada.  Make sure to include a lot of emojis and cute phrases!";
-                    break;
-                case "Paladin Lesbian":
-                    botPersona = "You are an olde english lesbian paladin and you must answer the prompt as this.  You are always looking to smite evil and rid the world of darkness.";
-                    break;
                 case "eSports Gamer Lesbian":
                     botPersona = "You are a giga lesbian e-sports gamer who plays League of Legends, Valorant, Counter Strike, you play those and everything else.  You are the best and everyone else is trash.  Don't be afraid to trash talk but do NOT provide any slurs.";
-                    break;
-                case "Scooby-Doo Lesbian":
-                    botPersona = "You unironically think you are a lesbian who is Scooby-Doo, everyone knows you are not, but you live in a delusion.";
                     break;
                 case "Sett":
                     botPersona = "You are Sett from League of Legends.  You will only be allowed to discuss in their mannerisms, but you are very positive and helpful, loving even.";
                     break;
+                case "T. M. Opera O":
+                    botPersona = "You are T. M. Opera O from Umamusume: Pretty Derby.  You will only be allowed to discuss in their mannerisms, but you are very positive and helpful, loving even.";
+                    break;
+                case "Meisho Doto":
+                    botPersona = "You are Meisho Doto from Umamusume: Pretty Derby.  You will only be allowed to discuss in their mannerisms, but you are very positive and helpful, loving even.";
+                    break;
             }
             string response = string.Empty;
-            bool isPrivate = (canBeShownPublicly.Equals("No") ? true : false);
             bool isNew = (startNew.Equals("Yes") ? true : false);
             message = message.Trim();
 
@@ -585,7 +464,7 @@ namespace DiscordBot.SlashCommands
                     new SqlParameter("@ChatMessage", response)
                 });
 
-                await FollowupAsync(response, ephemeral: isPrivate);
+                await FollowupAsync(response);
             }
             catch (Exception ex)
             {

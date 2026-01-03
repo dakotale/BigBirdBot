@@ -82,11 +82,7 @@ internal class Program
         {
             await loggingService.InfoAsync("Starting Bot");
 
-#if DEBUG
-        var token = Constants.devBotToken;
-#else
             var token = Constants.botToken;
-#endif
             await client.LoginAsync(TokenType.Bot, token);
 
             RegisterEvents(client);
@@ -279,15 +275,6 @@ internal class Program
                 new SqlParameter("@ServerUID", Int64.Parse(arg.Guild.Id.ToString())),
                 new SqlParameter("@Nickname", arg.Nickname)
             });
-
-            stored.UpdateCreate(Constants.discordBotConnStr, "AddUserByServer", new List<SqlParameter>
-            {
-                new SqlParameter("@UserID", arg.Id.ToString()),
-                new SqlParameter("@Username", arg.Username),
-                new SqlParameter("@JoinDate", arg.JoinedAt),
-                new SqlParameter("@ServerUID", Int64.Parse(arg.Guild.Id.ToString())),
-                new SqlParameter("@Nickname", arg.Nickname)
-            });
         }
     }
 
@@ -312,176 +299,41 @@ internal class Program
 
             string customId = component.Data.CustomId;
             string guildId = component.GuildId.Value.ToString() ?? "";
-            // Need to check if it's a role, if not default to a pronoun for now
-            dt = stored.Select(connStr, "GetRolesByID", new List<SqlParameter>
+            DataTable dtPronouns = new DataTable();
+            dtPronouns = stored.Select(connStr, "GetPronouns", new List<SqlParameter>());
+
+            string pronounSelected = "";
+
+            foreach (DataRow dr in dtPronouns.Rows)
             {
-                new SqlParameter("@ServerID", Int64.Parse(guildId)),
-                new SqlParameter("@RoleID", Int64.Parse(customId))
-            });
+                int pronounId = int.Parse(dr["ID"].ToString());
+                string pronounName = dr["Pronoun"].ToString();
 
-            // It's a role
-            if (dt.Rows.Count > 0)
+                if (client.GetGuild(component.GuildId.Value).Roles.Where(s => s.Name.Equals(pronounName)).Count() < 1)
+                {
+                    // Create the role
+                    await client.GetGuild(component.GuildId.Value).CreateRoleAsync(pronounName);
+                }
+
+                if (pronounId.ToString() == component.Data.CustomId)
+                    pronounSelected = pronounName;
+            }
+
+            // Add them to the role
+            SocketRole? role = client.GetGuild(component.GuildId.Value).Roles.FirstOrDefault(s => s.Name.Equals(pronounSelected));
+
+            SocketGuild guild = client.GetGuild(component.GuildId.Value);
+            SocketGuildUser guildUser = guild.GetUser(component.User.Id);
+
+            if (role != null && guildUser.Roles.Any(s => s.Name.Equals(role.Name)))
             {
-                dt = stored.Select(connStr, "GetRoleUsersByID", new List<SqlParameter>
-                {
-                    new SqlParameter("@UserID", Int64.Parse(component.User.Id.ToString())),
-                    new SqlParameter("@RoleID", Int64.Parse(customId))
-                });
-
-                DataTable dtRoles = new DataTable();
-                dtRoles = stored.Select(connStr, "GetRoles", new List<SqlParameter> { new SqlParameter("@ServerID", Int64.Parse(guildId)) });
-
-                // They have the role and are deleting the role
-                if (dt.Rows.Count > 0)
-                {
-                    string roleIdSelected = "";
-                    string roleNameSelected = "";
-                    foreach (DataRow dr in dtRoles.Rows)
-                    {
-                        string roleId = dr["RoleID"].ToString();
-                        string roleName = dr["RoleName"].ToString();
-
-                        if (roleId.Equals(component.Data.CustomId.ToString()))
-                        {
-                            roleIdSelected = roleId;
-                            roleNameSelected = roleName;
-                        }
-                    }
-
-                    SocketRole? role = client.GetGuild(component.GuildId.Value).Roles.FirstOrDefault(s => s.Id.ToString().Equals(roleIdSelected));
-
-                    SocketGuild guild = client.GetGuild(component.GuildId.Value);
-                    SocketGuildUser guildUser = guild.GetUser(component.User.Id);
-
-                    await (guildUser as IGuildUser).RemoveRoleAsync(role);
-
-                    // Remove the Pronoun from the table
-                    stored.UpdateCreate(connStr, "DeleteRoleUsers", new List<SqlParameter>
-                    {
-                        new SqlParameter("@UserID", Int64.Parse(component.User.Id.ToString())),
-                        new SqlParameter("@RoleID", Int64.Parse(component.Data.CustomId)),
-                        new SqlParameter("@ServerID", Int64.Parse(component.GuildId.Value.ToString()))
-                    });
-                    await component.RespondAsync(embed: embed.BuildMessageEmbed("Role Selection", $"Role was successfully removed for {component.User.Username}", "", component.User.Username, Discord.Color.Blue).Build(), ephemeral: true);
-                }
-                // They don't have the role and now are going to delete it
-                else
-                {
-                    string roleIdSelected = "";
-                    string roleNameSelected = "";
-                    foreach (DataRow dr in dtRoles.Rows)
-                    {
-                        string roleId = dr["RoleID"].ToString();
-                        string roleName = dr["RoleName"].ToString();
-
-                        if (roleId.Equals(component.Data.CustomId.ToString()))
-                        {
-                            roleIdSelected = roleId;
-                            roleNameSelected = roleName;
-                        }
-                    }
-
-                    SocketRole? role = client.GetGuild(component.GuildId.Value).Roles.FirstOrDefault(s => s.Id.ToString().Equals(roleIdSelected));
-
-                    SocketGuild guild = client.GetGuild(component.GuildId.Value);
-                    SocketGuildUser guildUser = guild.GetUser(component.User.Id);
-
-                    await (guildUser as IGuildUser).AddRoleAsync(role);
-
-                    // Remove the Pronoun from the table
-                    stored.UpdateCreate(connStr, "AddRoleUsers", new List<SqlParameter>
-                    {
-                        new SqlParameter("@UserID", Int64.Parse(component.User.Id.ToString())),
-                        new SqlParameter("@RoleID", Int64.Parse(component.Data.CustomId)),
-                        new SqlParameter("@ServerID", Int64.Parse(component.GuildId.Value.ToString()))
-                    });
-
-                    await component.RespondAsync(embed: embed.BuildMessageEmbed("Role Selection", $"Role was successfully added for {component.User.Username}", "", component.User.Username, Discord.Color.Blue).Build(), ephemeral: true);
-                }
+                await (guildUser as IGuildUser).RemoveRoleAsync(role);
+                await component.RespondAsync(embed: embed.BuildMessageEmbed("Pronoun Selection", $"Pronouns were successfully removed for {component.User.Username}.", "", component.User.Username, Discord.Color.Blue).Build(), ephemeral: true);
             }
             else
             {
-                dt = stored.Select(connStr, "GetPronounUsersByID", new List<SqlParameter>
-                {
-                    new SqlParameter("@UserID", Int64.Parse(component.User.Id.ToString())),
-                    new SqlParameter("@PronounID", int.Parse(component.Data.CustomId)),
-                    new SqlParameter("@ServerID", Int64.Parse(component.GuildId.ToString()))
-                });
-
-                DataTable dtPronouns = new DataTable();
-                dtPronouns = stored.Select(connStr, "GetPronouns", new List<SqlParameter>());
-
-                if (dt.Rows.Count > 0)
-                {
-                    string pronounSelected = "";
-                    // Remove them from the role
-                    foreach (DataRow dr in dtPronouns.Rows)
-                    {
-                        int pronounId = int.Parse(dr["ID"].ToString());
-                        string pronounName = dr["Pronoun"].ToString();
-
-                        if (client.GetGuild(component.GuildId.Value).Roles.Where(s => s.Name.Equals(pronounName)).Count() < 1)
-                        {
-                            // Create the role
-                            await client.GetGuild(component.GuildId.Value).CreateRoleAsync(pronounName);
-                        }
-
-                        if (pronounId.ToString() == component.Data.CustomId)
-                            pronounSelected = pronounName;
-                    }
-
-                    SocketRole? role = client.GetGuild(component.GuildId.Value).Roles.FirstOrDefault(s => s.Name.Equals(pronounSelected));
-
-                    SocketGuild guild = client.GetGuild(component.GuildId.Value);
-                    SocketGuildUser guildUser = guild.GetUser(component.User.Id);
-
-                    await (guildUser as IGuildUser).RemoveRoleAsync(role);
-
-                    // Remove the Pronoun from the table
-                    stored.UpdateCreate(connStr, "DeletePronounUsers", new List<SqlParameter>
-                    {
-                        new SqlParameter("@UserID", Int64.Parse(component.User.Id.ToString())),
-                        new SqlParameter("@PronounID", int.Parse(component.Data.CustomId))
-                    });
-
-                    await component.RespondAsync(embed: embed.BuildMessageEmbed("Pronoun Selection", $"Pronouns were successfully removed for {component.User.Username}", "", component.User.Username, Discord.Color.Blue).Build(), ephemeral: true);
-                }
-                else
-                {
-                    string pronounSelected = "";
-
-                    foreach (DataRow dr in dtPronouns.Rows)
-                    {
-                        int pronounId = int.Parse(dr["ID"].ToString());
-                        string pronounName = dr["Pronoun"].ToString();
-
-                        if (client.GetGuild(component.GuildId.Value).Roles.Where(s => s.Name.Equals(pronounName)).Count() < 1)
-                        {
-                            // Create the role
-                            await client.GetGuild(component.GuildId.Value).CreateRoleAsync(pronounName);
-                        }
-
-                        if (pronounId.ToString() == component.Data.CustomId)
-                            pronounSelected = pronounName;
-                    }
-
-                    // Add them to the role
-                    SocketRole? role = client.GetGuild(component.GuildId.Value).Roles.FirstOrDefault(s => s.Name.Equals(pronounSelected));
-
-                    SocketGuild guild = client.GetGuild(component.GuildId.Value);
-                    SocketGuildUser guildUser = guild.GetUser(component.User.Id);
-
-                    await (guildUser as IGuildUser).AddRoleAsync(role);
-
-                    // Add Pronoun for User
-                    stored.UpdateCreate(connStr, "AddPronounUsers", new List<SqlParameter>
-                    {
-                        new SqlParameter("@ServerID", Int64.Parse(component.GuildId.ToString())),
-                        new SqlParameter("@UserID", Int64.Parse(component.User.Id.ToString())),
-                        new SqlParameter("@PronounID", int.Parse(component.Data.CustomId))
-                    });
-                    await component.RespondAsync(embed: embed.BuildMessageEmbed("Pronoun Selection", $"Pronouns were successfully added for {component.User.Username}.", "", component.User.Username, Discord.Color.Blue).Build(), ephemeral: true);
-                }
+                await (guildUser as IGuildUser).AddRoleAsync(role);
+                await component.RespondAsync(embed: embed.BuildMessageEmbed("Pronoun Selection", $"Pronouns were successfully added for {component.User.Username}.", "", component.User.Username, Discord.Color.Blue).Build(), ephemeral: true);
             }
         }
 
@@ -582,25 +434,14 @@ internal class Program
         if (!bool.TryParse(dt.Rows[0]["IsActive"]?.ToString(), out var isServerActive) || !isServerActive)
             return;
 
-        // Check if keyword system is active
-        dt = stored.Select(connStr, "CheckIfKeywordsAreActivePerServer", new List<SqlParameter> {
-            new SqlParameter("ServerUID", long.Parse(serverId))
-        });
-        if (dt.Rows.Count == 0)
-            return;
-
-        if (int.Parse(dt.Rows[0]["TotalActive"].ToString()) <= 0)
-            return;
-
         bool isCommand = message.StartsWith(prefix);
-
         if (cleanup.HasSocialMediaEmbed(message) && !isCommand)
         {
-            dt = stored.Select(connStr, "GetTwitterBroken", new List<SqlParameter> {
+            dt = stored.Select(connStr, "GetEmbedBroken", new List<SqlParameter> {
                 new SqlParameter("@ServerID", long.Parse(serverId))
             });
 
-            if (bool.TryParse(dt.Rows[0]["TwitterBroken"]?.ToString(), out var isTwitterBroken) && isTwitterBroken)
+            if (bool.TryParse(dt.Rows[0]["FixEmbed"]?.ToString(), out var isTwitterBroken) && isTwitterBroken)
             {
                 await msg.Channel.SendMessageAsync(cleanup.CleanURLEmbed(message));
             }
@@ -615,14 +456,14 @@ internal class Program
                 return;
 
             string keyword = splitMessage[0].Replace(prefix, "");
-            dt = stored.Select(connStr, "GetThirstTableByMap", new List<SqlParameter> {
+            dt = stored.Select(connStr, "GetChatKeywordMap", new List<SqlParameter> {
                 new SqlParameter("@AddKeyword", keyword)
             });
 
             if (dt.Rows.Count == 0)
                 return;
 
-            string tablename = dt.Rows[0]["TableName"].ToString();
+            string tablename = dt.Rows[0]["Keyword"].ToString();
 
             if (msg.Attachments.Count > 0)
             {
@@ -647,18 +488,13 @@ internal class Program
                         }
 
                         string cleanedUrl = cleanup.CleanURLEmbed(url);
-                        if (!IsUrlNew(cleanedUrl, tablename, connStr, stored))
-                        {
-                            await msg.Channel.SendMessageAsync(embed: CreateMessageEmbed("Error", Color.Red, $"The URL provided (*{cleanedUrl}*) was already added.").Build());
-                            continue;
-                        }
 
                         foreach (DataRow row in dt.Rows)
                         {
-                            stored.UpdateCreate(connStr, "AddThirstByMap", new List<SqlParameter>
+                            stored.UpdateCreate(connStr, "AddChatKeyword", new List<SqlParameter>
                             {
                                 new SqlParameter("@FilePath", cleanedUrl),
-                                new SqlParameter("@TableName", row["TableName"].ToString()),
+                                new SqlParameter("@TableName", row["Keyword"].ToString()),
                                 new SqlParameter("@UserID", userId)
                             });
                         }
@@ -670,18 +506,12 @@ internal class Program
                 {
                     string cleanedContent = cleanup.CleanURLEmbed(content);
 
-                    if (!IsUrlNew(cleanedContent, tablename, connStr, stored))
-                    {
-                        await msg.Channel.SendMessageAsync(embed: CreateMessageEmbed("Error", Color.Red, "The URL provided was already added.").Build());
-                        return;
-                    }
-
                     foreach (DataRow row in dt.Rows)
                     {
-                        stored.UpdateCreate(connStr, "AddThirstByMap", new List<SqlParameter>
+                        stored.UpdateCreate(connStr, "AddChatKeyword", new List<SqlParameter>
                         {
                             new SqlParameter("@FilePath", cleanedContent),
-                            new SqlParameter("@TableName", row["TableName"].ToString()),
+                            new SqlParameter("@TableName", row["Keyword"].ToString()),
                             new SqlParameter("@UserID", userId)
                         });
                     }
@@ -692,16 +522,6 @@ internal class Program
 
             return;
         }
-
-        // Chat Keyword Actions (non-command)
-        parameters = new List<SqlParameter> {
-            new SqlParameter("@UserID", userId),
-            new SqlParameter("@ServerID", long.Parse(serverId))
-        };
-
-        dt = stored.Select(connStr, "GetChatKeywordExclusion", parameters);
-        if (dt.Rows.Count > 0)
-            return;
 
         parameters = new List<SqlParameter> {
             new SqlParameter("@ServerID", long.Parse(serverId)),
@@ -748,9 +568,9 @@ internal class Program
                         else
                         {
                             await sender.SendMessageAsync($"Link was dead so I deleted it :) -> {chatAction}");
-                            stored.UpdateCreate(connStr, "DeleteThirstURL", new List<SqlParameter> {
+                            stored.UpdateCreate(connStr, "DeleteChatKeywordURL", new List<SqlParameter> {
                                 new SqlParameter("@FilePath", chatAction),
-                                new SqlParameter("@TableName", "")
+                                new SqlParameter("@Keyword", "")
                             });
                         }
                     }
@@ -943,13 +763,6 @@ internal class Program
             if (existingReaction.Rows.Count > 0)
                 return;
 
-            // Add initial reaction record
-            stored.UpdateCreate(connStr, "AddReactionMessage", new List<SqlParameter>
-            {
-                new SqlParameter("@UserID", userId),
-                new SqlParameter("@MessageID", messageId)
-            });
-
             async Task HandleNSFWMark(string messageContent)
             {
                 var keywordRows = stored.Select(connStr, "GetKeywordNSFW", new List<SqlParameter>
@@ -1087,22 +900,7 @@ internal class Program
         string connStr = Constants.discordBotConnStr;
         DataTable dt = new DataTable();
 
-        // 1. Check Event falls into specific timeframe
-        // 2. Send ping to person in the same channel they sent the event in
-        // 3. Repeat
-        dt = storedProcedure.Select(connStr, "GetEvent", new List<SqlParameter> { });
-        if (dt.Rows.Count > 0)
-        {
-            foreach (DataRow dr in dt.Rows)
-            {
-                IMessageChannel channel = (IMessageChannel)client.GetChannel(ulong.Parse(dr["EventChannelSource"].ToString()));
-                storedProcedure.UpdateCreate(Constants.discordBotConnStr, "DeleteEvent", new List<SqlParameter> { new SqlParameter("@EventID", dr["EventID"].ToString()) });
-
-                await channel.SendMessageAsync(dr["EventText"].ToString());
-            }
-        }
-
-        dt = storedProcedure.Select(connStr, "GetEventScheduledTime", new List<SqlParameter>());
+        dt = storedProcedure.Select(connStr, "GetUsersScheduledKeyword", new List<SqlParameter>());
         if (dt.Rows.Count > 0)
         {
             EmbedHelper embed = new EmbedHelper();
@@ -1130,12 +928,6 @@ internal class Program
                             await user.SendMessageAsync($"**{tableName} - {DateTime.Now.ToString("MM/dd/yyyy hh:mm tt ET")}**\n**URL:** {filePath} - This was a dead link and was removed from future postings");
                         }
                     }
-
-                    storedProcedure.UpdateCreate(connStr, "AddUsersThirstTableLog", new List<SqlParameter>
-                    {
-                        new SqlParameter("@UserID", userId),
-                        new SqlParameter("@FilePath", filePath)
-                    });
                 }
                 catch (HttpException ex)
                 {
@@ -1234,7 +1026,7 @@ internal class Program
                 client.DownloadFileAsync(new Uri(attachment.Url), path);
             }
 
-            stored.UpdateCreate(connStr, "AddThirstByMap", new List<SqlParameter>
+            stored.UpdateCreate(connStr, "AddChatKeyword", new List<SqlParameter>
             {
                 new SqlParameter("@FilePath", path),
                 new SqlParameter("@TableName", tablename),
@@ -1261,24 +1053,6 @@ internal class Program
         }.WithCurrentTimestamp();
 
         return embed;
-    }
-
-    /// <summary>
-    /// Helper to check if the URL already exists for the keyword
-    /// </summary>
-    /// <param name="url"></param>
-    /// <param name="tableName"></param>
-    /// <param name="connStr"></param>
-    /// <param name="stored"></param>
-    /// <returns></returns>
-    private bool IsUrlNew(string url, string tableName, string connStr, StoredProcedure stored)
-    {
-        var checkDt = stored.Select(connStr, "CheckIfThirstURLExists", new List<SqlParameter> {
-                new SqlParameter("@FilePath", url),
-                new SqlParameter("@TableName", tableName)
-            });
-
-        return checkDt.Rows.Count == 0;
     }
     #endregion
 }
