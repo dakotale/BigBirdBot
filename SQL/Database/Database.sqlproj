@@ -1,0 +1,125 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003" ToolsVersion="4.0">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <Name>Database</Name>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectVersion>4.1</ProjectVersion>
+    <ProjectGuid>{76f4b78f-bb89-452e-b320-a956c6c828de}</ProjectGuid>
+    <DSP>Microsoft.Data.Tools.Schema.Sql.Sql170DatabaseSchemaProvider</DSP>
+    <OutputType>Database</OutputType>
+    <RootPath>
+    </RootPath>
+    <RootNamespace>Database</RootNamespace>
+    <AssemblyName>Database</AssemblyName>
+    <ModelCollation>1033,CI</ModelCollation>
+    <DefaultFileStructure>BySchemaAndSchemaType</DefaultFileStructure>
+    <DeployToDatabase>True</DeployToDatabase>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
+    <TargetLanguage>CS</TargetLanguage>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <SqlServerVerification>False</SqlServerVerification>
+    <IncludeCompositeObjects>True</IncludeCompositeObjects>
+    <TargetDatabaseSet>True</TargetDatabaseSet>
+    <DefaultCollation>SQL_Latin1_General_CP1_CI_AS</DefaultCollation>
+    <DefaultFilegroup>PRIMARY</DefaultFilegroup>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <OutputPath>bin\Release\</OutputPath>
+    <BuildScriptName>$(MSBuildProjectName).sql</BuildScriptName>
+    <TreatWarningsAsErrors>False</TreatWarningsAsErrors>
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <DefineDebug>false</DefineDebug>
+    <DefineTrace>true</DefineTrace>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <OutputPath>bin\Debug\</OutputPath>
+    <BuildScriptName>$(MSBuildProjectName).sql</BuildScriptName>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <DefineDebug>true</DefineDebug>
+    <DefineTrace>true</DefineTrace>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup>
+    <VisualStudioVersion Condition="'$(VisualStudioVersion)' == ''">11.0</VisualStudioVersion>
+    <!-- Default to the v11.0 targets path if the targets file for the current VS version is not found -->
+    <SSDTExists Condition="Exists('$(MSBuildExtensionsPath)\Microsoft\VisualStudio\v$(VisualStudioVersion)\SSDT\Microsoft.Data.Tools.Schema.SqlTasks.targets')">True</SSDTExists>
+    <VisualStudioVersion Condition="'$(SSDTExists)' == ''">11.0</VisualStudioVersion>
+  </PropertyGroup>
+  <Import Condition="'$(SQLDBExtensionsRefPath)' != ''" Project="$(SQLDBExtensionsRefPath)\Microsoft.Data.Tools.Schema.SqlTasks.targets" />
+  <Import Condition="'$(SQLDBExtensionsRefPath)' == ''" Project="$(MSBuildExtensionsPath)\Microsoft\VisualStudio\v$(VisualStudioVersion)\SSDT\Microsoft.Data.Tools.Schema.SqlTasks.targets" />
+  <ItemGroup>
+    <Folder Include="Properties" />
+    <Folder Include="dbo\" />
+    <Folder Include="dbo\Tables\" />
+    <Folder Include="dbo\Functions\" />
+    <Folder Include="dbo\Stored Procedures\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Build Include="dbo\Tables\ChatKeyword.sql" />
+    <Build Include="dbo\Tables\ChatKeywordMap.sql" />
+    <Build Include="dbo\Tables\Pronouns.sql" />
+    <Build Include="dbo\Tables\Music.sql" />
+    <Build Include="dbo\Tables\MusicQueue.sql" />
+    <Build Include="dbo\Tables\UsersScheduledKeyword.sql" />
+    <Build Include="dbo\Tables\BotAIMessage.sql" />
+    <Build Include="dbo\Tables\Birthday.sql" />
+    <Build Include="dbo\Tables\AuditLog.sql" />
+    <Build Include="dbo\Tables\Servers.sql" />
+    <Build Include="dbo\Tables\Users.sql" />
+    <Build Include="dbo\Tables\PlayerConnected.sql" />
+    <Build Include="dbo\Tables\TriviaMessage.sql" />
+    <Build Include="dbo\Functions\GetTriviaTokenFromAPI.sql" />
+    <Build Include="dbo\Functions\GetTriviaTable.sql" />
+    <Build Include="dbo\Stored Procedures\DeleteUser.sql" />
+    <Build Include="dbo\Stored Procedures\DeactiveServer.sql" />
+    <Build Include="dbo\Stored Procedures\AddAudit.sql" />
+    <Build Include="dbo\Stored Procedures\AddBirthday.sql" />
+    <Build Include="dbo\Stored Procedures\AddBotAIMessage.sql" />
+    <Build Include="dbo\Stored Procedures\AddMusic.sql" />
+    <Build Include="dbo\Stored Procedures\AddMusicQueue.sql" />
+    <Build Include="dbo\Stored Procedures\AddPlayerConnected.sql" />
+    <Build Include="dbo\Stored Procedures\AddServer.sql" />
+    <Build Include="dbo\Stored Procedures\AddUser.sql" />
+    <Build Include="dbo\Stored Procedures\DeleteBotAIMessage.sql" />
+    <Build Include="dbo\Stored Procedures\DeleteMusicQueue.sql" />
+    <Build Include="dbo\Stored Procedures\DeleteMusicQueueAll.sql" />
+    <Build Include="dbo\Stored Procedures\DeletePlayerConnected.sql" />
+    <Build Include="dbo\Stored Procedures\DeleteChatKeyword.sql" />
+    <Build Include="dbo\Stored Procedures\DeleteChatKeywordURL.sql" />
+    <Build Include="dbo\Stored Procedures\GetBotAIMessage.sql" />
+    <Build Include="dbo\Stored Procedures\GetMusicQueue.sql" />
+    <Build Include="dbo\Stored Procedures\GetMusicQueueByTrack.sql" />
+    <Build Include="dbo\Stored Procedures\GetPlayerConnected.sql" />
+    <Build Include="dbo\Stored Procedures\GetPronouns.sql" />
+    <Build Include="dbo\Stored Procedures\GetServerByID.sql" />
+    <Build Include="dbo\Stored Procedures\GetServers.sql" />
+    <Build Include="dbo\Stored Procedures\GetVolume.sql" />
+    <Build Include="dbo\Stored Procedures\MarkKeywordNSFW.sql" />
+    <Build Include="dbo\Stored Procedures\UpdateVolume.sql" />
+    <Build Include="dbo\Stored Procedures\AddUsersScheduledKeyword.sql" />
+    <Build Include="dbo\Stored Procedures\GetChatAction.sql" />
+    <Build Include="dbo\Stored Procedures\GetUsersScheduledKeyword.sql" />
+    <Build Include="dbo\Stored Procedures\UpdateUsersScheduledKeywordRequeue.sql" />
+    <Build Include="dbo\Stored Procedures\AddTriviaMessage.sql" />
+    <Build Include="dbo\Stored Procedures\DeleteTriviaMessage.sql" />
+    <Build Include="dbo\Stored Procedures\GetAIJSONImageReturn.sql" />
+    <Build Include="dbo\Stored Procedures\GetTrivia.sql" />
+    <Build Include="dbo\Stored Procedures\GetTriviaMessage.sql" />
+    <Build Include="dbo\Stored Procedures\GetTriviaToken.sql" />
+    <Build Include="dbo\Stored Procedures\AddChatKeyword.sql" />
+    <Build Include="dbo\Stored Procedures\AddChatKeywordMap.sql" />
+    <Build Include="dbo\Stored Procedures\UpdateBrokenEmbed.sql" />
+    <Build Include="dbo\Stored Procedures\GetEmbedBroken.sql" />
+    <Build Include="dbo\Stored Procedures\GetChatKeywordMap.sql" />
+    <Build Include="dbo\Stored Procedures\GetKeywordNSFW.sql" />
+  </ItemGroup>
+</Project>

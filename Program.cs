@@ -213,11 +213,6 @@ internal class Program
     /// <returns></returns>
     private async Task UserLeft(SocketGuild arg1, SocketUser arg2)
     {
-        string title = "User Left";
-        string desc = $"{arg2.Username} left the server.";
-        string thumbnailUrl = arg2.GetAvatarUrl(ImageFormat.Png, 256);
-        string createdBy = "BigBirdBot";
-        string imageUrl = "";
         StoredProcedure stored = new StoredProcedure();
 
         if (!arg2.IsBot && !arg2.IsWebhook)
@@ -227,28 +222,6 @@ internal class Program
                 new SqlParameter("@UserID", arg2.Id.ToString()),
                 new SqlParameter("@ServerID", arg1.Id.ToString())
             });
-
-            // Let's pull the first channel and hope for the best.....
-            if (arg1.DefaultChannel != null)
-            {
-                ulong textChannels = arg1.DefaultChannel.Id;
-                SocketTextChannel firstTextChannel = arg1.GetTextChannel(textChannels);
-                SocketTextChannel? channel = client.GetChannel(firstTextChannel.Id) as SocketTextChannel;
-
-                EmbedHelper embed = new EmbedHelper();
-                if (channel != null && !arg2.IsBot)
-                    await channel.SendMessageAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Color.Gold, imageUrl).Build());
-            }
-            else
-            {
-                List<SocketTextChannel> textChannels = arg1.TextChannels.Where(s => s.Name.Contains("general")).ToList();
-                SocketTextChannel firstTextChannel = arg1.GetTextChannel(textChannels[0].Id);
-                SocketTextChannel? channel = client.GetChannel(firstTextChannel.Id) as SocketTextChannel;
-
-                EmbedHelper embed = new EmbedHelper();
-                if (channel != null && !arg2.IsBot)
-                    await channel.SendMessageAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Color.Gold, imageUrl).Build());
-            }
         }
     }
 

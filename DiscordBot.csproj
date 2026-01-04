@@ -10,6 +10,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="SQL\Database\Import Schema Logs\**" />
+    <EmbeddedResource Remove="SQL\Database\Import Schema Logs\**" />
+    <None Remove="SQL\Database\Import Schema Logs\**" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Content Include="bigbirdbot.ico" />
   </ItemGroup>
 

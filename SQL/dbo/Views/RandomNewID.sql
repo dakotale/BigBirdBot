@@ -1,3 +1,0 @@
-﻿CREATE VIEW [dbo].[RandomNewID]
-AS
-SELECT NEWID() AS [NewID]
