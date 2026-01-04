@@ -362,3 +362,7 @@ MigrationBackup/
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
 /Constants/Constants.cs
+
+# Local secrets file — DO NOT commit
+/secrets.json
+/Secrets/secrets.json

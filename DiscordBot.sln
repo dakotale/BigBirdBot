@@ -1,11 +1,9 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 18
-VisualStudioVersion = 18.1.11312.151 d18.0
+VisualStudioVersion = 18.1.11312.151
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DiscordBot", "DiscordBot.csproj", "{DC8292A4-A512-4188-A987-452B3209B5A7}"
-EndProject
-Project("{00D1A9C2-B5F0-4AF3-8072-F6C62B433612}") = "SQL", "..\SQL\SQL.sqlproj", "{B2C54CCE-1964-4BEC-9AE5-22F9809A9F8E}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -17,12 +15,6 @@ Global
 		{DC8292A4-A512-4188-A987-452B3209B5A7}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{DC8292A4-A512-4188-A987-452B3209B5A7}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{DC8292A4-A512-4188-A987-452B3209B5A7}.Release|Any CPU.Build.0 = Release|Any CPU
-		{B2C54CCE-1964-4BEC-9AE5-22F9809A9F8E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{B2C54CCE-1964-4BEC-9AE5-22F9809A9F8E}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{B2C54CCE-1964-4BEC-9AE5-22F9809A9F8E}.Debug|Any CPU.Deploy.0 = Debug|Any CPU
-		{B2C54CCE-1964-4BEC-9AE5-22F9809A9F8E}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{B2C54CCE-1964-4BEC-9AE5-22F9809A9F8E}.Release|Any CPU.Build.0 = Release|Any CPU
-		{B2C54CCE-1964-4BEC-9AE5-22F9809A9F8E}.Release|Any CPU.Deploy.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
