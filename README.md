@@ -1,113 +1,90 @@
 # BigBirdBot
 
-Small Discord bot written in .NET 10.
-
-## Overview
-
-`BigBirdBot` is a simple Discord bot implemented in .NET 10. The project contains a `DiscordBot` application that connects to the Discord gateway using a bot token and responds to server events or commands (see project code for implemented features).
-
-This repository is intended as a lightweight bot starter and can be extended with commands, services, and persistence as needed.
+BigBirdBot is a Discord bot built with .NET 10 that provides audio playback, slash commands, and AI-assisted features. This README documents setup, configuration, local development, deployment, and contributing guidelines tailored for this repository.
 
 ## Requirements
 
-- .NET 10 SDK or later
-- A Discord application with a bot account and token (https://discord.com/developers)
-- Optional: an IDE such as Visual Studio or VS Code
+- .NET 10 SDK
+- Visual Studio 2026 (recommended) or other IDE that supports .NET 10
+- A Discord bot token and optional Lavalink server for audio
+
+## Quick Start
+
+1. Clone the repository:
+  - git clone https://github.com/dakotale/BigBirdBot.git -> cd BigBirdBot
+
+2. Open the solution in Visual Studio 2026 and restore NuGet packages.
+
+3. Configure secrets (see Configuration below).
+
+4. Run the project (set the appropriate startup project) or use `dotnet run` from the project folder.
 
 ## Configuration
 
-The bot reads its configuration from environment variables or an `appsettings.json` file depending on how the application is implemented. At minimum you must provide a Discord bot token.
+This project reads configuration from environment variables and an optional `secrets.json` file located in the application base directory. Do NOT commit real secrets to source control.
 
-Recommended environment variable:
+- Option 1: Environment variables (preferred for CI / production)
+  - `discordBotConnStr` — Database connection string (default: `Server=localhost;DataBase=DiscordBot;Integrated Security=true;TrustServerCertificate=True`)
+  - `botToken` — Discord bot token
+  - `devBotToken` — Optional dev bot token
+  - `lavalinkUrl` — Lavalink URL (default: `http://localhost:2333`)
+  - `lavaLinkPwd` — Lavalink password
+  - `errorImageUrl` — Fallback error image URL
+  - `aiApiUserId`, `aiApiSecretId` — AI detector credentials
+  - `aiDetectorPath` — Path used by the AI detector (default: `C:\Temp\DiscordBot\AIDetector\`)
+  - `avatarTempPath` — Temporary avatar path (default: `C:\Temp\DiscordBot\avatartemp\`)
+  - `openAiToken`, `openAiModel` — OpenAI token and model (default model: `gpt-4.1`)
 
-- `DISCORD_TOKEN` - the bot token from the Discord Developer Portal
+- Option 2: `secrets.json` (local development)
+  - Create a `secrets.json` file in the application base directory (same folder as the compiled executable). Example:
 
-Example `appsettings.json` (optional, place in the `DiscordBot` project directory):
 
-```json
+````````json
 {
-  "Discord": {
-    "Token": "YOUR_TOKEN_HERE"
-  },
-  "Logging": {
-    "LogLevel": {
-      "Default": "Information",
-      "Microsoft": "Warning"
-    }
-  }
+  "discordBotConnStr": "Server=localhost;DataBase=DiscordBot;Integrated Security=true;TrustServerCertificate=True",
+  "botToken": "YOUR_BOT_TOKEN",
+  "devBotToken": "YOUR_DEV_BOT_TOKEN",
+  "lavalinkUrl": "http://localhost:2333",
+  "lavaLinkPwd": "YOUR_LAVALINK_PASSWORD",
+  "errorImageUrl": "FALLBACK_ERROR_IMAGE_URL",
+  "aiApiUserId": "YOUR_AI_API_USER_ID",
+  "aiApiSecretId": "YOUR_AI_API_SECRET_ID",
+  "aiDetectorPath": "C:\\Temp\\DiscordBot\\AIDetector\\",
+  "avatarTempPath": "C:\\Temp\\DiscordBot\\avatartemp\\",
+  "openAiToken": "YOUR_OPENAI_TOKEN",
+  "openAiModel": "gpt-4.1"
 }
-```
+````````
 
-Note: Do not commit secrets to source control. Use environment variables or a secret manager in production.
+The code that reads configuration resides in `Constants\Constants.cs` and prefers environment variables over `secrets.json`.
 
-## Development
+## Running Locally
 
-Clone the repository and open it in your preferred editor. From the repository root you can build and run the bot using the .NET SDK.
+- Start Lavalink if you use audio features.
+- Ensure `botToken` is set in the environment or `secrets.json`.
+- Launch via Visual Studio (__Debug > Start Debugging__) or `dotnet run`.
 
-### Build
+## Logging and Diagnostics
 
-```bash
-dotnet build
-```
+- The project logs to the configured sinks (check project logging configuration).
+- For startup issues, check the Output window in Visual Studio (__View > Output__) and select the appropriate pane.
 
-### Run
+## Tests
 
-Run the bot with the SDK (makes sure `DISCORD_TOKEN` is set in your environment):
+- Unit tests (if present) can be run with the Test Explorer in Visual Studio or `dotnet test`.
 
-```bash
-dotnet run --project DiscordBot
-```
+## Contributing
 
-Set the token in the environment before running. PowerShell example:
+- Follow the contribution guidelines in `CONTRIBUTING.md` (add or update if missing).
+- Respect code formatting and conventions declared by `.editorconfig`.
 
-```powershell
-$env:DISCORD_TOKEN = "your_token_here"
-dotnet run --project DiscordBot
-```
+## Deployment
 
-Bash example:
+- Use environment variables for production deployments and CI secrets.
+- Do not include `secrets.json` in deployment artifacts.
 
-```bash
-export DISCORD_TOKEN="your_token_here"
-dotnet run --project DiscordBot
-```
+## Security
 
-### Publish
-
-To publish a release build:
-
-```bash
-dotnet publish -c Release -o ./publish
-```
-
-## Configuration and Gateway Intents
-
-Depending on the bot's features you may need to enable specific gateway intents in the Discord Developer Portal and request privileged intents (such as Presence or Members) if required by the code.
-
-Review the `DiscordBot` project code to see which intents and services are configured.
-
-## Contribution
-
-Contributions are welcome. Typical workflow:
-
-1. Fork the repository
-2. Create a feature branch
-3. Make changes and add tests where appropriate
-4. Open a pull request with a clear description of changes
-
-When opening issues, include reproduction steps, expected behavior, and logs if applicable.
-
-## Troubleshooting
-
-- If the bot cannot connect, verify the token and that the bot is invited to your server with the correct permissions.
-- Check gateway intents in the Developer Portal if the bot is missing events or member info.
-- Inspect console logs for stack traces and error messages.
-
-## License
-
-Check the repository for a license file. If none is present, contact the repository owner for licensing details.
-
-## Contact
-
-For questions about this codebase open an issue in the repository or contact the project owner.
+- Never commit real tokens or secrets to source control.
+- Use GitHub repository secrets for CI and hosting.
 
