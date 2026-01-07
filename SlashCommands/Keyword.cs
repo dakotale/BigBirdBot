@@ -36,6 +36,8 @@ namespace DiscordBot.SlashCommands
                     new SqlParameter("@AddKeyword", addCommand),
                     new SqlParameter("@CreatedBy", createdBy)
                 });
+
+                await FollowupAsync(embed: embed.BuildMessageEmbed("Keyword Multi Added", desc, "", createdByMsg, Color.Blue).Build(), ephemeral: true);
             }
             catch (Exception ex)
             {

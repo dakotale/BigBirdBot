@@ -727,15 +727,6 @@ internal class Program
             var userId = reaction.User.Value.Id.ToString();
             var messageId = download.Id.ToString();
 
-            var existingReaction = stored.Select(connStr, "GetReactionMessage", new List<SqlParameter>
-            {
-                new SqlParameter("@UserID", userId),
-                new SqlParameter("@MessageID", messageId)
-            });
-
-            if (existingReaction.Rows.Count > 0)
-                return;
-
             async Task HandleNSFWMark(string messageContent)
             {
                 var keywordRows = stored.Select(connStr, "GetKeywordNSFW", new List<SqlParameter>
