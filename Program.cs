@@ -906,7 +906,7 @@ internal class Program
                     // If we reach here, something really went wrong and should handle it.
                     // Send a DM saying an issue happened
                     IUser user = await client.GetUserAsync(ulong.Parse("171369791486033920"));
-                    storedProcedure.UpdateCreate(Constants.discordBotConnStr, "UpdateEventScheduleTimeRequeue", new List<SqlParameter> { new SqlParameter("@UserID", userId) });
+                    storedProcedure.UpdateCreate(Constants.discordBotConnStr, "UpdateUsersScheduledKeywordRequeue", new List<SqlParameter> { new SqlParameter("@UserID", userId) });
                     await user.SendMessageAsync($"Something went wrong sending to this user: {userId}\nException Message: {ex.Message}\nThe event was requeued to send at {DateTime.Now.AddMinutes(1).ToString("yyyy-MM-dd hh:mm tt")}");
                     return;
                 }
