@@ -888,7 +888,7 @@ internal class Program
                             await user.SendMessageAsync($"**{tableName} - {DateTime.Now.ToString("MM/dd/yyyy hh:mm tt ET")}**\n**URL:** {filePath}");
                         else
                         {
-                            storedProcedure.UpdateCreate(Constants.discordBotConnStr, "DeleteThirstURL", new List<SqlParameter> { new SqlParameter("@FilePath", filePath), new SqlParameter("@TableName", "") });
+                            storedProcedure.UpdateCreate(Constants.discordBotConnStr, "DeleteChatKeywordURL", new List<SqlParameter> { new SqlParameter("@FilePath", filePath), new SqlParameter("@Keyword", "") });
                             await user.SendMessageAsync($"**{tableName} - {DateTime.Now.ToString("MM/dd/yyyy hh:mm tt ET")}**\n**URL:** {filePath} - This was a dead link and was removed from future postings");
                         }
                     }
@@ -907,7 +907,7 @@ internal class Program
                     // Send a DM saying an issue happened
                     IUser user = await client.GetUserAsync(ulong.Parse("171369791486033920"));
                     storedProcedure.UpdateCreate(Constants.discordBotConnStr, "UpdateUsersScheduledKeywordRequeue", new List<SqlParameter> { new SqlParameter("@UserID", userId) });
-                    await user.SendMessageAsync($"Something went wrong sending to this user: {userId}\nException Message: {ex.Message}\nThe event was requeued to send at {DateTime.Now.AddMinutes(1).ToString("yyyy-MM-dd hh:mm tt")}");
+                    await user.SendMessageAsync($"Something went wrong sending to this user: {userId}\nException Message: {ex.StackTrace}\nThe event was requeued to send at {DateTime.Now.AddMinutes(1).ToString("yyyy-MM-dd hh:mm tt")}");
                     return;
                 }
             }

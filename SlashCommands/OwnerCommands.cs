@@ -179,10 +179,10 @@ namespace DiscordBot.SlashCommands
             fileName = @"C:\Temp\DiscordBot\" + tableName + @"\" + fileName.Trim();
             StoredProcedure stored = new StoredProcedure();
 
-            stored.UpdateCreate(Constants.Constants.discordBotConnStr, "DeleteThirstURL", new List<SqlParameter>
+            stored.UpdateCreate(Constants.Constants.discordBotConnStr, "DeleteChatKeywordURL", new List<SqlParameter>
             {
                 new SqlParameter("@FilePath", fileName),
-                new SqlParameter("@TableName", tableName)
+                new SqlParameter("@Keyword", tableName)
             });
 
             EmbedBuilder embed = embedHelper.BuildMessageEmbed("Delete Successful", $"Image {fileName} was successfully deleted from the {tableName} table.", "", Context.User.Username, Color.Blue, "");
