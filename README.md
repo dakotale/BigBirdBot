@@ -1,6 +1,6 @@
 # BigBirdBot
 
-BigBirdBot is a Discord bot built with .NET 10 that provides audio playback, slash commands, and AI-assisted features. This README documents setup, configuration, local development, deployment, and contributing guidelines tailored for this repository.
+BigBirdBot is a Discord bot built with .NET 10 that provides audio playback, slash commands, and discussions with different Bot personalities through OpenAI assisted features. This README documents setup, configuration, local development, deployment, and contributing guidelines tailored for this repository.
 
 ## Requirements
 
@@ -24,16 +24,16 @@ BigBirdBot is a Discord bot built with .NET 10 that provides audio playback, sla
 This project reads configuration from environment variables and an optional `secrets.json` file located in the application base directory. Do NOT commit real secrets to source control.
 
 - Option 1: Environment variables (preferred for CI / production)
-  - `discordBotConnStr` — Database connection string (default: `Server=localhost;DataBase=DiscordBot;Integrated Security=true;TrustServerCertificate=True`)
-  - `botToken` — Discord bot token
-  - `devBotToken` — Optional dev bot token
-  - `lavalinkUrl` — Lavalink URL (default: `http://localhost:2333`)
-  - `lavaLinkPwd` — Lavalink password
-  - `errorImageUrl` — Fallback error image URL
-  - `aiApiUserId`, `aiApiSecretId` — AI detector credentials
-  - `aiDetectorPath` — Path used by the AI detector (default: `C:\Temp\DiscordBot\AIDetector\`)
-  - `avatarTempPath` — Temporary avatar path (default: `C:\Temp\DiscordBot\avatartemp\`)
-  - `openAiToken`, `openAiModel` — OpenAI token and model (default model: `gpt-4.1`)
+  - `discordBotConnStr` â€” Database connection string (default: `Server=localhost;DataBase=DiscordBot;Integrated Security=true;TrustServerCertificate=True`)
+  - `botToken` â€” Discord bot token
+  - `devBotToken` â€” Optional dev bot token
+  - `lavalinkUrl` â€” Lavalink URL (default: `http://localhost:2333`)
+  - `lavaLinkPwd` â€” Lavalink password
+  - `errorImageUrl` â€” Fallback error image URL
+  - `aiApiUserId`, `aiApiSecretId` â€” AI detector credentials
+  - `aiDetectorPath` â€” Path used by the AI detector (default: `C:\Temp\DiscordBot\AIDetector\`)
+  - `avatarTempPath` â€” Temporary avatar path (default: `C:\Temp\DiscordBot\avatartemp\`)
+  - `openAiToken`, `openAiModel` â€” OpenAI token and model (default model: `gpt-4.1`)
 
 - Option 2: `secrets.json` (local development)
   - Create a `secrets.json` file in the application base directory (same folder as the compiled executable). Example:
