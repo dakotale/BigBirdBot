@@ -1,9 +1,4 @@
-﻿using System.Data;
-using System.Data.SqlClient;
-using System.Net;
-using System.Net.WebSockets;
-using System.Text;
-using Discord;
+﻿using Discord;
 using Discord.Commands;
 using Discord.Interactions;
 using Discord.Net;
@@ -15,919 +10,1023 @@ using Fergun.Interactive;
 using KillersLibrary.Services;
 using Lavalink4NET.Extensions;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using System.Data;
+using System.Data.SqlClient;
+using System.Net;
+using System.Net.WebSockets;
+using System.Text;
 
-internal class Program
+// IHost replaces the manual ServiceCollection.BuildServiceProvider() pattern.
+// It provides structured startup, lifetime management, and logging out of the box.
+var host = Host.CreateDefaultBuilder(args)
+    .ConfigureServices(ConfigureServices)
+    .Build();
+
+await host.Services.GetRequiredService<BotHost>().RunAsync();
+
+/// <summary>
+/// Registers all singleton services required by the bot.
+/// Called once by <see cref="IHost"/> during startup.
+/// Services are singletons because the Discord client, interaction handler,
+/// and Lavalink node all maintain stateful connections that must persist for
+/// the lifetime of the application.
+/// </summary>
+static void ConfigureServices(HostBuilderContext _, IServiceCollection services) =>
+    services
+        .AddSingleton(new DiscordSocketConfig
+        {
+            // AllUnprivileged covers most events; MessageContent and GuildMembers
+            // are privileged intents that must also be enabled in the Discord portal.
+            GatewayIntents = GatewayIntents.AllUnprivileged | GatewayIntents.MessageContent | GatewayIntents.GuildMembers,
+            AlwaysDownloadUsers = true,
+            DefaultRetryMode = RetryMode.AlwaysRetry,
+            LogGatewayIntentWarnings = false,
+            LogLevel = LogSeverity.Verbose
+        })
+        .AddSingleton<DiscordSocketClient>()
+        .AddSingleton<CommandService>()
+        .AddSingleton<HttpClient>()
+        .AddSingleton<LoggingService>()
+        .AddSingleton<InteractionHandlerService>()
+        .AddSingleton<InteractionService>(p =>
+            new InteractionService(p.GetRequiredService<DiscordSocketClient>()))
+        .AddSingleton(new InteractiveConfig
+        {
+            DefaultTimeout = TimeSpan.FromMinutes(15),
+            LogLevel = LogSeverity.Warning
+        })
+        .AddSingleton<InteractiveService>()
+        .AddSingleton<EmbedPagesService>()
+        .AddSingleton<MultiButtonsService>()
+        .AddSingleton<BotHost>()
+        .AddLavalink()
+        .ConfigureLavalink(x =>
+        {
+            x.BaseAddress = new Uri(Constants.lavalinkUrl);
+            x.Passphrase = Constants.lavaLinkPwd;
+            x.BufferSize = 2048;
+            x.Label = "BigBirdBot";
+            x.ReadyTimeout = TimeSpan.FromMinutes(15);
+            x.ResumptionOptions = new(TimeSpan.Zero);
+        })
+        .AddLogging(x => x.ClearProviders().SetMinimumLevel(LogLevel.Trace));
+
+
+/// <summary>
+/// Orchestrates the full bot lifecycle: connecting to Discord, registering
+/// event handlers, and running the once-per-minute scheduled task loop.
+/// </summary>
+/// <remarks>
+/// Uses a primary constructor (C# 12) to receive injected dependencies directly
+/// instead of a constructor body, reducing boilerplate while keeping the class
+/// testable and DI-friendly.
+/// </remarks>
+internal sealed class BotHost(
+    DiscordSocketClient client,
+    LoggingService logger,
+    IServiceProvider services)
 {
-    private static DiscordSocketClient client = new DiscordSocketClient();
-    internal readonly LoggingService loggingService;
-    internal readonly IServiceProvider services;
+    // Destination for runtime error embeds — a private server/channel used
+    // instead of a log file or database for quick visibility.
+    private const ulong LogGuildId = 880569055856185354UL;
+    private const ulong LogChannelId = 1156625507840954369UL;
 
-    public Program()
+    // Owner's Discord user ID, used for DM notifications when automated tasks fail.
+    private const ulong OwnerId = 171369791486033920UL;
+
+    private readonly EmbedHelper _embed = new();
+    private readonly StoredProcedure _sp = new();
+
+    // Static lookup: maps trivia emoji names to their letter labels (e.g. "🇦" -> "A.")
+    // Defined once at class level to avoid re-allocation on every reaction event.
+    private static readonly Dictionary<string, string> EmojiToLetter = new()
     {
-        services = ConfigureServices();
-        loggingService = services.GetRequiredService<LoggingService>();
-        client = services.GetRequiredService<DiscordSocketClient>();
+        ["🇦"] = "A.",
+        ["🇧"] = "B.",
+        ["🇨"] = "C.",
+        ["🇩"] = "D."
+    };
 
-        //lavaNode = services.GetRequiredService<LavaNode>();
-        loggingService.InfoAsync("Services Initialized");
-    }
 
     /// <summary>
-    /// Contains the core to run the bot
-    /// and start a System.Timer of 60 seconds.
-    /// The 60 second timer is for the scheduled 
-    /// event time.
-    /// Either for the Event Reminders or the
-    /// Multi-keyword scheduled DMs.
+    /// Entry point called by the DI container after all services are built.
+    /// Initialises slash-command interactions, registers all Discord socket
+    /// events, starts the background scheduler, connects to Discord, and then
+    /// blocks indefinitely so the process stays alive.
     /// </summary>
-    /// <param name="args"></param>
-    private static void Main(string[] args)
-    {
-        System.Timers.Timer eventTimer;
-        // Start a timer for 60 seconds for scheduled events.
-        eventTimer = new System.Timers.Timer(60000); 
-        // Once the timer reaches 60 seconds, check if there are any scheduled events.
-        eventTimer.Elapsed += OnTimedEvent;
-        // Reset them and start it again.
-        eventTimer.AutoReset = true;
-        eventTimer.Enabled = true;
-        eventTimer.Start();
-        new Program().MainAsync().GetAwaiter().GetResult();
-    }
-
-    /// <summary>
-    /// Main call to form the Bot Instance
-    /// </summary>
-    /// <returns></returns>
-    public async Task MainAsync()
+    public async Task RunAsync()
     {
         await services.GetRequiredService<InteractionHandlerService>().InitializeAsync();
-        // Setup the bot with the token
-        await RunBot(client);
+        RegisterEvents();
+
+        // Fire-and-forget: the scheduler runs independently of the connection loop.
+        _ = RunSchedulerAsync();
+
+        await ConnectAsync();
+
+        // Block the calling thread forever; the bot runs entirely on event callbacks.
+        await Task.Delay(Timeout.Infinite);
     }
 
+
     /// <summary>
-    /// Creates the Bot instance with the 
-    /// token.
-    /// If it's ran straight from VS, the Dev Bot Token
-    /// will be used instead of the Main/Production token
-    /// to prevent disruptions when testing new functionality.
+    /// Logs in with the bot token and starts the Discord gateway connection.
+    /// On failure, delegates to <see cref="ReconnectAsync"/> which will retry
+    /// after a short back-off.
     /// </summary>
-    /// <param name="client"></param>
-    /// <returns></returns>
-    public async Task RunBot(DiscordSocketClient client)
+    private async Task ConnectAsync()
     {
         try
         {
-            await loggingService.InfoAsync("Starting Bot");
-
-            var token = Constants.botToken;
-            await client.LoginAsync(TokenType.Bot, token);
-
-            RegisterEvents(client);
-
-            if (client.ConnectionState != Discord.ConnectionState.Connected &&
-                client.ConnectionState != Discord.ConnectionState.Connecting)
-            {
-                await client.StartAsync();
-            }
-
-            await Task.Delay(Timeout.Infinite);
+            await logger.InfoAsync("Starting Bot");
+            await client.LoginAsync(TokenType.Bot, Constants.botToken);
+            await client.StartAsync();
         }
-        // Common exceptions thrown by the Discord.NET API
         catch (Exception ex) when (ex is WebSocketException
-                                 || ex is WebSocketClosedException
-                                 || ex is GatewayReconnectException)
+                                    or WebSocketClosedException
+                                    or GatewayReconnectException
+                                    or Exception)
         {
-            await HandleReconnectAsync(client, ex);
-        }
-        catch (Exception ex)
-        {
-            await HandleReconnectAsync(client, ex);
+            await ReconnectAsync(ex);
         }
     }
 
     /// <summary>
-    /// Supported event-driven events for the bot.
-    /// Example: OnConnect, Disconnect, UserJoined, Left,
-    ///          ButtonHandler, or Reactions
+    /// Attempts a clean logout, waits 5 seconds to avoid hammering the gateway,
+    /// then re-invokes <see cref="ConnectAsync"/>.
     /// </summary>
-    /// <param name="client"></param>
-    private void RegisterEvents(DiscordSocketClient client)
+    /// <remarks>
+    /// The <see cref="DiscordSocketClient"/> is NOT disposed here. Because it
+    /// is registered as a singleton in DI, disposing it would permanently break
+    /// the container — subsequent resolves would still return the disposed instance.
+    /// Calling <c>LogoutAsync</c> is sufficient to reset the connection state.
+    /// </remarks>
+    /// <param name="ex">The exception that triggered the reconnect attempt.</param>
+    private async Task ReconnectAsync(Exception ex)
     {
-        // Unsubscribe first to avoid multiple subscriptions on reconnects
-        client.Disconnected -= OnDisconnectedAsync;
-        client.Disconnected += OnDisconnectedAsync;
+        await logger.InfoAsync($"{ex.GetType().Name}: {ex.Message}");
+        try { await client.LogoutAsync(); }
+        catch { /* Ignore logout errors — reconnecting regardless */ }
 
-        client.Connected -= OnConnectedAsync;
+        await Task.Delay(TimeSpan.FromSeconds(5));
+        await ConnectAsync();
+    }
+
+
+    /// <summary>
+    /// Subscribes to all Discord gateway events exactly once at startup.
+    /// </summary>
+    /// <remarks>
+    /// The original code unsubscribed then re-subscribed on every reconnect to
+    /// prevent duplicate handlers. That pattern is no longer needed here because
+    /// <see cref="ReconnectAsync"/> calls <see cref="ConnectAsync"/> directly —
+    /// not <c>RegisterEvents</c> — so handlers can never be double-registered.
+    /// </remarks>
+    private void RegisterEvents()
+    {
         client.Connected += OnConnectedAsync;
-
-        client.ReactionAdded -= HandleReactionAsync;
-        client.ReactionAdded += HandleReactionAsync;
-
-        client.JoinedGuild -= JoinedGuild;
-        client.JoinedGuild += JoinedGuild;
-
-        client.UserJoined -= UserJoined;
-        client.UserJoined += UserJoined;
-
-        client.UserLeft -= UserLeft;
-        client.UserLeft += UserLeft;
-
-        client.ButtonExecuted -= ButtonHandler;
-        client.ButtonExecuted += ButtonHandler;
-
-        client.MessageReceived -= MessageReceived;
-        client.MessageReceived += MessageReceived;
-
-        client.UserVoiceStateUpdated -= UserVoiceStateUpdated;
-        client.UserVoiceStateUpdated += UserVoiceStateUpdated;
-
-        client.Log -= LogMessage;
-        client.Log += LogMessage;
+        client.Disconnected += OnDisconnectedAsync;
+        client.Log += OnLogMessageAsync;
+        client.JoinedGuild += OnJoinedGuildAsync;
+        client.UserJoined += OnUserJoinedAsync;
+        client.UserLeft += OnUserLeftAsync;
+        client.ButtonExecuted += OnButtonExecutedAsync;
+        client.MessageReceived += OnMessageReceivedAsync;
+        client.ReactionAdded += OnReactionAddedAsync;
+        client.UserVoiceStateUpdated += OnUserVoiceStateUpdatedAsync;
     }
 
     /// <summary>
-    /// Console message when the bot disconnects to the Discord API
+    /// Fired when the bot successfully connects to the Discord gateway.
+    /// Sets the bot's "Playing" status to the bug-report slash command
+    /// so users know how to report issues.
     /// </summary>
-    /// <param name="arg"></param>
-    /// <returns></returns>
-    private async Task OnDisconnectedAsync(Exception arg)
-    {
-        await loggingService.InfoAsync($"Bot disconnected - {client.ConnectionState}");
-        if (client.ConnectionState == Discord.ConnectionState.Connecting)
-            await loggingService.InfoAsync($"Bot connecting - {client.ConnectionState}");
-    }
-
-    /// <summary>
-    /// Console message when the bot connects to the Discord API
-    /// </summary>
-    /// <returns></returns>
     private async Task OnConnectedAsync()
     {
-        await loggingService.InfoAsync("Bot connected");
+        await logger.InfoAsync("Bot connected");
         await client.SetGameAsync("/reportbug");
     }
 
     /// <summary>
-    /// When the connection to discord was lost, try to reconnect without breaking everything.
+    /// Fired when the gateway connection drops.
+    /// Logs the current connection state for diagnostics; Discord.NET's
+    /// built-in <c>AlwaysRetry</c> mode handles the low-level reconnect automatically.
     /// </summary>
-    /// <param name="client"></param>
-    /// <param name="ex"></param>
-    /// <returns></returns>
-    private async Task HandleReconnectAsync(DiscordSocketClient client, Exception ex)
-    {
-        await loggingService.InfoAsync($"{ex.GetType().Name}: {ex.Message}");
-        try
-        {
-            await client.LogoutAsync();
-        }
-        catch
-        {
-            // ignore logout errors
-        }
-        client.Dispose();
+    /// <param name="ex">The exception that caused the disconnect.</param>
+    private async Task OnDisconnectedAsync(Exception ex) =>
+        await logger.InfoAsync($"Bot disconnected ({client.ConnectionState}): {ex.Message}");
 
-        var newClient = services.GetRequiredService<DiscordSocketClient>();
-        await RunBot(newClient);
+    /// <summary>
+    /// Handles Discord.NET's internal log messages and forwards exceptions
+    /// to a private Discord channel as embeds.
+    /// </summary>
+    /// <remarks>
+    /// Sending errors to Discord rather than a log file or database was a
+    /// deliberate design choice for quick visibility without needing server access.
+    /// </remarks>
+    /// <param name="msg">The log message emitted by the Discord.NET library.</param>
+    private async Task OnLogMessageAsync(LogMessage msg)
+    {
+        if (msg.Exception is null || msg.Message.Length == 0) return;
+
+        var channel = client.GetGuild(LogGuildId)?.GetTextChannel(LogChannelId);
+        if (channel is null) return;
+
+        await channel.SendMessageAsync(embed: _embed.BuildMessageEmbed(
+            "Exception Thrown",
+            $"Exception: {msg.Exception.Message}\nMessage: {msg.Message}",
+            "", "BigBirdBot", Color.Red).Build());
     }
 
 
-    #region DiscordSocketClient Events
     /// <summary>
-    /// When a user leaves the server, post a notice.
-    /// The notice was requested even though I kinda want 
-    /// to get rid of this because people don't really
-    /// like to have their departure announced but
-    /// the last time I removed this, a couple people
-    /// wanted this back.
-    /// 
-    /// Attempts to find the default Channel
-    /// set by the server, if there are no 
-    /// default channels set, the #general chat
-    /// will be used if there is a chat called that.
+    /// Fired when a non-bot user leaves (or is kicked/banned from) the server.
+    /// Removes the user's record from the database scoped to this specific server.
     /// </summary>
-    /// <param name="arg1"></param>
-    /// <param name="arg2"></param>
-    /// <returns></returns>
-    private async Task UserLeft(SocketGuild arg1, SocketUser arg2)
+    /// <remarks>
+    /// The same user ID can exist across multiple servers, so the delete is
+    /// intentionally scoped by both user ID and guild ID to avoid removing
+    /// the user's data from other servers they share with the bot.
+    /// </remarks>
+    private Task OnUserLeftAsync(SocketGuild guild, SocketUser user)
     {
-        StoredProcedure stored = new StoredProcedure();
+        if (user.IsBot || user.IsWebhook) return Task.CompletedTask;
 
-        if (!arg2.IsBot && !arg2.IsWebhook)
-        {
-            stored.UpdateCreate(Constants.discordBotConnStr, "DeleteUser", new List<SqlParameter>
-            {
-                new SqlParameter("@UserID", arg2.Id.ToString()),
-                new SqlParameter("@ServerID", arg1.Id.ToString())
-            });
-        }
+        _sp.UpdateCreate(Constants.discordBotConnStr, "DeleteUser",
+        [
+            new SqlParameter("@UserID",   user.Id.ToString()),
+            new SqlParameter("@ServerID", guild.Id.ToString())
+        ]);
+        return Task.CompletedTask;
     }
 
     /// <summary>
-    /// When a user joins, add the user to the user table.
-    /// The AddUser vs AddUserByServer difference, 1 userId 
-    /// can be used across multiple servers.
-    /// The AddUser basically groups on UserID where 
-    /// AddUserByServer groups by the UserID and ServerID/ServerUID.
+    /// Fired when a non-bot user joins the server.
+    /// Inserts or updates the user's record in the database.
     /// </summary>
-    /// <param name="arg"></param>
-    /// <returns></returns>
-    private async Task UserJoined(SocketGuildUser arg)
+    /// <param name="user">The guild user who joined, including server-specific metadata.</param>
+    private Task OnUserJoinedAsync(SocketGuildUser user)
     {
-        StoredProcedure stored = new StoredProcedure();
-
-        if (!arg.IsBot && !arg.IsWebhook)
-        {
-            stored.UpdateCreate(Constants.discordBotConnStr, "AddUser", new List<SqlParameter>
-            {
-                new SqlParameter("@UserID", arg.Id.ToString()),
-                new SqlParameter("@Username", arg.Username),
-                new SqlParameter("@JoinDate", arg.JoinedAt),
-                new SqlParameter("@ServerUID", Int64.Parse(arg.Guild.Id.ToString())),
-                new SqlParameter("@Nickname", arg.Nickname)
-            });
-        }
+        if (user.IsBot || user.IsWebhook) return Task.CompletedTask;
+        AddUserToDatabase(user, user.Guild.Id);
+        return Task.CompletedTask;
     }
 
     /// <summary>
-    /// Button Handler is the component aspect of Discord.
-    /// Components are basically the button/dropdown/etc...
-    /// clicks that Discord provides.
-    /// In this case it's when a user clicks on a Role button
-    /// or Pronoun.
+    /// Fired when the bot is added to a new guild.
+    /// Registers the server in the database (if not already present) and
+    /// bulk-inserts all existing non-bot members.
     /// </summary>
-    /// <param name="component"></param>
-    /// <returns></returns>
-    private async Task ButtonHandler(SocketMessageComponent component)
+    /// <remarks>
+    /// <see cref="SocketGuild.DownloadUsersAsync"/> must be called explicitly here
+    /// because <c>AlwaysDownloadUsers</c> in the socket config only pre-fills the
+    /// member cache for guilds the bot was already connected to at startup —
+    /// not for guilds it joins while running.
+    ///
+    /// If the download returns 0 users, a warning embed is sent to the log channel
+    /// rather than silently succeeding with an empty table, which would make the
+    /// bot appear to work but miss all existing members.
+    /// </remarks>
+    /// <param name="guild">The guild the bot was just added to.</param>
+    private async Task OnJoinedGuildAsync(SocketGuild guild)
     {
-        // To prevent the Queue buttons from being picked up by the Handler
-        if (!component.Data.CustomId.Contains("_"))
+        var existingServerIds = _sp
+            .Select(Constants.discordBotConnStr, "GetServers", [])
+            .AsEnumerable()
+            .Select(r => r["ServerUID"].ToString())
+            .ToHashSet();
+
+        if (!existingServerIds.Contains(guild.Id.ToString()))
         {
-            StoredProcedure stored = new StoredProcedure();
-            string connStr = Constants.discordBotConnStr;
-            DataTable dt = new DataTable();
-            EmbedHelper embed = new EmbedHelper();
-
-            string customId = component.Data.CustomId;
-            string guildId = component.GuildId.Value.ToString() ?? "";
-            DataTable dtPronouns = new DataTable();
-            dtPronouns = stored.Select(connStr, "GetPronouns", new List<SqlParameter>());
-
-            string pronounSelected = "";
-
-            foreach (DataRow dr in dtPronouns.Rows)
-            {
-                int pronounId = int.Parse(dr["ID"].ToString());
-                string pronounName = dr["Pronoun"].ToString();
-
-                if (client.GetGuild(component.GuildId.Value).Roles.Where(s => s.Name.Equals(pronounName)).Count() < 1)
-                {
-                    // Create the role
-                    await client.GetGuild(component.GuildId.Value).CreateRoleAsync(pronounName);
-                }
-
-                if (pronounId.ToString() == component.Data.CustomId)
-                    pronounSelected = pronounName;
-            }
-
-            // Add them to the role
-            SocketRole? role = client.GetGuild(component.GuildId.Value).Roles.FirstOrDefault(s => s.Name.Equals(pronounSelected));
-
-            SocketGuild guild = client.GetGuild(component.GuildId.Value);
-            SocketGuildUser guildUser = guild.GetUser(component.User.Id);
-
-            if (role != null && guildUser.Roles.Any(s => s.Name.Equals(role.Name)))
-            {
-                await (guildUser as IGuildUser).RemoveRoleAsync(role);
-                await component.RespondAsync(embed: embed.BuildMessageEmbed("Pronoun Selection", $"Pronouns were successfully removed for {component.User.Username}.", "", component.User.Username, Discord.Color.Blue).Build(), ephemeral: true);
-            }
-            else
-            {
-                await (guildUser as IGuildUser).AddRoleAsync(role);
-                await component.RespondAsync(embed: embed.BuildMessageEmbed("Pronoun Selection", $"Pronouns were successfully added for {component.User.Username}.", "", component.User.Username, Discord.Color.Blue).Build(), ephemeral: true);
-            }
+            _sp.UpdateCreate(Constants.discordBotConnStr, "AddServer",
+            [
+                new SqlParameter("@ServerUID",        (long)guild.Id),
+                new SqlParameter("@ServerName",       guild.Name),
+                new SqlParameter("@DefaultChannelID", (long)guild.DefaultChannel.Id)
+            ]);
         }
 
+        await guild.DownloadUsersAsync();
+
+        if (guild.Users.Count == 0)
+        {
+            await SendLogAsync(
+                $"Bot joined **{guild.Name}** but DownloadUsersAsync returned 0 users. Owner: {guild.Owner}",
+                Color.Red);
+            return;
+        }
+
+        foreach (var user in guild.Users.Where(u => !u.IsBot && !u.IsWebhook))
+            AddUserToDatabase(user, guild.Id);
+
+        Console.WriteLine($"{guild.Users.Count} users added for {guild.Name}");
     }
 
     /// <summary>
-    /// When the bot joins a Guild/Server, all the users
-    /// will be populated into the User table and an entry will
-    /// be added for the new server.
+    /// Shared helper that upserts a single guild member into the Users table.
+    /// Extracted to eliminate the duplicated parameter list between
+    /// <see cref="OnUserJoinedAsync"/> and <see cref="OnJoinedGuildAsync"/>.
     /// </summary>
-    /// <param name="arg"></param>
-    /// <returns></returns>
-    private async Task JoinedGuild(SocketGuild arg)
-    {
-        StoredProcedure stored = new StoredProcedure();
-        EmbedHelper embedHelper = new EmbedHelper();
+    /// <param name="user">The guild member to persist.</param>
+    /// <param name="guildId">The server ID this membership record belongs to.</param>
+    private void AddUserToDatabase(SocketGuildUser user, ulong guildId) =>
+        _sp.UpdateCreate(Constants.discordBotConnStr, "AddUser",
+        [
+            new SqlParameter("@UserID",    user.Id.ToString()),
+            new SqlParameter("@Username",  user.Username),
+            new SqlParameter("@JoinDate",  user.JoinedAt),
+            new SqlParameter("@ServerUID", (long)guildId),
+            new SqlParameter("@Nickname",  user.Nickname)
+        ]);
 
-        DataTable dt = stored.Select(Constants.discordBotConnStr, "GetServers", new List<SqlParameter>());
-        List<string> serverIds = new List<string>();
-        foreach (DataRow dr in dt.Rows)
-        {
-            serverIds.Add(dr["ServerUID"].ToString());
-        }
-
-        if (serverIds.Where(s => s.Equals(arg.Id.ToString())).Count() == 0)
-        {
-            stored.UpdateCreate(Constants.discordBotConnStr, "AddServer", new List<SqlParameter>
-            {
-                new SqlParameter("@ServerUID", Int64.Parse(arg.Id.ToString())),
-                new SqlParameter("@ServerName", arg.Name),
-                new SqlParameter("@DefaultChannelID", Int64.Parse(arg.DefaultChannel.Id.ToString())),
-            });
-        }
-
-        using (SqlConnection conn = new SqlConnection(Constants.discordBotConnStr))
-        {
-            await arg.DownloadUsersAsync().ConfigureAwait(false);
-            if (arg.Users.Count > 0)
-            {
-                foreach (SocketGuildUser? user in arg.Users)
-                {
-                    if (!user.IsBot && !user.IsWebhook)
-                    {
-                        stored.UpdateCreate(Constants.discordBotConnStr, "AddUser", new List<SqlParameter>
-                        {
-                            new SqlParameter("@UserID", user.Id.ToString()),
-                            new SqlParameter("@Username", user.Username),
-                            new SqlParameter("@JoinDate", user.JoinedAt),
-                            new SqlParameter("@ServerUID", Int64.Parse(arg.Id.ToString())),
-                            new SqlParameter("@Nickname", user.Nickname)
-                        });
-                    }
-                }
-                Console.WriteLine($"{arg.Users.Count} users were added successfully for {arg.Name}");
-            }
-            else
-            {
-                ulong guildId = ulong.Parse("880569055856185354");
-                ulong textChannelId = ulong.Parse("1156625507840954369");
-                await client.GetGuild(guildId).GetTextChannel(textChannelId).SendMessageAsync(embed: embedHelper.BuildMessageEmbed("New Server Added", $"Bot was added to {arg.Name} and no users were found on DownloadUsersAsync call.\nThe owner is {arg.Owner}", "", "BigBirdBot", Discord.Color.Red, null, null).Build()).ConfigureAwait(false);
-            }
-        }
-    }
 
     /// <summary>
-    /// This runs when a message comes in for the keyword handling.
-    /// Kinda looks like a mess but couldn't clean it up that much
-    /// better because the bot needs to support the following
-    /// scenarios;
-    /// 1. User types a message that contains a keyword.
-    /// 2. The user starts with '-' (old prefix) to add the
-    ///    attachment or message assuming that '-'<word> actually
-    ///    maps to something.
-    /// 3. The link contains a twitter/etc... and needs to be fixed
-    ///    caused Discord embeds are a pain in the ass.
+    /// Handles Discord message component interactions (button clicks).
+    /// Currently used exclusively for the pronoun role-selection panel.
     /// </summary>
-    /// <param name="msg"></param>
-    /// <returns></returns>
-    private async Task MessageReceived(SocketMessage msg)
+    /// <remarks>
+    /// Music queue buttons use an underscore in their <c>CustomId</c> (e.g. "queue_next")
+    /// as a naming convention to distinguish them from pronoun buttons, which are plain
+    /// integer IDs matching database rows. Any component with an underscore is
+    /// silently ignored here and handled by the interaction service instead.
+    ///
+    /// Toggle logic: if the user already holds the selected pronoun role it is
+    /// removed; otherwise it is added. A single button therefore acts as both
+    /// assign and unassign without needing a separate "remove" button.
+    /// </remarks>
+    /// <param name="component">The component interaction context.</param>
+    private async Task OnButtonExecutedAsync(SocketMessageComponent component)
+    {
+        // Queue buttons contain '_' in their CustomId — skip them
+        if (component.Data.CustomId.Contains('_')) return;
+
+        var pronounTable = _sp.Select(Constants.discordBotConnStr, "GetPronouns", []);
+        string pronounSelected = "";
+
+        foreach (DataRow row in pronounTable.Rows)
+        {
+            string name = row["Pronoun"].ToString()!;
+            string id = row["ID"].ToString()!;
+
+            // Create the role on-demand if it doesn't exist yet on this guild
+            if (!client.GetGuild(component.GuildId!.Value).Roles.Any(r => r.Name == name))
+                await client.GetGuild(component.GuildId.Value).CreateRoleAsync(name);
+
+            if (id == component.Data.CustomId)
+                pronounSelected = name;
+        }
+
+        var guild = client.GetGuild(component.GuildId!.Value);
+        var role = guild.Roles.FirstOrDefault(r => r.Name == pronounSelected);
+        var guildUser = guild.GetUser(component.User.Id);
+
+        if (role is null) return;
+
+        bool hasRole = guildUser.Roles.Any(r => r.Name == role.Name);
+
+        if (hasRole)
+            await (guildUser as IGuildUser)!.RemoveRoleAsync(role);
+        else
+            await (guildUser as IGuildUser)!.AddRoleAsync(role);
+
+        string action = hasRole ? "removed" : "added";
+        await component.RespondAsync(
+            embed: _embed.BuildMessageEmbed(
+                "Pronoun Selection",
+                $"Pronouns were successfully {action} for {component.User.Username}.",
+                "", component.User.Username, Color.Blue).Build(),
+            ephemeral: true);
+    }
+
+
+    /// <summary>
+    /// Central message handler supporting three distinct behaviours:
+    /// </summary>
+    /// <remarks>
+    /// <list type="number">
+    ///   <item>
+    ///     <term>Embed fixer</term>
+    ///     <description>
+    ///       Detects Twitter/X links whose Discord embed is broken and re-sends
+    ///       a fixed fxtwitter/vxtwitter URL when the server has opted in to
+    ///       this feature via the database.
+    ///     </description>
+    ///   </item>
+    ///   <item>
+    ///     <term>Prefix commands (<c>-keyword</c>)</term>
+    ///     <description>
+    ///       Allows trusted users to add images, URLs, or text to a keyword's
+    ///       response pool directly from chat. Supports single values,
+    ///       comma-separated URL batches, and file attachments.
+    ///       Delegated to <see cref="HandlePrefixCommandAsync"/>.
+    ///     </description>
+    ///   </item>
+    ///   <item>
+    ///     <term>Keyword auto-response</term>
+    ///     <description>
+    ///       Checks every non-command message against the server's keyword map
+    ///       and automatically replies with associated media or text.
+    ///       Dispatched via <c>Task.Run</c> so file I/O and HTTP checks inside
+    ///       <see cref="SendChatActionsAsync"/> do not block the gateway event loop.
+    ///     </description>
+    ///   </item>
+    /// </list>
+    /// </remarks>
+    /// <param name="msg">The incoming socket message.</param>
+    private async Task OnMessageReceivedAsync(SocketMessage msg)
     {
         if (msg is not { Author.IsBot: false, Author.IsWebhook: false, Channel: SocketGuildChannel msgChannel })
             return;
 
         string message = msg.Content.Trim().ToLower();
-        string connStr = Constants.discordBotConnStr;
         string serverId = msgChannel.Guild.Id.ToString();
         string userId = msg.Author.Id.ToString();
-        string prefix = "-";
+        const string prefix = "-";
 
-        var stored = new StoredProcedure();
+        // Guard: do nothing if this server has been deactivated in the database
+        var serverInfo = _sp.Select(Constants.discordBotConnStr, "GetServerByID",
+            [new SqlParameter("ServerUID", long.Parse(serverId))]);
+
+        if (!bool.TryParse(serverInfo.Rows[0]["IsActive"]?.ToString(), out bool active) || !active)
+            return;
+
         var cleanup = new URLCleanup();
-        var parameters = new List<SqlParameter>();
 
-        // Get server status
-        var dt = stored.Select(connStr, "GetServerByID", new List<SqlParameter> {
-            new SqlParameter("ServerUID", long.Parse(serverId))
-        });
-        if (!bool.TryParse(dt.Rows[0]["IsActive"]?.ToString(), out var isServerActive) || !isServerActive)
-            return;
-
-        bool isCommand = message.StartsWith(prefix);
-        if (cleanup.HasSocialMediaEmbed(message) && !isCommand)
+        if (cleanup.HasSocialMediaEmbed(message) && !message.StartsWith(prefix))
         {
-            dt = stored.Select(connStr, "GetEmbedBroken", new List<SqlParameter> {
-                new SqlParameter("@ServerID", long.Parse(serverId))
-            });
+            var embedSettings = _sp.Select(Constants.discordBotConnStr, "GetEmbedBroken",
+                [new SqlParameter("@ServerID", long.Parse(serverId))]);
 
-            if (bool.TryParse(dt.Rows[0]["FixEmbed"]?.ToString(), out var isTwitterBroken) && isTwitterBroken)
-            {
+            if (bool.TryParse(embedSettings.Rows[0]["FixEmbed"]?.ToString(), out bool fix) && fix)
                 await msg.Channel.SendMessageAsync(cleanup.CleanURLEmbed(message));
-            }
 
+            // Return regardless — don't keyword-match a raw Twitter URL
             return;
         }
 
-        if (isCommand)
+        if (message.StartsWith(prefix))
         {
-            var splitMessage = message.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            if (splitMessage.Length == 0)
-                return;
-
-            string keyword = splitMessage[0].Replace(prefix, "");
-            dt = stored.Select(connStr, "GetChatKeywordMap", new List<SqlParameter> {
-                new SqlParameter("@AddKeyword", keyword)
-            });
-
-            if (dt.Rows.Count == 0)
-                return;
-
-            string tablename = dt.Rows[0]["Keyword"].ToString();
-
-            if (msg.Attachments.Count > 0)
-            {
-                AddAttachments(msg, tablename, connStr, userId);
-                await msg.Channel.SendMessageAsync(embed: CreateMessageEmbed("Added Image", Color.Blue, "Added attachment(s) successfully.").Build());
-            }
-
-            if (splitMessage.Length > 1)
-            {
-                string content = message[(prefix.Length + keyword.Length)..].Trim();
-                bool multiUrl = content.Contains(",") && content.Contains("http");
-
-                if (multiUrl)
-                {
-                    string[] urls = content.Split(",", StringSplitOptions.TrimEntries);
-                    foreach (string url in urls)
-                    {
-                        if (!url.StartsWith("http"))
-                        {
-                            await msg.Channel.SendMessageAsync(embed: CreateMessageEmbed("Error", Color.Red, $"The URL provided (*{url}*) is invalid.").Build());
-                            continue;
-                        }
-
-                        string cleanedUrl = cleanup.CleanURLEmbed(url);
-
-                        foreach (DataRow row in dt.Rows)
-                        {
-                            stored.UpdateCreate(connStr, "AddChatKeyword", new List<SqlParameter>
-                            {
-                                new SqlParameter("@FilePath", cleanedUrl),
-                                new SqlParameter("@TableName", row["Keyword"].ToString()),
-                                new SqlParameter("@UserID", userId)
-                            });
-                        }
-                    }
-
-                    await msg.Channel.SendMessageAsync(embed: CreateMessageEmbed("Added Image", Color.Blue, "Added link(s) successfully.").Build());
-                }
-                else
-                {
-                    string cleanedContent = cleanup.CleanURLEmbed(content);
-
-                    foreach (DataRow row in dt.Rows)
-                    {
-                        stored.UpdateCreate(connStr, "AddChatKeyword", new List<SqlParameter>
-                        {
-                            new SqlParameter("@FilePath", cleanedContent),
-                            new SqlParameter("@TableName", row["Keyword"].ToString()),
-                            new SqlParameter("@UserID", userId)
-                        });
-                    }
-
-                    await msg.Channel.SendMessageAsync(embed: CreateMessageEmbed("Added URL/Text", Color.Blue, "Added URL/Text(s) successfully.").Build());
-                }
-            }
-
+            await HandlePrefixCommandAsync(msg, message, serverId, userId, prefix, cleanup);
             return;
         }
 
-        parameters = new List<SqlParameter> {
+        var actions = _sp.Select(Constants.discordBotConnStr, "GetChatAction",
+        [
             new SqlParameter("@ServerID", long.Parse(serverId)),
-            new SqlParameter("@Message", message)
-        };
+            new SqlParameter("@Message",  message)
+        ]);
 
-        dt = stored.Select(connStr, "GetChatAction", parameters);
+        if (actions.Rows.Count > 0)
+            _ = Task.Run(() => SendChatActionsAsync(msg, msgChannel, actions));
+    }
 
-        if (dt.Rows.Count > 0)
+    /// <summary>
+    /// Processes prefix-style commands that add content to a keyword's response pool.
+    /// </summary>
+    /// <remarks>
+    /// Supported input formats:
+    /// <list type="bullet">
+    ///   <item>File attachment — downloaded to disk and registered in the database.</item>
+    ///   <item>Single URL or text value — cleaned via <see cref="URLCleanup"/> and stored.</item>
+    ///   <item>
+    ///     Comma-separated URLs (e.g. <c>-bird http://a.com, http://b.com</c>) —
+    ///     each URL is validated, cleaned, and stored individually. Invalid entries
+    ///     are reported inline without aborting the rest of the batch.
+    ///   </item>
+    /// </list>
+    /// </remarks>
+    /// <param name="msg">Original socket message, needed for channel replies and attachments.</param>
+    /// <param name="message">Lower-cased, trimmed message content.</param>
+    /// <param name="serverId">Guild ID as a string.</param>
+    /// <param name="userId">Author's user ID as a string.</param>
+    /// <param name="prefix">The command prefix character(s), currently <c>"-"</c>.</param>
+    /// <param name="cleanup">URL normalisation helper instance.</param>
+    private async Task HandlePrefixCommandAsync(
+        SocketMessage msg, string message, string serverId,
+        string userId, string prefix, URLCleanup cleanup)
+    {
+        var parts = message.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0) return;
+
+        string keyword = parts[0][prefix.Length..];
+        var keywordMap = _sp.Select(Constants.discordBotConnStr, "GetChatKeywordMap",
+            [new SqlParameter("@AddKeyword", keyword)]);
+
+        if (keywordMap.Rows.Count == 0) return;
+
+        if (msg.Attachments.Count > 0)
         {
-            _ = Task.Run(async () =>
+            AddAttachments(msg, keywordMap.Rows[0]["Keyword"].ToString()!, Constants.discordBotConnStr, userId);
+            await msg.Channel.SendMessageAsync(
+                embed: BuildEmbed("Added Image", Color.Blue, "Added attachment(s) successfully.").Build());
+        }
+
+        if (parts.Length <= 1) return;
+
+        string content = message[(prefix.Length + keyword.Length)..].Trim();
+        bool isMultiUrl = content.Contains(',') && content.Contains("http");
+
+        if (isMultiUrl)
+        {
+            foreach (string url in content.Split(',', StringSplitOptions.TrimEntries))
             {
-                var sender = client.GetChannel(msgChannel.Id) as IMessageChannel;
-                if (sender == null) return;
-
-                foreach (DataRow row in dt.Rows)
+                if (!url.StartsWith("http"))
                 {
-                    string chatAction = row["ChatAction"].ToString();
-                    string keyword = row["Keyword"].ToString();
-                    bool isNsfw = bool.TryParse(row["NSFW"]?.ToString(), out var nsfw) && nsfw;
-
-                    if (string.IsNullOrWhiteSpace(chatAction))
-                        continue;
-
-                    await msg.Channel.TriggerTypingAsync();
-
-                    if (chatAction.Contains("C:\\"))
-                    {
-                        var isSpoiler = isNsfw && !chatAction.Contains("SPOILER_");
-                        
-                        using (var stream = File.OpenRead(chatAction))
-                        {
-                            keyword = char.ToUpper(keyword[0]) + keyword.Substring(1);
-
-                            var embed = new EmbedBuilder().WithTitle(keyword).WithImageUrl("attachment://" + Path.GetFileName(chatAction)).WithColor(isNsfw ? Color.DarkRed : Color.Blue).Build();
-
-                            var output = await msg.Channel.SendFileAsync(stream, Path.GetFileName(chatAction), embed: embed, isSpoiler: isSpoiler);
-                            if (!isSpoiler)
-                                await output.AddReactionAsync(new Emoji("❌"));
-                        }
-                    }
-                    else if (chatAction.Contains("http"))
-                    {
-                        if (IsLinkWorking(chatAction))
-                        {
-                            if (isNsfw)
-                                chatAction = $"||{chatAction}||";
-                            
-                            var embed = new EmbedBuilder().WithTitle(message).WithImageUrl(chatAction).WithColor(isNsfw ? Color.DarkRed : Color.Blue).Build();
-                            var output = await msg.Channel.SendMessageAsync(embed: embed);
-                            if (!isNsfw)
-                                await output.AddReactionAsync(new Emoji("❌"));
-                        }
-                        else
-                        {
-                            await sender.SendMessageAsync($"Link was dead so I deleted it :) -> {chatAction}");
-                            stored.UpdateCreate(connStr, "DeleteChatKeywordURL", new List<SqlParameter> {
-                                new SqlParameter("@FilePath", chatAction),
-                                new SqlParameter("@Keyword", "")
-                            });
-                        }
-                    }
-                    else
-                    {
-                        if (isNsfw)
-                            chatAction = $"||{chatAction}||";
-
-                        var output = await sender.SendMessageAsync(chatAction);
-                        if (!isNsfw)
-                            await output.AddReactionAsync(new Emoji("❌"));
-                    }
+                    await msg.Channel.SendMessageAsync(
+                        embed: BuildEmbed("Error", Color.Red, $"Invalid URL: *{url}*").Build());
+                    continue;
                 }
-            });
+                StoreChatKeyword(keywordMap, cleanup.CleanURLEmbed(url), userId);
+            }
+            await msg.Channel.SendMessageAsync(
+                embed: BuildEmbed("Added Image", Color.Blue, "Added link(s) successfully.").Build());
+        }
+        else
+        {
+            StoreChatKeyword(keywordMap, cleanup.CleanURLEmbed(content), userId);
+            await msg.Channel.SendMessageAsync(
+                embed: BuildEmbed("Added URL/Text", Color.Blue, "Added URL/Text successfully.").Build());
         }
     }
 
     /// <summary>
-    /// Auto leave if no one is in VC.
+    /// Persists a single content value (URL or text) against every keyword row
+    /// returned by the <c>GetChatKeywordMap</c> stored procedure.
     /// </summary>
-    /// <param name="user"></param>
-    /// <param name="before"></param>
-    /// <param name="after"></param>
-    /// <returns></returns>
-    private async Task UserVoiceStateUpdated(SocketUser user, SocketVoiceState before, SocketVoiceState after)
+    /// <remarks>
+    /// A single keyword prefix (e.g. <c>-bird</c>) can map to multiple table entries,
+    /// so this iterates all rows rather than only the first match.
+    /// </remarks>
+    /// <param name="keywordMap">DataTable returned by <c>GetChatKeywordMap</c>.</param>
+    /// <param name="value">The cleaned URL or text content to store.</param>
+    /// <param name="userId">Discord user ID of the person who submitted this content.</param>
+    private void StoreChatKeyword(DataTable keywordMap, string value, string userId)
+    {
+        foreach (DataRow row in keywordMap.Rows)
+        {
+            _sp.UpdateCreate(Constants.discordBotConnStr, "AddChatKeyword",
+            [
+                new SqlParameter("@FilePath",  value),
+                new SqlParameter("@TableName", row["Keyword"].ToString()),
+                new SqlParameter("@UserID",    userId)
+            ]);
+        }
+    }
+
+    /// <summary>
+    /// Sends all chat-action responses triggered by a keyword match.
+    /// Intended to run inside <c>Task.Run</c> so file I/O and HTTP link
+    /// checks do not block the Discord gateway event loop.
+    /// </summary>
+    /// <remarks>
+    /// Three content types are handled in priority order:
+    /// <list type="bullet">
+    ///   <item>
+    ///     <term>Local file path (<c>C:\...</c>)</term>
+    ///     <description>
+    ///       Opened as a stream and sent via <c>SendFileAsync</c>.
+    ///       NSFW files are sent as Discord spoilers unless the filename is
+    ///       already prefixed with <c>SPOILER_</c> (which Discord handles natively).
+    ///     </description>
+    ///   </item>
+    ///   <item>
+    ///     <term>HTTP URL</term>
+    ///     <description>
+    ///       Link liveness is checked first via <see cref="IsLinkWorking"/>.
+    ///       Dead links are deleted from the database and a notice is posted.
+    ///       Live NSFW links are wrapped in Discord spoiler bars before sending.
+    ///     </description>
+    ///   </item>
+    ///   <item>
+    ///     <term>Plain text</term>
+    ///     <description>
+    ///       Sent as a raw message. NSFW text is wrapped in spoiler bars.
+    ///     </description>
+    ///   </item>
+    /// </list>
+    /// All non-NSFW responses receive an ❌ reaction so users can flag content
+    /// that should be marked NSFW via <see cref="OnReactionAddedAsync"/>.
+    /// </remarks>
+    private async Task SendChatActionsAsync(SocketMessage msg, SocketGuildChannel msgChannel, DataTable actions)
+    {
+        var sender = client.GetChannel(msgChannel.Id) as IMessageChannel;
+        if (sender is null) return;
+
+        foreach (DataRow row in actions.Rows)
+        {
+            string chatAction = row["ChatAction"].ToString()!;
+            string keyword = row["Keyword"].ToString()!;
+            bool isNsfw = bool.TryParse(row["NSFW"]?.ToString(), out bool n) && n;
+
+            if (string.IsNullOrWhiteSpace(chatAction)) continue;
+
+            await msg.Channel.TriggerTypingAsync();
+
+            if (chatAction.StartsWith(@"C:\"))
+            {
+                keyword = char.ToUpper(keyword[0]) + keyword[1..];
+                bool isSpoiler = isNsfw && !chatAction.Contains("SPOILER_");
+
+                var embed = new EmbedBuilder()
+                    .WithTitle(keyword)
+                    .WithImageUrl("attachment://" + Path.GetFileName(chatAction))
+                    .WithColor(isNsfw ? Color.DarkRed : Color.Blue)
+                    .Build();
+
+                // await using ensures the FileStream is disposed immediately after send
+                await using var stream = File.OpenRead(chatAction);
+                var output = await msg.Channel.SendFileAsync(
+                    stream, Path.GetFileName(chatAction), embed: embed, isSpoiler: isSpoiler);
+
+                if (!isSpoiler)
+                    await output.AddReactionAsync(new Emoji("❌"));
+            }
+            else if (chatAction.Contains("http"))
+            {
+                if (IsLinkWorking(chatAction))
+                {
+                    var embed = new EmbedBuilder()
+                        .WithTitle(msg.Content)
+                        .WithImageUrl(chatAction)
+                        .WithColor(isNsfw ? Color.DarkRed : Color.Blue)
+                        .Build();
+
+                    var output = await msg.Channel.SendMessageAsync(embed: embed);
+                    if (!isNsfw)
+                        await output.AddReactionAsync(new Emoji("❌"));
+                }
+                else
+                {
+                    await sender.SendMessageAsync($"Link was dead so I deleted it :) -> {chatAction}");
+                    _sp.UpdateCreate(Constants.discordBotConnStr, "DeleteChatKeywordURL",
+                    [
+                        new SqlParameter("@FilePath", chatAction),
+                        new SqlParameter("@Keyword",  "")
+                    ]);
+                }
+            }
+            else
+            {
+                string displayAction = isNsfw ? $"||{chatAction}||" : chatAction;
+                var output = await sender.SendMessageAsync(displayAction);
+                if (!isNsfw)
+                    await output.AddReactionAsync(new Emoji("❌"));
+            }
+        }
+    }
+
+
+    /// <summary>
+    /// Auto-disconnects the bot from voice when a channel becomes empty of
+    /// human users, and cleans up the music queue and player state in the database.
+    /// </summary>
+    /// <remarks>
+    /// Two distinct cases are handled:
+    /// <list type="bullet">
+    ///   <item>
+    ///     <term>Bot disconnected itself</term>
+    ///     <description>
+    ///       Any remaining bots in the same channel (e.g. a secondary bot instance)
+    ///       are also disconnected and the player record is removed.
+    ///     </description>
+    ///   </item>
+    ///   <item>
+    ///     <term>Human user left</term>
+    ///     <description>
+    ///       Only acts if the departing user was the last non-bot in the channel.
+    ///       All bots are disconnected, and both the player state and the full
+    ///       music queue are cleared so the next session starts fresh.
+    ///     </description>
+    ///   </item>
+    /// </list>
+    /// </remarks>
+    private async Task OnUserVoiceStateUpdatedAsync(
+        SocketUser user, SocketVoiceState before, SocketVoiceState after)
     {
         var guild = before.VoiceChannel?.Guild ?? after.VoiceChannel?.Guild;
-        if (guild == null)
-            return;
+        if (guild is null) return;
 
         var serverIdParam = new SqlParameter("@ServerID", guild.Id.ToString());
 
-        // Helper method to disconnect all bots in a voice channel
+        // Local helper: disconnects every bot currently connected to a given channel
         async Task DisconnectBotsAsync(SocketVoiceChannel channel)
         {
-            foreach (var botUser in channel.ConnectedUsers.Where(u => u.IsBot))
-            {
-                await botUser.VoiceChannel.DisconnectAsync();
-            }
+            foreach (var bot in channel.ConnectedUsers.Where(u => u.IsBot))
+                await bot.VoiceChannel.DisconnectAsync();
         }
 
         if (user.IsBot)
         {
-            // If bot left voice channel, disconnect all bots in the previous channel
-            if (after.VoiceChannel == null && before.VoiceChannel != null)
+            if (after.VoiceChannel is null && before.VoiceChannel is not null)
             {
                 await DisconnectBotsAsync(before.VoiceChannel);
-
-                var stored = new StoredProcedure();
-                stored.UpdateCreate(Constants.discordBotConnStr, "DeletePlayerConnected", new List<SqlParameter> { serverIdParam });
+                _sp.UpdateCreate(Constants.discordBotConnStr, "DeletePlayerConnected", [serverIdParam]);
             }
         }
-        else
+        else if (before.VoiceChannel is not null && after.VoiceChannel is null)
         {
-            // If a non-bot user leaves voice channel and no other non-bots remain
-            if (before.VoiceChannel != null && after.VoiceChannel == null)
+            bool anyNonBotRemaining = before.VoiceChannel.ConnectedUsers.Any(u => !u.IsBot);
+            if (!anyNonBotRemaining)
             {
-                bool anyNonBotLeft = before.VoiceChannel.ConnectedUsers.Any(u => !u.IsBot);
-                if (!anyNonBotLeft)
-                {
-                    await DisconnectBotsAsync(before.VoiceChannel);
-
-                    var stored = new StoredProcedure();
-                    stored.UpdateCreate(Constants.discordBotConnStr, "DeletePlayerConnected", new List<SqlParameter> { serverIdParam });
-                    stored.UpdateCreate(Constants.discordBotConnStr, "DeleteMusicQueueAll", new List<SqlParameter> { serverIdParam });
-                }
+                await DisconnectBotsAsync(before.VoiceChannel);
+                _sp.UpdateCreate(Constants.discordBotConnStr, "DeletePlayerConnected", [serverIdParam]);
+                _sp.UpdateCreate(Constants.discordBotConnStr, "DeleteMusicQueueAll", [serverIdParam]);
             }
         }
     }
 
     /// <summary>
-    /// Error Log handler, instead of logging in a SQL server or TXT.
-    /// I'm lazy and send it to my private discord to provide the
-    /// exception thrown.
+    /// Top-level reaction handler that routes to NSFW flagging or trivia evaluation.
     /// </summary>
-    /// <param name="message"></param>
-    /// <returns></returns>
-    private async Task LogMessage(LogMessage message)
+    /// <remarks>
+    /// <para>
+    /// <b>NSFW flagging (❌):</b>
+    /// When a non-bot user reacts ❌ to a bot-authored message that has fewer than
+    /// two existing reactions, the image filename is looked up and marked NSFW in
+    /// the database via <see cref="TryMarkNsfwAsync"/>. The two-reaction guard
+    /// prevents the flag from being triggered again if the bot itself already reacted.
+    /// </para>
+    /// <para>
+    /// <b>Trivia (🇦–🇩):</b>
+    /// Letter emoji reactions on trivia embeds are forwarded to
+    /// <see cref="HandleTriviaReactionAsync"/> for answer evaluation.
+    /// </para>
+    /// </remarks>
+    private async Task OnReactionAddedAsync(
+        Cacheable<IUserMessage, ulong> cachedMsg,
+        Cacheable<IMessageChannel, ulong> cachedChannel,
+        SocketReaction reaction)
     {
-        EmbedHelper embedHelper = new EmbedHelper();
-        // Send an error to the specific server and channel
-        ulong guildId = ulong.Parse("880569055856185354");
-        ulong textChannelId = ulong.Parse("1156625507840954369");
+        var download = await cachedMsg.GetOrDownloadAsync();
+        if (download is null || reaction is null) return;
 
-        if (message.Exception != null)
-        {
-            string exception = message.Exception.Message;
+        // Ignore reactions from bots (including the bot's own ❌ reaction added after posting)
+        if (client.GetUser(reaction.UserId)?.IsBot == true) return;
 
-            if (client.GetGuild(guildId) != null)
-            {
-                if (client.GetGuild(guildId).GetTextChannel(textChannelId) != null && message.Message.Length > 0)
-                {
-                    await client.GetGuild(guildId).GetTextChannel(textChannelId).SendMessageAsync(embed: embedHelper.BuildMessageEmbed("Exception Thrown", $"Exception: {exception}\nMessage: {message.Message}", "", "BigBirdBot", Discord.Color.Red, null, null).Build());
-                }
-            }
-        }
-    }
-    #endregion
+        var nsfwMarker = new Emoji("❌");
+        var imageUrl = download.Embeds.FirstOrDefault(e => e.Image.HasValue)?.Image?.Url;
 
-    #region Services Configuration
-    /// <summary>
-    /// The core functionality of each service needed for
-    /// corresponding bot functionality to run.
-    /// </summary>
-    /// <returns></returns>
-    private ServiceProvider ConfigureServices()
-    {
-        return new ServiceCollection()
-            .AddSingleton<DiscordSocketClient>()
-            .AddSingleton<CommandService>()
-            .AddSingleton<HttpClient>()
-            .AddSingleton<LoggingService>()
-            .AddSingleton<InteractionHandlerService>()
-            .AddSingleton<InteractionService>(p => new InteractionService(p.GetRequiredService<DiscordSocketClient>()))
-            .AddSingleton(new DiscordSocketConfig
-            {
-                GatewayIntents = GatewayIntents.AllUnprivileged | GatewayIntents.MessageContent | GatewayIntents.GuildMembers,
-                LogGatewayIntentWarnings = false,
-                AlwaysDownloadUsers = true,
-                DefaultRetryMode = RetryMode.AlwaysRetry,
-                LogLevel = LogSeverity.Verbose
-            })
-            .AddSingleton<EmbedPagesService>()
-            .AddSingleton<MultiButtonsService>()
-            .AddSingleton<InteractiveService>()
-            .AddSingleton(new InteractiveConfig { DefaultTimeout = TimeSpan.FromMinutes(15), LogLevel = LogSeverity.Warning })
-            .AddLavalink()
-            .ConfigureLavalink(x =>
-            {
-                x.BaseAddress = new Uri(Constants.lavalinkUrl);
-                x.Passphrase = Constants.lavaLinkPwd;
-                x.BufferSize = 2048;
-                x.Label = "BigBirdBot";
-                x.ReadyTimeout = TimeSpan.FromMinutes(15);
-                x.ResumptionOptions = new(TimeSpan.Zero);
-            })
-            .AddLogging(x =>
-            {
-                x.ClearProviders();
-                x.SetMinimumLevel(LogLevel.Trace);
-            })
-            .BuildServiceProvider();
-    }
-    #endregion
-
-    #region Emojis and Timed Events
-    /// <summary>
-    /// Handle trivia and NSFW keyword stuff.
-    /// This is the handling for emotes.
-    /// </summary>
-    /// <param name="message"></param>
-    /// <param name="channel"></param>
-    /// <param name="reaction"></param>
-    /// <returns></returns>
-    private async Task HandleReactionAsync(Cacheable<IUserMessage, ulong> message, Cacheable<IMessageChannel, ulong> channel, SocketReaction reaction)
-    {
-        Emoji triviaA = new Emoji("🇦");
-        Emoji triviaB = new Emoji("🇧");
-        Emoji triviaC = new Emoji("🇨");
-        Emoji triviaD = new Emoji("🇩");
-        Emoji nsfwMarker = new Emoji("❌");
-        EmbedHelper embedNsfw = new EmbedHelper();
-
-        var download = await message.GetOrDownloadAsync().ConfigureAwait(false);
-    
-        if (reaction == null || download == null)
-            return;
-
-        if (client.GetUser(reaction.UserId).IsBot) 
-            return;
-
-        IReadOnlyCollection<IEmbed> embed = download.Embeds;
-        var msg = download.ToString();
-        var image = embed.FirstOrDefault(e => e.Image.HasValue)?.Image.Value.Url;
-        var uri = new Uri(image ?? "");
-        string fileName = Path.GetFileName(uri.LocalPath) ?? uri.ToString();
-        StoredProcedure stored = new StoredProcedure();
-
-        // Mark the message as NSFW
         if (reaction.Emote.Name == nsfwMarker.Name && download.Author.IsBot && download.Reactions.Count < 2)
         {
-            var connStr = Constants.discordBotConnStr;
-            var userId = reaction.User.Value.Id.ToString();
-            var messageId = download.Id.ToString();
+            string? fileName = imageUrl is not null
+                ? Path.GetFileName(new Uri(imageUrl).LocalPath)
+                : null;
 
-            async Task HandleNSFWMark(string messageContent)
-            {
-                var keywordRows = stored.Select(connStr, "GetKeywordNSFW", new List<SqlParameter>
-                {
-                    new SqlParameter("@Message", messageContent)
-                });
-
-                if (!keywordRows.AsEnumerable().Any(r => r["NSFW"].ToString() == "1"))
-                {
-                    var nsfwResult = stored.Select(connStr, "MarkKeywordNSFW", new List<SqlParameter>
-                    {
-                        new SqlParameter("@Message", messageContent)
-                    });
-
-                    if (nsfwResult.Rows.Count > 0)
-                    {
-                        await channel.Value.SendMessageAsync(embed:
-                        embedNsfw.BuildMessageEmbed(
-                            "NSFW",
-                            $"Thanks {reaction.User.Value.Mention}, the message was marked as NSFW, sorry about that :)",
-                            "",
-                            "BigBirdBot",
-                            Discord.Color.Blue
-                        ).Build());
-                    }
-                }
-            }
-
-            // Handle message text
             if (!string.IsNullOrEmpty(fileName))
             {
-                await HandleNSFWMark(fileName);
+                await TryMarkNsfwAsync(fileName, cachedChannel, reaction);
                 return;
             }
         }
 
-        if (reaction.Emote.Name == triviaA.Name || reaction.Emote.Name == triviaB.Name || reaction.Emote.Name == triviaC.Name || reaction.Emote.Name == triviaD.Name)
+        if (IsTriiviaEmoji(reaction.Emote.Name))
+            await HandleTriviaReactionAsync(cachedMsg, cachedChannel, reaction, download);
+    }
+
+    /// <summary>
+    /// Returns <c>true</c> if the emoji name is one of the four trivia answer options (🇦–🇩).
+    /// </summary>
+    private static bool IsTriiviaEmoji(string name) =>
+        name is "🇦" or "🇧" or "🇨" or "🇩";
+
+    /// <summary>
+    /// Marks a keyword's content as NSFW in the database if not already flagged,
+    /// then sends a public confirmation message.
+    /// </summary>
+    /// <remarks>
+    /// The idempotency check (<c>GetKeywordNSFW</c>) prevents the confirmation
+    /// message from being sent repeatedly if multiple users react ❌ to the same
+    /// message before the cache updates.
+    /// </remarks>
+    /// <param name="content">Image filename or message content to flag.</param>
+    /// <param name="channel">Channel to post the confirmation embed in.</param>
+    /// <param name="reaction">The reaction that triggered the flag, used for the user mention.</param>
+    private async Task TryMarkNsfwAsync(
+        string content,
+        Cacheable<IMessageChannel, ulong> channel,
+        SocketReaction reaction)
+    {
+        var existing = _sp.Select(Constants.discordBotConnStr, "GetKeywordNSFW",
+            [new SqlParameter("@Message", content)]);
+
+        // Already flagged — silently skip
+        if (existing.AsEnumerable().Any(r => r["NSFW"].ToString() == "1")) return;
+
+        var result = _sp.Select(Constants.discordBotConnStr, "MarkKeywordNSFW",
+            [new SqlParameter("@Message", content)]);
+
+        if (result.Rows.Count > 0)
         {
+            await channel.Value.SendMessageAsync(embed: _embed.BuildMessageEmbed(
+                "NSFW",
+                $"Thanks {reaction.User.Value.Mention}, the message was marked as NSFW, sorry about that :)",
+                "", "BigBirdBot", Color.Blue).Build());
+        }
+    }
+
+    /// <summary>
+    /// Evaluates a trivia answer reaction against the correct answer stored in
+    /// the database and posts a coloured result embed.
+    /// </summary>
+    /// <remarks>
+    /// The correct answer text is stored in the database and also rendered as an
+    /// embed field <em>value</em>. The field <em>name</em> holds the letter label
+    /// (e.g. "A."). The method identifies the correct field by matching its value,
+    /// then compares the user's selected letter to that field's name.
+    ///
+    /// On a correct answer the trivia question is deleted from the database so it
+    /// cannot be answered again. Incorrect answers leave the question active.
+    /// </remarks>
+    private async Task HandleTriviaReactionAsync(
+        Cacheable<IUserMessage, ulong> cachedMsg,
+        Cacheable<IMessageChannel, ulong> channel,
+        SocketReaction reaction,
+        IUserMessage download)
+    {
+        try
+        {
+            if (download.Embeds.Count == 0) return;
+
+            long messageId = (long)cachedMsg.Id;
+            string userMention = reaction.User.Value.Mention;
+
+            var dt = _sp.Select(Constants.discordBotConnStr, "GetTriviaMessage",
+                [new SqlParameter("@TriviaMessageID", messageId)]);
+
+            if (dt.Rows.Count == 0) return;
+
+            string correctAnswer = dt.Rows[0]["CorrectAnswer"].ToString()!;
+
+            // Only consider fields whose names follow the "A." / "B." convention
+            var fields = download.Embeds
+                .SelectMany(e => e.Fields)
+                .Where(f => f.Name.Contains('.'))
+                .ToList();
+
+            var correctField = fields.FirstOrDefault(f => f.Value == correctAnswer);
+            if (correctField == null || !EmojiToLetter.TryGetValue(reaction.Emote.Name, out string? selectedLetter))
+                return;
+
+            bool isCorrect = selectedLetter == correctField.Name;
+
+            await channel.Value.SendMessageAsync(embed: new EmbedHelper().BuildMessageEmbed(
+                isCorrect ? "Correct" : "Wrong",
+                isCorrect
+                    ? $"{userMention} answered correctly with **{correctAnswer}**!"
+                    : $"{userMention}, you didn't answer correctly. Try again!",
+                "", "BigBirdBot",
+                isCorrect ? Color.Green : Color.Red).Build());
+
+            if (isCorrect)
+                _sp.UpdateCreate(Constants.discordBotConnStr, "DeleteTriviaMessage",
+                    [new SqlParameter("@TriviaMessageID", messageId)]);
+        }
+        catch (Exception ex)
+        {
+            await channel.Value.SendMessageAsync(embed: new EmbedHelper()
+                .BuildMessageEmbed("Error", ex.Message, Constants.errorImageUrl, "", Color.Red).Build());
+        }
+    }
+
+    /// <summary>
+    /// Runs the once-per-minute scheduled-DM loop using <see cref="PeriodicTimer"/>.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="PeriodicTimer"/> is preferred over <c>System.Timers.Timer</c> because:
+    /// <list type="bullet">
+    ///   <item>It is async-native — no thread-pool callbacks or event delegates.</item>
+    ///   <item>It will not fire overlapping ticks if the previous iteration is still running.</item>
+    ///   <item>It supports <c>CancellationToken</c> for clean shutdown.</item>
+    /// </list>
+    /// </remarks>
+    private async Task RunSchedulerAsync()
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
+        while (await timer.WaitForNextTickAsync())
+            await RunScheduledKeywordsAsync();
+    }
+
+    /// <summary>
+    /// Fetches all pending scheduled keyword DMs from the database and delivers
+    /// them to the corresponding Discord users via DM.
+    /// </summary>
+    /// <remarks>
+    /// Each database row represents a user who opted in to receive a periodic
+    /// DM containing a keyword's content (a local file, a URL, or text).
+    ///
+    /// Error handling strategy:
+    /// <list type="bullet">
+    ///   <item>
+    ///     <term><see cref="HttpException"/></term>
+    ///     <description>
+    ///       Usually means the user has disabled DMs. The bot owner is notified
+    ///       but the row is NOT re-queued — retrying a user who blocks DMs would
+    ///       spam the owner with the same error every minute.
+    ///     </description>
+    ///   </item>
+    ///   <item>
+    ///     <term>All other exceptions</term>
+    ///     <description>
+    ///       Treated as transient failures. The row is re-queued for the next
+    ///       minute and the owner receives the stack trace for investigation.
+    ///     </description>
+    ///   </item>
+    /// </list>
+    /// </remarks>
+    private async Task RunScheduledKeywordsAsync()
+    {
+        var dt = _sp.Select(Constants.discordBotConnStr, "GetUsersScheduledKeyword", []);
+        if (dt.Rows.Count == 0) return;
+
+        foreach (DataRow row in dt.Rows)
+        {
+            string userId = row["UserID"].ToString()!;
+            string filePath = row["FilePath"].ToString()!;
+            string tableName = row["ThirstTable"].ToString()!;
+            tableName = char.ToUpper(tableName[0]) + tableName[1..];
+            string timestamp = DateTime.Now.ToString("MM/dd/yyyy hh:mm tt ET");
+
             try
             {
-                if (embed.Count == 0)
-                    return;
+                var user = await client.GetUserAsync(ulong.Parse(userId));
 
-                var connStr = Constants.discordBotConnStr;
-                long messageId = Int64.Parse(message.Id.ToString());
-                string userMention = reaction.User.Value.Mention;
-                string reactionName = reaction.Emote.Name;
-
-                // Lookup tables for mapping letters and emojis
-                var emojiMap = new Dictionary<string, string>
-                {
-                    { triviaA.Name, "A." },
-                    { triviaB.Name, "B." },
-                    { triviaC.Name, "C." },
-                    { triviaD.Name, "D." }
-                };
-
-                var dt = stored.Select(connStr, "GetTriviaMessage", new List<SqlParameter>
-                {
-                    new SqlParameter("@TriviaMessageID", messageId)
-                });
-
-                if (dt.Rows.Count == 0)
-                    return;
-
-                string correctAnswer = dt.Rows[0]["CorrectAnswer"].ToString();
-                var fields = embed.SelectMany(e => e.Fields).Where(f => f.Name.Contains(".")).ToList();
-
-                var correctField = fields.FirstOrDefault(f => f.Value == correctAnswer);
-                if (correctField == null || !emojiMap.TryGetValue(reactionName, out string selectedLetter))
-                    return;
-
-                var embedHelper = new EmbedHelper();
-
-                if (selectedLetter == correctField.Name)
-                {
-                    await channel.Value.SendMessageAsync(embed:
-                        embedHelper.BuildMessageEmbed(
-                            "Correct",
-                            $"{userMention} answered correctly with **{correctAnswer}**!",
-                            "",
-                            "BigBirdBot",
-                            Discord.Color.Green
-                        ).Build());
-
-                    stored.UpdateCreate(connStr, "DeleteTriviaMessage", new List<SqlParameter>
-                    {
-                        new SqlParameter("@TriviaMessageID", messageId)
-                    });
-                }
+                if (filePath.StartsWith(@"C:\"))
+                    await user.SendFileAsync(filePath, $"**{tableName} - {timestamp}**");
+                else if (IsLinkWorking(filePath))
+                    await user.SendMessageAsync($"**{tableName} - {timestamp}**\n**URL:** {filePath}");
                 else
                 {
-                    await channel.Value.SendMessageAsync(embed:
-                        embedHelper.BuildMessageEmbed(
-                            "Wrong",
-                            $"{userMention}, you didn't answer correctly. Try again!",
-                            "",
-                            "BigBirdBot",
-                            Discord.Color.Red
-                        ).Build());
+                    // Proactively remove dead links so they do not appear in future sends
+                    _sp.UpdateCreate(Constants.discordBotConnStr, "DeleteChatKeywordURL",
+                    [
+                        new SqlParameter("@FilePath", filePath),
+                        new SqlParameter("@Keyword",  "")
+                    ]);
+                    await user.SendMessageAsync(
+                        $"**{tableName} - {timestamp}**\n**URL:** {filePath} — dead link removed from future sends.");
                 }
+            }
+            catch (HttpException ex)
+            {
+                await NotifyOwnerAsync(
+                    $"DM failed for user {userId} — they may have DMs disabled.\n{ex.Message}");
             }
             catch (Exception ex)
             {
-                var errorEmbed = new EmbedHelper();
-                await channel.Value.SendMessageAsync(embed:
-                    errorEmbed.BuildMessageEmbed(
-                        "Error",
-                        ex.Message,
-                        Constants.errorImageUrl,
-                        "",
-                        Color.Red
-                    ).Build());
+                _sp.UpdateCreate(Constants.discordBotConnStr, "UpdateUsersScheduledKeywordRequeue",
+                    [new SqlParameter("@UserID", userId)]);
+                await NotifyOwnerAsync(
+                    $"Scheduled send failed for user {userId}.\n{ex.StackTrace}\n" +
+                    $"Requeued for {DateTime.Now.AddMinutes(1):yyyy-MM-dd hh:mm tt}.");
             }
         }
     }
-
     /// <summary>
-    /// When the timer is kicked off, call this function to pull the EventText or ReminderText from SPs.
+    /// Sends a plain-text embed to the bot's private log channel.
+    /// Used for operational notices that are not exceptions
+    /// (e.g. a guild joined with zero downloadable members).
     /// </summary>
-    /// <param name="sender"></param>
-    /// <param name="e"></param>
-    private static async void OnTimedEvent(object sender, EventArgs e)
+    /// <param name="message">The message body for the embed description.</param>
+    /// <param name="color">The embed accent colour. Use <see cref="Color.Red"/> for warnings.</param>
+    private async Task SendLogAsync(string message, Color color)
     {
-        StoredProcedure storedProcedure = new StoredProcedure();
-        string connStr = Constants.discordBotConnStr;
-        DataTable dt = new DataTable();
-
-        dt = storedProcedure.Select(connStr, "GetUsersScheduledKeyword", new List<SqlParameter>());
-        if (dt.Rows.Count > 0)
-        {
-            EmbedHelper embed = new EmbedHelper();
-            foreach (DataRow dr in dt.Rows)
-            {
-                string userId = dr["UserID"].ToString();
-                string filePath = dr["FilePath"].ToString();
-                string tableName = dr["ThirstTable"].ToString();
-                tableName = string.Concat(tableName[0].ToString().ToUpper(), tableName.AsSpan(1));
-
-                try
-                {
-                    // Send the DM :)
-                    IUser user = await client.GetUserAsync(ulong.Parse(userId));
-
-                    if (dr["FilePath"].ToString().Contains("C:\\"))
-                        await user.SendFileAsync(filePath, $"**{tableName} - {DateTime.Now.ToString("MM/dd/yyyy hh:mm tt ET")}**");
-                    else
-                    {
-                        if (IsLinkWorking(filePath))
-                            await user.SendMessageAsync($"**{tableName} - {DateTime.Now.ToString("MM/dd/yyyy hh:mm tt ET")}**\n**URL:** {filePath}");
-                        else
-                        {
-                            storedProcedure.UpdateCreate(Constants.discordBotConnStr, "DeleteChatKeywordURL", new List<SqlParameter> { new SqlParameter("@FilePath", filePath), new SqlParameter("@Keyword", "") });
-                            await user.SendMessageAsync($"**{tableName} - {DateTime.Now.ToString("MM/dd/yyyy hh:mm tt ET")}**\n**URL:** {filePath} - This was a dead link and was removed from future postings");
-                        }
-                    }
-                }
-                catch (HttpException ex)
-                {
-                    // If we reach here, means the user doesn't allow DMs
-                    // Send a DM saying an issue happened
-                    IUser user = await client.GetUserAsync(ulong.Parse("171369791486033920"));
-                    await user.SendMessageAsync($"Something went wrong sending to this user: {userId}, might be an issue with allowing DMs.\nException Message: {ex.Message}");
-                    return;
-                }
-                catch (Exception ex)
-                {
-                    // If we reach here, something really went wrong and should handle it.
-                    // Send a DM saying an issue happened
-                    IUser user = await client.GetUserAsync(ulong.Parse("171369791486033920"));
-                    storedProcedure.UpdateCreate(Constants.discordBotConnStr, "UpdateUsersScheduledKeywordRequeue", new List<SqlParameter> { new SqlParameter("@UserID", userId) });
-                    await user.SendMessageAsync($"Something went wrong sending to this user: {userId}\nException Message: {ex.StackTrace}\nThe event was requeued to send at {DateTime.Now.AddMinutes(1).ToString("yyyy-MM-dd hh:mm tt")}");
-                    return;
-                }
-            }
-        }
-
+        var channel = client.GetGuild(LogGuildId)?.GetTextChannel(LogChannelId);
+        if (channel is null) return;
+        await channel.SendMessageAsync(embed: _embed
+            .BuildMessageEmbed("Log", message, "", "BigBirdBot", color).Build());
     }
-    #endregion
 
-    #region Helpers
     /// <summary>
-    /// Helper to check if the link is dead.
-    /// Kind of a pain in the ass to check because sometimes a link can take 
-    /// longer than a couple seconds to check, a 5 second timeout
-    /// was added to try to avoid false positives.
+    /// Sends a direct message to the bot owner.
+    /// Used by the scheduled task runner to report delivery failures.
     /// </summary>
-    /// <param name="url"></param>
-    /// <returns></returns>
+    /// <param name="message">The notification message text.</param>
+    private async Task NotifyOwnerAsync(string message)
+    {
+        var owner = await client.GetUserAsync(OwnerId);
+        await owner.SendMessageAsync(message);
+    }
+
+    /// <summary>
+    /// Checks whether a URL is currently reachable.
+    /// </summary>
+    /// <remarks>
+    /// Only fxtwitter and vxtwitter URLs are actively checked via HTTP because
+    /// these services return HTTP 200 even for deleted posts — the only reliable
+    /// indicator of a missing post is a specific phrase in the response body.
+    /// All other URL types are assumed live to avoid the latency cost of
+    /// checking every link on high-volume servers.
+    ///
+    /// A 15-second timeout is used to prevent false negatives caused by
+    /// temporarily slow upstream servers.
+    /// </remarks>
+    /// <param name="url">The URL to verify.</param>
+    /// <returns>
+    /// <c>true</c> if the URL is reachable and the content exists;
+    /// <c>false</c> if a 404 is returned or the body indicates a deleted post.
+    /// </returns>
     public static bool IsLinkWorking(string url)
     {
         if (!url.Contains("fxtwitter") && !url.Contains("vxtwitter"))
@@ -938,89 +1037,88 @@ internal class Program
             var request = (HttpWebRequest)WebRequest.Create(url);
             request.AllowAutoRedirect = true;
             request.Method = "GET";
-            request.Timeout = 15000; // Set a timeout to avoid hanging
+            request.Timeout = 15_000;
 
             using var response = (HttpWebResponse)request.GetResponse();
             using var reader = new StreamReader(response.GetResponseStream(), Encoding.ASCII);
-            string responseText = reader.ReadToEnd();
-
-            return !responseText.Contains("post doesn't exist");
+            return !reader.ReadToEnd().Contains("post doesn't exist");
         }
-        catch (WebException ex)
+        catch (WebException ex) when (ex.Response is HttpWebResponse { StatusCode: HttpStatusCode.NotFound })
         {
-            // Handle specific WebException if needed, else assume link is not working or unreachable
-            if (ex.Response is HttpWebResponse webResponse)
-            {
-                // For example, 404 means the link is broken
-                if (webResponse.StatusCode == HttpStatusCode.NotFound)
-                    return false;
-            }
-
-            // For other exceptions, return false or true based on your requirement
             return false;
         }
         catch
         {
-            // Unexpected exceptions, return false for safety
             return false;
         }
     }
 
     /// <summary>
-    /// Helper function to Add Attachments to the SQL database 
-    /// for the keyword matching.
+    /// Downloads message attachments to local disk and registers each path in
+    /// the keyword database for future chat-action responses.
     /// </summary>
-    /// <param name="msg"></param>
-    /// <param name="tablename"></param>
-    /// <param name="connStr"></param>
-    /// <param name="userId"></param>
+    /// <remarks>
+    /// A high-precision timestamp suffix (<c>yyyyMMdd_HHmmssfffff</c>) is
+    /// appended to each filename to prevent collisions when the same file is
+    /// uploaded multiple times across different keywords or dates.
+    ///
+    /// Downloads are fire-and-forget: the database entry is written immediately
+    /// with the expected path so the keyword is available the moment the file
+    /// lands on disk. This avoids blocking the message handler on network I/O.
+    ///
+    /// <see cref="System.Net.WebClient"/> (used in the original) is obsolete
+    /// since .NET 5. Downloads now use <see cref="HttpClient"/> via
+    /// <see cref="DownloadAttachmentAsync"/>.
+    /// </remarks>
+    /// <param name="msg">The message containing the attachments.</param>
+    /// <param name="tablename">The keyword table name to associate files with.</param>
+    /// <param name="connStr">SQL Server connection string.</param>
+    /// <param name="userId">Discord user ID of the person who uploaded the files.</param>
     private void AddAttachments(SocketMessage msg, string tablename, string connStr, string userId)
     {
-        StoredProcedure stored = new StoredProcedure();
-        IReadOnlyCollection<Attachment> attachments = msg.Attachments;
-        foreach (Attachment? attachment in attachments)
+        tablename = tablename.Replace("KeywordMulti.", "");
+
+        foreach (var attachment in msg.Attachments)
         {
-            tablename = tablename.Replace("KeywordMulti.", "");
-            string attachmentName = attachment.Filename;
-            string withoutExt = attachmentName.Split(".", StringSplitOptions.TrimEntries)[0];
-            string withExt = attachmentName.Split(".", StringSplitOptions.TrimEntries)[1];
-            withoutExt = withoutExt + "_" + DateTime.Now.ToString("yyyyMMdd_HHmmssfffff");
+            string[] parts = attachment.Filename.Split('.', StringSplitOptions.TrimEntries);
+            string uniqueName = $"{parts[0]}_{DateTime.Now:yyyyMMdd_HHmmssfffff}";
+            string path = $@"C:\Temp\DiscordBot\{tablename}\{uniqueName}.{parts[1]}";
 
-            string path = @"C:\Temp\DiscordBot\" + tablename + @"\" + withoutExt + "." + withExt;
+            // Non-blocking: DB entry written immediately with the expected path
+            _ = DownloadAttachmentAsync(attachment.Url, path);
 
-            using (WebClient client = new WebClient())
-            {
-                client.DownloadFileAsync(new Uri(attachment.Url), path);
-            }
-
-            stored.UpdateCreate(connStr, "AddChatKeyword", new List<SqlParameter>
-            {
-                new SqlParameter("@FilePath", path),
+            _sp.UpdateCreate(connStr, "AddChatKeyword",
+            [
+                new SqlParameter("@FilePath",  path),
                 new SqlParameter("@TableName", tablename),
-                new SqlParameter("@UserID", userId)
-            });
+                new SqlParameter("@UserID",    userId)
+            ]);
         }
     }
 
     /// <summary>
-    /// Helper to create a message embed instead of 
-    /// using a constant code of forming the embed.
+    /// Downloads a remote file and writes it to the local filesystem.
+    /// Replaces the obsolete <c>WebClient.DownloadFileAsync</c>.
     /// </summary>
-    /// <param name="title"></param>
-    /// <param name="color"></param>
-    /// <param name="description"></param>
-    /// <returns></returns>
-    private EmbedBuilder CreateMessageEmbed(string title, Color color, string description)
+    /// <param name="url">The source URL to download from.</param>
+    /// <param name="path">The full local path (including filename) to write to.</param>
+    private static async Task DownloadAttachmentAsync(string url, string path)
     {
-        EmbedBuilder embed = new EmbedBuilder
-        {
-            Title = "" + title,
-            Color = color,
-            Description = description
-        }.WithCurrentTimestamp();
-
-        return embed;
+        using var http = new HttpClient();
+        var bytes = await http.GetByteArrayAsync(url);
+        await File.WriteAllBytesAsync(path, bytes);
     }
-    #endregion
-}
 
+    /// <summary>
+    /// Creates a simple titled embed with description text and an auto-timestamp.
+    /// A convenience factory to avoid repeating <see cref="EmbedBuilder"/>
+    /// initialisation throughout the event handlers.
+    /// </summary>
+    /// <param name="title">The embed title.</param>
+    /// <param name="color">The embed accent colour.</param>
+    /// <param name="description">The embed body text.</param>
+    /// <returns>A pre-configured <see cref="EmbedBuilder"/> ready to call <c>.Build()</c> on.</returns>
+    private static EmbedBuilder BuildEmbed(string title, Color color, string description) =>
+        new EmbedBuilder { Title = title, Color = color, Description = description }
+            .WithCurrentTimestamp();
+}

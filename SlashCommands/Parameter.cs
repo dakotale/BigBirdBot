@@ -471,5 +471,30 @@ namespace DiscordBot.SlashCommands
                 await FollowupAsync(embed: embed.BuildErrorEmbed("Chat", ex.Message, userName).Build());
             }
         }
+
+        [SlashCommand("dnddice", "Roll as many D&D dice with any amount with modifiers")]
+        [EnabledInDm(true)]
+        public async Task HandleDND([MinValue(1)] int numberOfDice, [MinValue(2)] int sidesOnDice, int modifier = 0)
+        {
+            await DeferAsync();
+            Random r = new Random();
+            List<int> rolls = new List<int>();
+            for (int i = 0; i < numberOfDice; i++)
+                rolls.Add(r.Next(1, sidesOnDice + 1));
+
+            // Annotate any natural 1 or natural 20 results
+            List<string> annotatedRolls = rolls
+                .Select(v => v == 1 ? $"{v} **(Natural 1)**"
+                                 : v == 20 ? $"{v} **(Natural 20)**"
+                                           : v.ToString())
+                .ToList();
+
+            string title = "D&D Dice Roller";
+            string desc = $"{Context.User.Mention} rolled {numberOfDice}d{sidesOnDice} with a modifier of {(modifier >= 0 ? "+" : "") + modifier.ToString()}\n\n**Rolls:** {string.Join(", ", annotatedRolls)}\n**Total:** {rolls.Sum() + modifier}";
+            string thumbnailUrl = Context.User.GetAvatarUrl();
+            string createdBy = "Command from: " + Context.User.Username;
+            EmbedHelper embed = new EmbedHelper();
+            await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, createdBy, Discord.Color.Green).Build());
+        }
     }
 }
