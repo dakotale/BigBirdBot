@@ -513,6 +513,7 @@ internal class Program
                 foreach (DataRow row in dt.Rows)
                 {
                     string chatAction = row["ChatAction"].ToString();
+                    string keyword = row["Keyword"].ToString();
                     bool isNsfw = bool.TryParse(row["NSFW"]?.ToString(), out var nsfw) && nsfw;
 
                     if (string.IsNullOrWhiteSpace(chatAction))
@@ -523,9 +524,17 @@ internal class Program
                     if (chatAction.Contains("C:\\"))
                     {
                         var isSpoiler = isNsfw && !chatAction.Contains("SPOILER_");
-                        var output = await msg.Channel.SendFileAsync(chatAction, isSpoiler: isSpoiler);
-                        if (!isSpoiler)
-                            await output.AddReactionAsync(new Emoji("❌"));
+                        
+                        using (var stream = File.OpenRead(chatAction))
+                        {
+                            keyword = char.ToUpper(keyword[0]) + keyword.Substring(1);
+
+                            var embed = new EmbedBuilder().WithTitle(keyword).WithImageUrl("attachment://" + Path.GetFileName(chatAction)).WithColor(isNsfw ? Color.DarkRed : Color.Blue).Build();
+
+                            var output = await msg.Channel.SendFileAsync(stream, Path.GetFileName(chatAction), embed: embed, isSpoiler: isSpoiler);
+                            if (!isSpoiler)
+                                await output.AddReactionAsync(new Emoji("❌"));
+                        }
                     }
                     else if (chatAction.Contains("http"))
                     {
@@ -533,8 +542,9 @@ internal class Program
                         {
                             if (isNsfw)
                                 chatAction = $"||{chatAction}||";
-
-                            var output = await sender.SendMessageAsync(chatAction);
+                            
+                            var embed = new EmbedBuilder().WithTitle(message).WithImageUrl(chatAction).WithColor(isNsfw ? Color.DarkRed : Color.Blue).Build();
+                            var output = await msg.Channel.SendMessageAsync(embed: embed);
                             if (!isNsfw)
                                 await output.AddReactionAsync(new Emoji("❌"));
                         }
@@ -717,7 +727,9 @@ internal class Program
 
         IReadOnlyCollection<IEmbed> embed = download.Embeds;
         var msg = download.ToString();
-        var attach = download.Attachments;
+        var image = embed.FirstOrDefault(e => e.Image.HasValue)?.Image.Value.Url;
+        var uri = new Uri(image ?? "");
+        string fileName = Path.GetFileName(uri.LocalPath) ?? uri.ToString();
         StoredProcedure stored = new StoredProcedure();
 
         // Mark the message as NSFW
@@ -756,18 +768,9 @@ internal class Program
             }
 
             // Handle message text
-            if (!string.IsNullOrEmpty(msg))
+            if (!string.IsNullOrEmpty(fileName))
             {
-                await HandleNSFWMark(msg);
-                return;
-            }
-
-            // Handle attachments
-            if (attach != null && attach.Count > 0)
-            {
-                foreach (var a in attach)
-                    await HandleNSFWMark(a.Filename);
-
+                await HandleNSFWMark(fileName);
                 return;
             }
         }

@@ -22,6 +22,7 @@ namespace DiscordBot.SlashCommands
                 StoredProcedure stored = new StoredProcedure();
                 keyword = keyword.Trim();
                 string addCommand = "add" + keyword;
+                string path = string.Concat(Constants.Constants.keywordDirectory, keyword);
 
                 string createdBy = Context.User.Username;
                 long serverId = Int64.Parse(Context.Guild.Id.ToString());
@@ -36,6 +37,8 @@ namespace DiscordBot.SlashCommands
                     new SqlParameter("@AddKeyword", addCommand),
                     new SqlParameter("@CreatedBy", createdBy)
                 });
+
+                Directory.CreateDirectory(path);
 
                 await FollowupAsync(embed: embed.BuildMessageEmbed("Keyword Multi Added", desc, "", createdByMsg, Color.Blue).Build(), ephemeral: true);
             }

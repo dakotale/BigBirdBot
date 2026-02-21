@@ -66,5 +66,7 @@ namespace DiscordBot.Constants
         public static string avatarTempPath => Get(nameof(avatarTempPath), @"C:\Temp\DiscordBot\avatartemp\");
         public static string openAiToken => Get(nameof(openAiToken));
         public static string openAiModel => Get(nameof(openAiModel), "gpt-4.1");
+        public static string keywordDirectory => Get(nameof(keywordDirectory), @"C:\Temp\DiscordBot\");
+        public static string minecraftModsDirectory => Get(nameof(minecraftModsDirectory), @"C:\Users\Dakota\Desktop\Cobblemon\mods\");
     }
 }
