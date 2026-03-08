@@ -8,3 +8,4 @@ namespace DiscordBot.Helper
         public ITextChannel TextChannel { get; set; }
     }
 }
+

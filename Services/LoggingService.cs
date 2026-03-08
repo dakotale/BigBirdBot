@@ -7,169 +7,203 @@ using Discord.Interactions;
 using Discord.WebSocket;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace DiscordBot.Services
+namespace DiscordBot.Services;
+
+/// <summary>
+/// Structured logging service supporting console output, file output, or both.
+/// Integrates with Discord.Net's <see cref="LogMessage"/> event pipeline.
+/// Thread-safe for concurrent log calls.
+/// </summary>
+public sealed class LoggingService
 {
-    public class LoggingService
+
+    public enum FilterSeverity { All, NoDebug, Extended, Production, None }
+    public enum OutputType { None, Console, LogFile, All }
+
+    /// <summary>
+    /// Integer value maps directly to <see cref="ConsoleColor"/> for zero-cost
+    /// casting when writing coloured output.
+    /// </summary>
+    public enum Severity
     {
-        public enum FilterSeverity
-        {
-            All,
-            NoDebug,
-            Extended,
-            Production,
-            None
-        }
+        Debug = ConsoleColor.DarkBlue,
+        Info = ConsoleColor.DarkGreen,
+        Warning = ConsoleColor.DarkYellow,
+        Error = ConsoleColor.DarkRed
+    }
 
-        public enum OutputType
-        {
-            None,
-            Console,
-            LogFile,
-            All
-        }
 
-        public enum Severity : int
-        {
-            Debug = ConsoleColor.DarkBlue,
-            Info = ConsoleColor.DarkGreen,
-            Warning = ConsoleColor.DarkYellow,
-            Error = ConsoleColor.DarkRed
-        }
+    private readonly OutputType _outputType;
+    private readonly FilterSeverity _filterSeverity;
+    private readonly string? _logPath;
+    private readonly string _discordLogDir;
 
-        private readonly OutputType _outputType;
-        private readonly FilterSeverity _filterSeverity;
-        private readonly string? _logPath;
-        private readonly LoggingService _self; // For event handlers
+    /// <summary>Serialises all console writes to prevent interleaved colour changes.</summary>
+    private static readonly Lock _consoleLock = new();
 
-        public LoggingService(IServiceProvider services)
-            : this(services, OutputType.Console, FilterSeverity.All, null)
-        {
-        }
+    /// <summary>Serialises file appends to prevent torn writes under concurrency.</summary>
+    private static readonly Lock _fileLock = new();
 
-        public LoggingService(IServiceProvider services, OutputType outputType, FilterSeverity filterSeverity)
-            : this(services, outputType, filterSeverity, null)
-        {
-        }
 
-        public LoggingService(IServiceProvider services, OutputType outputType, FilterSeverity filterSeverity, string? logPath)
-        {
-            _outputType = outputType;
-            _filterSeverity = filterSeverity;
-            _logPath = logPath;
+    public LoggingService(IServiceProvider services)
+        : this(services, OutputType.Console, FilterSeverity.All, null) { }
 
-            var commandService = services.GetRequiredService<CommandService>();
-            var client = services.GetRequiredService<DiscordSocketClient>();
-            var interactionService = services.GetService<InteractionService>();
+    public LoggingService(IServiceProvider services, OutputType outputType, FilterSeverity filterSeverity)
+        : this(services, outputType, filterSeverity, null) { }
 
-            commandService.Log += OnDiscordLogAsync;
-            client.Log += OnDiscordLogAsync;
-            if (interactionService != null)
-                interactionService.Log += OnDiscordLogAsync;
-        }
+    public LoggingService(
+        IServiceProvider services,
+        OutputType outputType,
+        FilterSeverity filterSeverity,
+        string? logPath)
+    {
+        _outputType = outputType;
+        _filterSeverity = filterSeverity;
+        _logPath = logPath;
+        _discordLogDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs");
 
-        public Task DebugAsync(string message, [CallerMemberName] string caller = "",
-            [CallerFilePath] string file = "", [CallerLineNumber] int line = 0) =>
-            LogAsync(Severity.Debug, message, caller, file, line);
+        services.GetRequiredService<CommandService>().Log += OnDiscordLogAsync;
+        services.GetRequiredService<DiscordSocketClient>().Log += OnDiscordLogAsync;
+        services.GetService<InteractionService>()?.Log += OnDiscordLogAsync;
+    }
 
-        public Task InfoAsync(string message, [CallerMemberName] string caller = "",
-            [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
-        {
-            string timestampedMessage = $"{DateTime.Now:G} - {message}";
-            return LogAsync(Severity.Info, timestampedMessage, caller, file, line);
-        }
 
-        public Task WarningAsync(string message, [CallerMemberName] string caller = "",
-            [CallerFilePath] string file = "", [CallerLineNumber] int line = 0) =>
-            LogAsync(Severity.Warning, message, caller, file, line);
+    public Task DebugAsync(string message,
+        [CallerMemberName] string caller = "",
+        [CallerFilePath] string file = "",
+        [CallerLineNumber] int line = 0) =>
+        LogAsync(Severity.Debug, message, caller, file, line);
 
-        public Task ErrorAsync(Exception? ex)
-        {
-            if (ex == null) return Task.CompletedTask;
+    public Task InfoAsync(string message,
+        [CallerMemberName] string caller = "",
+        [CallerFilePath] string file = "",
+        [CallerLineNumber] int line = 0) =>
+        LogAsync(Severity.Info, message, caller, file, line);
 
-            var st = new StackTrace(ex, true);
-            var sf = st.GetFrame(st.FrameCount - 1);
+    public Task WarningAsync(string message,
+        [CallerMemberName] string caller = "",
+        [CallerFilePath] string file = "",
+        [CallerLineNumber] int line = 0) =>
+        LogAsync(Severity.Warning, message, caller, file, line);
 
-            return LogAsync(
-                Severity.Error,
-                $"{ex.GetType().FullName} - {ex.Message}{Environment.NewLine}{ex.StackTrace}",
-                sf?.GetMethod()?.Name ?? "UnknownMethod",
-                sf?.GetFileName() ?? "UnknownFile",
-                sf?.GetFileLineNumber() ?? 0);
-        }
+    public Task ErrorAsync(Exception? ex)
+    {
+        if (ex is null) return Task.CompletedTask;
 
-        private static bool ShouldLog(Severity severity, FilterSeverity filterSeverity) => filterSeverity switch
-        {
-            FilterSeverity.All => true,
-            FilterSeverity.NoDebug => severity != Severity.Debug,
-            FilterSeverity.Extended => severity == Severity.Warning || severity == Severity.Error,
-            FilterSeverity.Production => severity == Severity.Error,
-            FilterSeverity.None => false,
-            _ => throw new ArgumentOutOfRangeException(nameof(filterSeverity), filterSeverity, null)
-        };
+        var st = new StackTrace(ex, fNeedFileInfo: true);
+        var frame = st.GetFrame(st.FrameCount - 1);
+        string msg = $"{ex.GetType().FullName} - {ex.Message}{Environment.NewLine}{ex.StackTrace}";
 
-        private Task LogAsync(Severity severity, string message,
-            [CallerMemberName] string caller = "",
-            [CallerFilePath] string file = "",
-            [CallerLineNumber] int line = 0)
-        {
-            if (string.IsNullOrWhiteSpace(message) || _outputType == OutputType.None || !ShouldLog(severity, _filterSeverity))
-                return Task.CompletedTask;
+        return LogAsync(
+            Severity.Error, msg,
+            frame?.GetMethod()?.Name ?? "UnknownMethod",
+            frame?.GetFileName() ?? "UnknownFile",
+            frame?.GetFileLineNumber() ?? 0);
+    }
 
-            string prefix = $"{DateTime.Now:HH:mm:ss} [{Path.GetFileNameWithoutExtension(file)}->{caller} L{line}] ";
 
-            if (_outputType == OutputType.Console || _outputType == OutputType.All)
-            {
-                var originalColor = Console.ForegroundColor;
-                Console.ForegroundColor = (ConsoleColor)severity;
-                Console.Write(prefix);
-                Console.ForegroundColor = ConsoleColor.White;
-                Console.WriteLine(message);
-                Console.ForegroundColor = originalColor;
-            }
-
-            if (!string.IsNullOrEmpty(_logPath) && (_outputType == OutputType.LogFile || _outputType == OutputType.All))
-            {
-                try
-                {
-                    // Append text instead of overwriting file
-                    File.AppendAllText(_logPath, prefix + message + Environment.NewLine);
-                }
-                catch (Exception ex)
-                {
-                    // Optionally handle file IO exceptions, maybe fallback to console
-                    Console.WriteLine($"Logging to file failed: {ex.Message}");
-                }
-            }
-
+    private Task LogAsync(
+        Severity severity,
+        string message,
+        [CallerMemberName] string caller = "",
+        [CallerFilePath] string file = "",
+        [CallerLineNumber] int line = 0)
+    {
+        if (string.IsNullOrWhiteSpace(message)
+            || _outputType == OutputType.None
+            || !ShouldLog(severity, _filterSeverity))
             return Task.CompletedTask;
+
+        string timestamp = DateTime.Now.ToString("HH:mm:ss");
+        string context = Path.GetFileNameWithoutExtension(file);
+        string prefix = $"{timestamp} [{context}->{caller} L{line}] ";
+        string line_ = prefix + message;
+
+        if (_outputType is OutputType.Console or OutputType.All)
+            WriteToConsole(severity, prefix, message);
+
+        if (_outputType is OutputType.LogFile or OutputType.All
+            && !string.IsNullOrEmpty(_logPath))
+            AppendToFile(_logPath, line_ + Environment.NewLine);
+
+        return Task.CompletedTask;
+    }
+
+
+    private Task OnDiscordLogAsync(LogMessage log)
+    {
+        try
+        {
+            Directory.CreateDirectory(_discordLogDir);
+
+            string path = Path.Combine(_discordLogDir,
+                $"ExceptionLog_{DateTime.Now:yyyy_MM_dd}.txt");
+
+            var sb = new StringBuilder();
+
+            if (!string.IsNullOrEmpty(log.Message))
+                sb.AppendLine($"{DateTime.Now:HH:mm:ss} [{log.Severity}] {log.Source}: {log.Message}");
+
+            if (log.Exception is not null)
+                sb.AppendLine(log.Exception.ToString());
+
+            if (sb.Length > 0)
+                AppendToFile(path, sb.ToString());
+
+            // Also mirror Warning/Error into the console for visibility.
+            if (log.Severity is LogSeverity.Warning or LogSeverity.Error)
+            {
+                var severity = log.Severity is LogSeverity.Error ? Severity.Error : Severity.Warning;
+                WriteToConsole(severity, $"{DateTime.Now:HH:mm:ss} [Discord] ", log.Message ?? "");
+            }
+        }
+        catch
+        {
+            // Swallow to prevent crash loops in the logging path.
         }
 
-        private Task OnDiscordLogAsync(LogMessage log)
+        return Task.CompletedTask;
+    }
+
+
+    private static bool ShouldLog(Severity severity, FilterSeverity filter) => filter switch
+    {
+        FilterSeverity.All => true,
+        FilterSeverity.NoDebug => severity is not Severity.Debug,
+        FilterSeverity.Extended => severity is Severity.Warning or Severity.Error,
+        FilterSeverity.Production => severity is Severity.Error,
+        FilterSeverity.None => false,
+        _ => throw new ArgumentOutOfRangeException(nameof(filter), filter, null)
+    };
+
+    /// <summary>
+    /// Writes a coloured log line to stdout. The prefix uses the severity colour;
+    /// the message body is always white. Uses a lock to prevent interleaved output
+    /// when multiple threads log simultaneously.
+    /// </summary>
+    private static void WriteToConsole(Severity severity, string prefix, string message)
+    {
+        lock (_consoleLock)
         {
-            try
-            {
-                string logDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs");
-                Directory.CreateDirectory(logDir);
+            var original = Console.ForegroundColor;
+            Console.ForegroundColor = (ConsoleColor)severity;
+            Console.Write(prefix);
+            Console.ForegroundColor = ConsoleColor.White;
+            Console.WriteLine(message);
+            Console.ForegroundColor = original;
+        }
+    }
 
-                string fileName = Path.Combine(logDir, $"ExceptionLog_{DateTime.Now:yyyy_MM_dd}.txt");
-                var output = new StringBuilder();
-
-                if (!string.IsNullOrEmpty(log.Message))
-                    output.AppendLine($"{DateTime.Now:HH:mm:ss}: {log.Message}");
-
-                if (log.Exception != null)
-                    output.AppendLine(log.Exception.ToString());
-
-                if (output.Length > 0)
-                    File.AppendAllText(fileName, output + Environment.NewLine);
-
-                return Task.CompletedTask;
-            }
-            catch
-            {
-                // Swallow exceptions from logging to avoid crash loops
-                return Task.CompletedTask;
-            }
+    /// <summary>
+    /// Appends <paramref name="content"/> to <paramref name="path"/> under a lock.
+    /// Falls back to a console warning on I/O failure.
+    /// </summary>
+    private static void AppendToFile(string path, string content)
+    {
+        lock (_fileLock)
+        {
+            try { File.AppendAllText(path, content); }
+            catch (Exception ex) { Console.WriteLine($"[LoggingService] File write failed: {ex.Message}"); }
         }
     }
 }

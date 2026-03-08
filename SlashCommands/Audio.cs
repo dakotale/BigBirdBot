@@ -1,7 +1,9 @@
 ﻿using System.Data;
 using System.Data.SqlClient;
+using System.Runtime.CompilerServices;
 using Discord;
 using Discord.Interactions;
+using Discord.WebSocket;
 using DiscordBot.Constants;
 using DiscordBot.Helper;
 using Fergun.Interactive;
@@ -18,6 +20,7 @@ namespace DiscordBot.SlashCommands;
 /// <summary>
 /// Slash command module that handles all audio/music playback functionality
 /// via Lavalink4NET, including queueing, playback control, and volume management.
+/// Supports interactive button controls on Now Playing embeds.
 /// </summary>
 public sealed class Audio(IAudioService audioService, InteractiveService interactiveService)
     : InteractionModuleBase<SocketInteractionContext>
@@ -28,6 +31,7 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
     private const string EmojiStop = "⏹️";
     private const string EmojiSkip = "⏭️";
     private const string EmojiVolume = "🔊";
+    private const string EmojiVolDown = "🔉";
     private const string EmojiQueue = "📋";
     private const string EmojiLoop = "🔁";
     private const string EmojiShuffle = "🔀";
@@ -42,19 +46,27 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
     private static readonly Color ColourError = new(237, 66, 69);
     private static readonly Color ColourWarning = new(254, 231, 92);
 
-    /// <summary>
-    /// Gets the current guild ID cast to <see cref="long"/> without repeated
-    /// Parse/ToString chains throughout the class.
-    /// </summary>
+    private const string BtnPause = "audio:pause";
+    private const string BtnResume = "audio:resume";
+    private const string BtnSkip = "audio:skip";
+    private const string BtnStop = "audio:stop";
+    private const string BtnShuffle = "audio:shuffle";
+    private const string BtnVolUp = "audio:vol_up";
+    private const string BtnVolDown = "audio:vol_down";
+    private const string BtnQueueB = "audio:queue";
+    private const string BtnLoop1 = "audio:loop1";
+
+
+    /// <summary>Typed guild ID — avoids repeated casts throughout the class.</summary>
     private long GuildId => (long)Context.Guild.Id;
+
+    // =========================================================================
+    // Slash Commands
+    // =========================================================================
 
     #region Slash Commands
 
-    /// <summary>
-    /// Joins the voice channel the invoking user is currently in.
-    /// Responds with an error if the user is not in a voice channel or the
-    /// bot is already connected.
-    /// </summary>
+    /// <summary>Joins the voice channel the invoking user is currently in.</summary>
     [SlashCommand("join", "Joins your voice channel.", runMode: RunMode.Async)]
     public async Task JoinAsync()
     {
@@ -79,46 +91,32 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
         }
 
         int vol = GetVolume(GuildId);
-        var embed = Embed(EmojiJoin, "Joined", ColourSuccess)
+        var embed = MakeEmbed(EmojiJoin, "Joined", ColourSuccess)
             .WithDescription($"Ready to play! Current volume is **{vol}%**.")
             .WithThumbnailUrl(Context.Client.CurrentUser.GetAvatarUrl());
 
         await FollowupAsync(embed: embed.Build());
     }
 
-    /// <summary>
-    /// Disconnects the bot from the voice channel it is currently in and
-    /// cleans up the player record from the database.
-    /// </summary>
+    /// <summary>Disconnects the bot from its current voice channel.</summary>
     [SlashCommand("leave", "Leaves the voice channel.")]
     public async Task LeaveAsync()
     {
         await DeferAsync();
 
         var connected = await audioService.Players.GetPlayerAsync(Context.Guild);
-
         if (connected is not null)
-        {
             await connected.DisconnectAsync();
-        }
-        else
-        {
-            var player = await GetPlayerAsync();
-
-            if (player is null)
-            {
-                return;
-            }
-        }
+        else if (await GetPlayerAsync() is null)
+            return;
 
         DeletePlayerConnected(GuildId);
         await FollowupAsync(embed: LeaveEmbed().Build());
     }
 
     /// <summary>
-    /// Plays a track or playlist from YouTube, Spotify, SoundCloud, Twitch,
-    /// or Twitter/X. Automatically joins the user's voice channel if the bot
-    /// is not already connected.
+    /// Plays a track or playlist from YouTube, Spotify, SoundCloud, Twitch, or Twitter/X.
+    /// Automatically joins the user's voice channel if the bot is not already connected.
     /// </summary>
     [SlashCommand("play", "Play a track or playlist from YouTube, Spotify, SoundCloud, etc.", runMode: RunMode.Async)]
     public async Task PlayAsync([MinLength(1)] string query)
@@ -129,19 +127,12 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
         var player = (await audioService.Players.RetrieveAsync(Context)).Player
                      ?? await EnsureJoinedAsync();
 
-        if (player is null)
-        {
-            return;
-        }
+        if (player is null) return;
 
         await QueueAndPlayAsync(player, query, playNext: false);
     }
 
-    /// <summary>
-    /// Same as <see cref="PlayAsync"/> but inserts the resolved track(s)
-    /// immediately after the currently playing track rather than at the end
-    /// of the queue.
-    /// </summary>
+    /// <summary>Identical to <c>/play</c> but inserts the track immediately after the current one.</summary>
     [SlashCommand("playnext", "Same as /play but inserts the track next in queue.", runMode: RunMode.Async)]
     public async Task PlayNextAsync([MinLength(1)] string query)
     {
@@ -151,28 +142,18 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
         var player = (await audioService.Players.RetrieveAsync(Context)).Player
                      ?? await EnsureJoinedAsync();
 
-        if (player is null)
-        {
-            return;
-        }
+        if (player is null) return;
 
         await QueueAndPlayAsync(player, query, playNext: true);
     }
 
-    /// <summary>
-    /// Immediately skips the currently playing track and begins playing the
-    /// next track in the queue, if one exists.
-    /// </summary>
+    /// <summary>Immediately skips the currently playing track.</summary>
     [SlashCommand("forceskip", "Skips the current track.")]
     public async Task ForceSkipAsync()
     {
         await DeferAsync();
         var player = await GetPlayerAsync(connectToVoiceChannel: false);
-
-        if (player is null)
-        {
-            return;
-        }
+        if (player is null) return;
 
         if (player.CurrentItem is null)
         {
@@ -182,30 +163,18 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
 
         await player.SkipAsync();
 
-        if (player.CurrentItem is { } next)
-        {
-            await ReplyEmbedAsync(EmojiSkip, "Skipped", $"Now playing: **{next.Track.Title}**", ColourSuccess);
-        }
-        else
-        {
-            await ReplyEmbedAsync(EmojiSkip, "Skipped", "Queue is now empty.", ColourDefault);
-        }
+        await (player.CurrentItem is { } next
+            ? ReplyEmbedAsync(EmojiSkip, "Skipped", $"Now playing: **{next.Track.Title}**", ColourSuccess)
+            : ReplyEmbedAsync(EmojiSkip, "Skipped", "Queue is now empty.", ColourDefault));
     }
 
-    /// <summary>
-    /// Resumes playback of the currently paused track.
-    /// Responds with a warning if the player is not in a paused state.
-    /// </summary>
+    /// <summary>Resumes a paused track.</summary>
     [SlashCommand("resume", "Resumes the paused track.")]
     public async Task ResumeAsync()
     {
         await DeferAsync();
         var player = await GetPlayerAsync(connectToVoiceChannel: false);
-
-        if (player is null)
-        {
-            return;
-        }
+        if (player is null) return;
 
         if (player.State is not PlayerState.Paused)
         {
@@ -214,23 +183,16 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
         }
 
         await player.ResumeAsync();
-        await ReplyEmbedAsync(EmojiPlay, "Resumed", $"▶️  **{player.CurrentTrack!.Title}**", ColourSuccess);
+        await ReplyNowPlayingAsync(player, paused: false);
     }
 
-    /// <summary>
-    /// Pauses the currently playing track.
-    /// Responds with a warning if the player is already paused.
-    /// </summary>
+    /// <summary>Pauses the currently playing track.</summary>
     [SlashCommand("pause", "Pauses the current track.")]
     public async Task PauseAsync()
     {
         await DeferAsync();
         var player = await GetPlayerAsync(connectToVoiceChannel: false);
-
-        if (player is null)
-        {
-            return;
-        }
+        if (player is null) return;
 
         if (player.State is PlayerState.Paused)
         {
@@ -239,20 +201,16 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
         }
 
         await player.PauseAsync();
-        await ReplyEmbedAsync(EmojiPause, "Paused", $"⏸️  **{player.CurrentTrack!.Title}**", ColourDefault);
+        await ReplyNowPlayingAsync(player, paused: true);
     }
 
-    /// <summary>
-    /// Stops all playback, clears the queue, disconnects the bot from the
-    /// voice channel, and removes the player record from the database.
-    /// </summary>
+    /// <summary>Stops playback, clears the queue, and disconnects.</summary>
     [SlashCommand("stop", "Stops playback, clears the queue, and disconnects.")]
     public async Task StopAsync()
     {
         await DeferAsync();
 
         var connected = await audioService.Players.GetPlayerAsync(Context.Guild);
-
         if (connected is not null)
         {
             await connected.StopAsync();
@@ -261,11 +219,7 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
         else
         {
             var player = await GetPlayerAsync(connectToVoiceChannel: false);
-
-            if (player is null)
-            {
-                return;
-            }
+            if (player is null) return;
 
             if (player.CurrentItem is null)
             {
@@ -281,50 +235,35 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
         await FollowupAsync(embed: LeaveEmbed().Build());
     }
 
-    /// <summary>
-    /// Sets the playback volume to the specified value between 0 and 100,
-    /// persists the new value to the database, and displays a visual volume bar.
-    /// </summary>
+    /// <summary>Sets the playback volume (0–100) and persists it to the database.</summary>
     [SlashCommand("volume", "Set playback volume (0–100).")]
     public async Task VolumeAsync([MinValue(0), MaxValue(100)] int volume)
     {
         await DeferAsync();
         var player = await GetPlayerAsync(connectToVoiceChannel: false);
-
-        if (player is null)
-        {
-            return;
-        }
+        if (player is null) return;
 
         await player.SetVolumeAsync(volume / 100f);
 
         new StoredProcedure().UpdateCreate(Constants.Constants.discordBotConnStr, "UpdateVolume",
         [
             new SqlParameter("@ServerUID", GuildId),
-            new SqlParameter("@Volume", volume)
+            new SqlParameter("@Volume",    volume)
         ]);
 
-        string bar = VolumeBar(volume);
-        var embed = Embed(EmojiVolume, "Volume", ColourSuccess)
-            .AddField("Level", $"{bar}  **{volume}%**", inline: false);
+        var embed = MakeEmbed(EmojiVolume, "Volume", ColourSuccess)
+            .AddField("Level", $"{VolumeBar(volume)}  **{volume}%**");
 
         await FollowupAsync(embed: embed.Build());
     }
 
-    /// <summary>
-    /// Displays an embed showing details about the track that is currently
-    /// playing, including artwork, artist, duration, source, and queue depth.
-    /// </summary>
+    /// <summary>Displays an embed for the currently playing track, with playback buttons.</summary>
     [SlashCommand("nowplaying", "Shows the currently playing track.")]
     public async Task NowPlayingAsync()
     {
         await DeferAsync();
         var player = await GetPlayerAsync(connectToVoiceChannel: false);
-
-        if (player is null)
-        {
-            return;
-        }
+        if (player is null) return;
 
         if (player.State is not PlayerState.Playing)
         {
@@ -332,24 +271,22 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
             return;
         }
 
-        var track = player.CurrentTrack!;
-        await FollowupAsync(embed: BuildNowPlayingEmbed(track, player.Queue.Count).Build());
+        await FollowupAsync(
+            embed: BuildNowPlayingEmbed(player.CurrentTrack!, player.Queue.Count).Build(),
+            components: BuildPlaybackButtons(paused: false));
     }
 
     /// <summary>
-    /// Displays a paginated embed listing all tracks in the queue (10 per page).
-    /// If the queue is empty, shows the now-playing embed instead.
+    /// Shows the queue as paginated embeds (10 tracks per page).
+    /// Uses plain follow-up messages instead of the Fergun.Interactive paginator
+    /// to avoid a SelectMenuBuilder constructor mismatch with the current Discord.Net build.
     /// </summary>
     [SlashCommand("queue", "Shows the upcoming tracks.")]
     public async Task GetQueueAsync()
     {
         await DeferAsync();
         var player = await GetPlayerAsync(connectToVoiceChannel: false);
-
-        if (player is null)
-        {
-            return;
-        }
+        if (player is null) return;
 
         if (player.State != PlayerState.Playing)
         {
@@ -361,54 +298,47 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
 
         if (player.Queue.Count == 0)
         {
-            await FollowupAsync(embed: BuildNowPlayingEmbed(current, 0).Build());
+            await FollowupAsync(
+                embed: BuildNowPlayingEmbed(current, 0).Build(),
+                components: BuildPlaybackButtons(paused: false));
             return;
         }
 
-        var pages = new List<PageBuilder>();
+        // Split into pages of 10 tracks
+        var pages = new List<string>();
         var sb = new System.Text.StringBuilder();
         int i = 0;
+        int total = player.Queue.Count;
 
         foreach (var item in player.Queue)
         {
             i++;
-            var dur = item.Track.Duration;
-            sb.AppendLine($"`{i:00}.` [{item.Track.Title}]({item.Track.Uri}) — `{dur:hh\\:mm\\:ss}`");
+            sb.AppendLine($"`{i:00}.` [{item.Track.Title}]({item.Track.Uri}) — `{item.Track.Duration:hh\\:mm\\:ss}`");
 
-            if (i % 10 == 0)
+            if (i % 10 == 0 || i == total)
             {
-                pages.Add(QueuePage(sb.ToString(), player.Queue.Count, current));
+                pages.Add(sb.ToString());
                 sb.Clear();
             }
         }
 
-        if (sb.Length > 0)
-        {
-            pages.Add(QueuePage(sb.ToString(), player.Queue.Count, current));
-        }
+        int pageCount = pages.Count;
 
-        var paginator = new StaticPaginatorBuilder()
-            .AddUser(Context.User)
-            .WithPages(pages)
-            .Build();
+        // First page is the deferred follow-up
+        await FollowupAsync(embed: BuildQueuePageEmbed(pages[0], total, current, page: 1, pageCount).Build());
 
-        await interactiveService.SendPaginatorAsync(paginator, Context.Channel, TimeSpan.FromMinutes(15));
+        // Additional pages as separate follow-ups (Discord allows up to 5 total)
+        for (int p = 1; p < Math.Min(pageCount, 5); p++)
+            await FollowupAsync(embed: BuildQueuePageEmbed(pages[p], total, current, page: p + 1, pageCount).Build());
     }
 
-    /// <summary>
-    /// Re-queues the currently playing track a specified number of additional
-    /// times so that it repeats back-to-back after finishing.
-    /// </summary>
+    /// <summary>Re-queues the current track N additional times.</summary>
     [SlashCommand("loop", "Queues the current track N more times.")]
     public async Task LoopAsync([MinValue(1)] int times)
     {
         await DeferAsync();
         var player = await GetPlayerAsync(connectToVoiceChannel: false);
-
-        if (player is null)
-        {
-            return;
-        }
+        if (player is null) return;
 
         if (player.CurrentItem is null)
         {
@@ -419,27 +349,19 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
         var track = player.CurrentTrack!;
 
         for (int i = 0; i < times; i++)
-        {
             await player.PlayAsync(track);
-        }
 
-        await ReplyEmbedAsync(EmojiLoop, "Loop", $"**{track.Title}** will repeat **{times}** more time(s).", ColourSuccess);
+        await ReplyEmbedAsync(EmojiLoop, "Loop",
+            $"**{track.Title}** will repeat **{times}** more time(s).", ColourSuccess);
     }
 
-    /// <summary>
-    /// Re-queues the currently playing track exactly one additional time so
-    /// that it plays again immediately after the current playthrough ends.
-    /// </summary>
+    /// <summary>Re-queues the current track one additional time.</summary>
     [SlashCommand("repeat", "Queues the current track one more time.")]
     public async Task RepeatAsync()
     {
         await DeferAsync();
         var player = await GetPlayerAsync(connectToVoiceChannel: false);
-
-        if (player is null)
-        {
-            return;
-        }
+        if (player is null) return;
 
         if (player.CurrentItem is null)
         {
@@ -452,20 +374,13 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
         await ReplyEmbedAsync(EmojiLoop, "Repeat", $"**{track.Title}** added to queue again.", ColourSuccess);
     }
 
-    /// <summary>
-    /// Swaps the positions of two tracks in the queue identified by their
-    /// 0-based index positions.
-    /// </summary>
+    /// <summary>Swaps two tracks in the queue by their 0-based index positions.</summary>
     [SlashCommand("swap", "Swaps two tracks in the queue by position.")]
     public async Task SwapAsync([MinValue(0)] int posA, [MinValue(0)] int posB)
     {
         await DeferAsync();
         var player = await GetPlayerAsync(connectToVoiceChannel: false);
-
-        if (player is null)
-        {
-            return;
-        }
+        if (player is null) return;
 
         try
         {
@@ -473,60 +388,46 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
             (list[posA], list[posB]) = (list[posB], list[posA]);
 
             await player.Queue.ClearAsync();
-
             foreach (var item in list)
-            {
                 await player.Queue.AddAsync(item);
-            }
 
             await ReplyEmbedAsync(EmojiSuccess, "Swap",
                 $"Swapped **#{posA + 1}** and **#{posB + 1}** in the queue.", ColourSuccess);
         }
         catch
         {
-            await ReplyEmbedAsync(EmojiError, "Swap Failed", "One or both positions don't exist in the queue.", ColourError);
+            await ReplyEmbedAsync(EmojiError, "Swap Failed",
+                "One or both positions don't exist in the queue.", ColourError);
         }
     }
 
-    /// <summary>
-    /// Randomly shuffles the order of all tracks currently in the queue.
-    /// Requires at least two tracks to be present.
-    /// </summary>
+    /// <summary>Randomly shuffles all queued tracks.</summary>
     [SlashCommand("shuffle", "Randomises the queue.")]
     public async Task ShuffleAsync()
     {
         await DeferAsync();
         var player = await GetPlayerAsync(connectToVoiceChannel: false);
-
-        if (player is null)
-        {
-            return;
-        }
+        if (player is null) return;
 
         if (player.Queue.Count < 2)
         {
-            await ReplyEmbedAsync(EmojiShuffle, "Shuffle", "Need at least 2 tracks in the queue to shuffle.", ColourWarning);
+            await ReplyEmbedAsync(EmojiShuffle, "Shuffle",
+                "Need at least 2 tracks in the queue to shuffle.", ColourWarning);
             return;
         }
 
         await player.Queue.ShuffleAsync();
-        await ReplyEmbedAsync(EmojiShuffle, "Shuffled", $"**{player.Queue.Count}** tracks shuffled.", ColourSuccess);
+        await ReplyEmbedAsync(EmojiShuffle, "Shuffled",
+            $"**{player.Queue.Count}** tracks shuffled.", ColourSuccess);
     }
 
-    /// <summary>
-    /// Removes all tracks from the queue and deletes the corresponding
-    /// database records for this guild.
-    /// </summary>
+    /// <summary>Clears all queued tracks and removes them from the database.</summary>
     [SlashCommand("clear", "Removes all tracks from the queue.")]
     public async Task ClearQueueAsync()
     {
         await DeferAsync();
         var player = await GetPlayerAsync(connectToVoiceChannel: false);
-
-        if (player is null)
-        {
-            return;
-        }
+        if (player is null) return;
 
         if (player.Queue.Count < 1)
         {
@@ -545,19 +446,13 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
         await ReplyEmbedAsync(EmojiQueue, "Queue Cleared", $"Removed **{count}** track(s).", ColourSuccess);
     }
 
-    /// <summary>
-    /// Removes a single track from the queue at the specified 1-based position.
-    /// </summary>
+    /// <summary>Removes a specific track from the queue at a 1-based position.</summary>
     [SlashCommand("remove", "Removes a specific track from the queue by position.")]
     public async Task RemoveAsync([MinValue(1)] int position)
     {
         await DeferAsync();
         var player = await GetPlayerAsync(connectToVoiceChannel: false);
-
-        if (player is null)
-        {
-            return;
-        }
+        if (player is null) return;
 
         try
         {
@@ -569,24 +464,18 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
         }
         catch
         {
-            await ReplyEmbedAsync(EmojiError, "Remove Failed", $"No track at position **#{position}**.", ColourError);
+            await ReplyEmbedAsync(EmojiError, "Remove Failed",
+                $"No track at position **#{position}**.", ColourError);
         }
     }
 
-    /// <summary>
-    /// Seeks to a specific timestamp within the currently playing track.
-    /// Accepts timestamps in the format <c>hh:mm:ss</c>, e.g. <c>00:01:30</c>.
-    /// </summary>
+    /// <summary>Seeks to a timestamp (hh:mm:ss) within the current track.</summary>
     [SlashCommand("seek", "Jumps to a timestamp in the current track (e.g. 00:01:30).")]
     public async Task SeekAsync([MinLength(1)] string timestamp)
     {
         await DeferAsync();
         var player = await GetPlayerAsync(connectToVoiceChannel: false);
-
-        if (player is null)
-        {
-            return;
-        }
+        if (player is null) return;
 
         if (player.State != PlayerState.Playing)
         {
@@ -615,15 +504,173 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
 
     #endregion
 
+    // =========================================================================
+    // Button Component Interactions
+    // =========================================================================
+
+    #region Button Interactions
+
+    [ComponentInteraction(BtnPause)]
+    public async Task OnPauseButtonAsync()
+    {
+        await DeferAsync();
+        var player = await GetPlayerAsync(connectToVoiceChannel: false);
+        if (player is null) return;
+
+        if (player.State is PlayerState.Paused)
+        {
+            await RespondWithWarningUpdateAsync("Already paused.");
+            return;
+        }
+
+        await player.PauseAsync();
+        await UpdateNowPlayingMessageAsync(player, paused: true);
+    }
+
+    [ComponentInteraction(BtnResume)]
+    public async Task OnResumeButtonAsync()
+    {
+        await DeferAsync();
+        var player = await GetPlayerAsync(connectToVoiceChannel: false);
+        if (player is null) return;
+
+        if (player.State is not PlayerState.Paused)
+        {
+            await RespondWithWarningUpdateAsync("The player isn't paused.");
+            return;
+        }
+
+        await player.ResumeAsync();
+        await UpdateNowPlayingMessageAsync(player, paused: false);
+    }
+
+    [ComponentInteraction(BtnSkip)]
+    public async Task OnSkipButtonAsync()
+    {
+        await DeferAsync();
+        var player = await GetPlayerAsync(connectToVoiceChannel: false);
+        if (player is null) return;
+
+        if (player.CurrentItem is null)
+        {
+            await RespondWithWarningUpdateAsync("Nothing is playing right now.");
+            return;
+        }
+
+        await player.SkipAsync();
+
+        if (player.CurrentItem is { } next)
+            await UpdateNowPlayingMessageAsync(player, paused: false);
+        else
+            await ModifyOriginalResponseAsync(m =>
+            {
+                m.Embed = MakeEmbed(EmojiSkip, "Skipped", ColourDefault)
+                                   .WithDescription("Queue is now empty.")
+                                   .Build();
+                m.Components = new ComponentBuilder().Build();
+            });
+    }
+
+    [ComponentInteraction(BtnStop)]
+    public async Task OnStopButtonAsync()
+    {
+        await DeferAsync();
+        var player = await GetPlayerAsync(connectToVoiceChannel: false);
+        if (player is null) return;
+
+        await player.StopAsync();
+        await player.DisconnectAsync();
+        DeletePlayerConnected(GuildId);
+
+        await ModifyOriginalResponseAsync(m =>
+        {
+            m.Embed = LeaveEmbed().Build();
+            m.Components = new ComponentBuilder().Build();
+        });
+    }
+
+    [ComponentInteraction(BtnShuffle)]
+    public async Task OnShuffleButtonAsync()
+    {
+        await DeferAsync();
+        var player = await GetPlayerAsync(connectToVoiceChannel: false);
+        if (player is null) return;
+
+        if (player.Queue.Count < 2)
+        {
+            await RespondWithWarningUpdateAsync("Need at least 2 tracks queued to shuffle.");
+            return;
+        }
+
+        await player.Queue.ShuffleAsync();
+        await UpdateNowPlayingMessageAsync(player, player.State is PlayerState.Paused);
+    }
+
+    [ComponentInteraction(BtnLoop1)]
+    public async Task OnLoop1ButtonAsync()
+    {
+        await DeferAsync();
+        var player = await GetPlayerAsync(connectToVoiceChannel: false);
+        if (player is null) return;
+
+        if (player.CurrentTrack is { } track)
+            await player.PlayAsync(track);
+
+        await UpdateNowPlayingMessageAsync(player, player.State is PlayerState.Paused);
+    }
+
+    [ComponentInteraction(BtnVolUp)]
+    public async Task OnVolUpButtonAsync()
+    {
+        await DeferAsync();
+        await AdjustVolumeAsync(delta: +10);
+    }
+
+    [ComponentInteraction(BtnVolDown)]
+    public async Task OnVolDownButtonAsync()
+    {
+        await DeferAsync();
+        await AdjustVolumeAsync(delta: -10);
+    }
+
+    [ComponentInteraction(BtnQueueB)]
+    public async Task OnQueueButtonAsync()
+    {
+        await DeferAsync();
+        var player = await GetPlayerAsync(connectToVoiceChannel: false);
+        if (player is null) return;
+
+        if (player.Queue.Count == 0)
+        {
+            await FollowupAsync(
+                embed: BuildNowPlayingEmbed(player.CurrentTrack!, 0).Build(),
+                components: BuildPlaybackButtons(player.State is PlayerState.Paused),
+                ephemeral: true);
+            return;
+        }
+
+        var sb = new System.Text.StringBuilder();
+        int i = 0;
+
+        foreach (var item in player.Queue.Take(10))
+        {
+            i++;
+            sb.AppendLine($"`{i:00}.` [{item.Track.Title}]({item.Track.Uri}) — `{item.Track.Duration:hh\\:mm\\:ss}`");
+        }
+
+        if (player.Queue.Count > 10)
+            sb.AppendLine($"*… and {player.Queue.Count - 10} more. Use `/queue` for full list.*");
+
+        var embed = MakeEmbed(EmojiQueue, $"Queue — {player.Queue.Count} track(s)", ColourDefault)
+            .WithDescription($"**Now playing:** {player.CurrentTrack!.Title}\n\n{sb}");
+
+        await FollowupAsync(embed: embed.Build(), ephemeral: true);
+    }
+
+    #endregion
+
     #region Private Helpers
 
-    /// <summary>
-    /// Retrieves or creates a <see cref="QueuedLavalinkPlayer"/> for the current
-    /// guild context. When <paramref name="connectToVoiceChannel"/> is <c>true</c>
-    /// the bot will join the user's channel; otherwise it only retrieves an
-    /// already-connected player. Returns <c>null</c> and sends an error embed
-    /// automatically on any failure.
-    /// </summary>
     private async ValueTask<QueuedLavalinkPlayer?> GetPlayerAsync(bool connectToVoiceChannel = true)
     {
         var options = new CustomPlayerOptions
@@ -656,11 +703,6 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
         return result.Player;
     }
 
-    /// <summary>
-    /// Ensures the bot has joined the invoking user's voice channel before
-    /// attempting playback. Starts the audio service, registers the player in
-    /// the database, and returns the connected player, or <c>null</c> on failure.
-    /// </summary>
     private async Task<LavalinkPlayer?> EnsureJoinedAsync()
     {
         if (Context.User is not IVoiceState { VoiceChannel: not null } voiceState)
@@ -675,12 +717,6 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
         return await GetPlayerAsync(connectToVoiceChannel: true);
     }
 
-    /// <summary>
-    /// Shared entry point for both <c>/play</c> and <c>/playnext</c>. Loads
-    /// tracks from the audio service for the given query and delegates to
-    /// either <see cref="PlaySingleTrackAsync"/> or
-    /// <see cref="PlayMultipleTracksAsync"/> depending on the result.
-    /// </summary>
     private async Task QueueAndPlayAsync(LavalinkPlayer player, string query, bool playNext)
     {
         var tracks = await audioService.Tracks.LoadTracksAsync(query, TrackSearchMode.YouTube);
@@ -691,209 +727,221 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
             return;
         }
 
-        bool isUrl = Uri.IsWellFormedUriString(query, UriKind.Absolute);
-        bool isPlaylist = isUrl && tracks.Count > 1;
+        bool isPlaylist = Uri.IsWellFormedUriString(query, UriKind.Absolute) && tracks.Count > 1;
 
-        if (isPlaylist)
-        {
-            await PlayMultipleTracksAsync(player, tracks, playNext);
-        }
-        else
-        {
-            await PlaySingleTrackAsync(player, tracks.Track, playNext);
-        }
+        await (isPlaylist
+            ? PlayMultipleTracksAsync(player, tracks, playNext)
+            : PlaySingleTrackAsync(player, tracks.Track, playNext));
     }
 
-    /// <summary>
-    /// Queues a single <see cref="LavalinkTrack"/>, optionally inserting it
-    /// before the rest of the queue when <paramref name="playNext"/> is
-    /// <c>true</c>. Sets volume and sends a confirmation embed.
-    /// </summary>
     private async Task PlaySingleTrackAsync(LavalinkPlayer player, LavalinkTrack track, bool playNext)
     {
         AddMusicTable(track, Context.Guild.Id.ToString(), Context.User.Username);
 
-        string artist = "";
-        string albumName = "";
-
-        if (track.AdditionalInformation is { Count: > 0 } info)
-        {
-            if (info.TryGetValue("artistUrl", out var artistVal))
-            {
-                artist = artistVal.ToString();
-            }
-
-            if (info.TryGetValue("albumName", out var albumVal))
-            {
-                albumName = albumVal.ToString();
-            }
-        }
+        string artist = ExtractAdditionalInfo(track, "artistUrl");
+        string albumName = ExtractAdditionalInfo(track, "albumName");
 
         if (playNext)
-        {
-            var queued = await GetPlayerAsync(connectToVoiceChannel: false);
-
-            if (queued?.Queue.Count > 0)
-            {
-                var saved = queued.Queue.ToList();
-                await queued.Queue.ClearAsync();
-                await player.PlayAsync(track);
-
-                foreach (var item in saved)
-                {
-                    await queued.Queue.AddAsync(item);
-                }
-            }
-            else
-            {
-                await player.PlayAsync(track);
-            }
-        }
+            await InsertAsNextAsync(player, singleTrack: track);
         else
-        {
             await player.PlayAsync(track);
-        }
 
         float volume = GetVolume(GuildId) / 100f;
         await player.SetVolumeAsync(volume);
 
-        var queuedPlayer = await GetPlayerAsync(connectToVoiceChannel: false);
-        int queueCount = queuedPlayer?.Queue.Count ?? 0;
-        string displayArtist = string.IsNullOrEmpty(artist) ? track.Author : artist;
+        var queueCount = (await GetPlayerAsync(connectToVoiceChannel: false))?.Queue.Count ?? 0;
+        string displayArt = string.IsNullOrWhiteSpace(artist) ? track.Author : artist;
 
-        var embed = Embed(EmojiPlay, playNext ? "Playing Next" : "Added to Queue", ColourSuccess)
+        var embed = MakeEmbed(EmojiPlay, playNext ? "Playing Next" : "Added to Queue", ColourSuccess)
             .WithThumbnailUrl(track.ArtworkUri?.ToString())
             .AddField("Track", $"[{track.Title}]({track.Uri})", inline: false)
-            .AddField("Artist", displayArtist, inline: true)
+            .AddField("Artist", displayArt, inline: true)
             .AddField("Duration", $"`{track.Duration:hh\\:mm\\:ss}`", inline: true)
             .AddField("Source", track.SourceName.ToUpperInvariant(), inline: true);
 
-        if (!string.IsNullOrEmpty(albumName))
-        {
+        if (!string.IsNullOrWhiteSpace(albumName))
             embed.AddField("Album", albumName, inline: true);
-        }
 
         embed.AddField("Volume", $"{volume * 100:0}%", inline: true)
              .AddField("In Queue", $"{queueCount}", inline: true);
 
-        await FollowupAsync(embed: embed.Build());
+        await FollowupAsync(
+            embed: embed.Build(),
+            components: BuildPlaybackButtons(paused: false));
     }
 
     /// <summary>
-    /// Queues all tracks from a resolved playlist result, optionally inserting
-    /// them before the existing queue when <paramref name="playNext"/> is
-    /// <c>true</c>. Sets volume and sends a playlist confirmation embed.
+    /// Queues all tracks from a resolved playlist.
+    /// All embed field values are guarded against null/empty before use —
+    /// Discord rejects blank field values with ArgumentException.
     /// </summary>
     private async Task PlayMultipleTracksAsync(LavalinkPlayer player, TrackLoadResult tracks, bool playNext)
     {
-        string playlistName = "";
-        string totalTracks = "";
+        // Default every value up front; only overwrite when the source is non-blank.
+        string playlistName = "Unknown Playlist";
+        string totalTracks = tracks.Count.ToString();
         string artworkUrl = "";
         string playlistUrl = "";
 
         if (tracks.Playlist is { } playlist)
         {
-            playlistName = playlist.Name;
+            if (!string.IsNullOrWhiteSpace(playlist.Name))
+                playlistName = playlist.Name;
 
             foreach (var (key, value) in playlist.AdditionalInformation)
             {
+                string str = value.ToString();
                 switch (key)
                 {
-                    case "totalTracks":
-                        totalTracks = value.ToString();
-                        break;
-                    case "artworkUrl":
-                        artworkUrl = value.ToString();
-                        break;
-                    case "url":
-                        playlistUrl = value.ToString();
-                        break;
+                    case "totalTracks" when !string.IsNullOrWhiteSpace(str):
+                        totalTracks = str; break;
+                    case "artworkUrl" when !string.IsNullOrWhiteSpace(str):
+                        artworkUrl = str; break;
+                    case "url" when !string.IsNullOrWhiteSpace(str):
+                        playlistUrl = str; break;
                 }
             }
         }
 
-        var guildIdStr = Context.Guild.Id.ToString();
-        var userName = Context.User.Username;
+        string guildIdStr = Context.Guild.Id.ToString();
+        string userName = Context.User.Username;
 
         if (playNext)
-        {
-            var queued = await GetPlayerAsync(connectToVoiceChannel: false);
-
-            if (queued?.Queue.Count > 0)
-            {
-                var saved = queued.Queue.ToList();
-                await queued.Queue.ClearAsync();
-
-                foreach (var t in tracks.Tracks)
-                {
-                    await player.PlayAsync(t);
-                    AddMusicTable(t, guildIdStr, userName);
-                }
-
-                foreach (var item in saved)
-                {
-                    await queued.Queue.AddAsync(item);
-                }
-            }
-            else
-            {
-                foreach (var t in tracks.Tracks)
-                {
-                    await player.PlayAsync(t);
-                    AddMusicTable(t, guildIdStr, userName);
-                }
-            }
-        }
+            await InsertPlaylistAsNextAsync(player, tracks, guildIdStr, userName);
         else
-        {
-            foreach (var t in tracks.Tracks)
-            {
-                await player.PlayAsync(t);
-                AddMusicTable(t, guildIdStr, userName);
-            }
-        }
+            await EnqueueAllAsync(player, tracks, guildIdStr, userName);
 
         float volume = GetVolume(GuildId) / 100f;
         await player.SetVolumeAsync(volume);
 
-        var embed = Embed(EmojiPlay, playNext ? "Playlist — Playing Next" : "Playlist Added", ColourSuccess)
-            .WithThumbnailUrl(artworkUrl);
+        var embed = MakeEmbed(EmojiPlay, playNext ? "Playlist — Playing Next" : "Playlist Added", ColourSuccess);
 
-        if (!string.IsNullOrEmpty(playlistUrl))
-        {
+        if (!string.IsNullOrWhiteSpace(artworkUrl))
+            embed.WithThumbnailUrl(artworkUrl);
+
+        if (!string.IsNullOrWhiteSpace(playlistUrl))
             embed.WithUrl(playlistUrl);
-        }
 
         embed.AddField("Playlist", playlistName, inline: false)
              .AddField("Tracks", totalTracks, inline: true)
              .AddField("Volume", $"{volume * 100:0}%", inline: true);
 
-        await FollowupAsync(embed: embed.Build());
+        await FollowupAsync(
+            embed: embed.Build(),
+            components: BuildPlaybackButtons(paused: false));
     }
 
-    /// <summary>
-    /// Rewrites Twitter/X URLs to use the fxtwitter proxy so that Lavalink
-    /// can correctly resolve and stream the media.
-    /// </summary>
-    private static string HandleTwitter(string query)
+
+    private async Task InsertAsNextAsync(LavalinkPlayer player, LavalinkTrack singleTrack)
     {
-        if (query.Contains("https://twitter.com"))
-        {
-            return query.Replace("twitter", "dl.fxtwitter");
-        }
+        var queued = await GetPlayerAsync(connectToVoiceChannel: false);
 
-        if (query.Contains("https://x.com"))
+        if (queued?.Queue.Count > 0)
         {
-            return query.Replace("x.com", "dl.fxtwitter.com");
+            var saved = queued.Queue.ToList();
+            await queued.Queue.ClearAsync();
+            await player.PlayAsync(singleTrack);
+            foreach (var item in saved)
+                await queued.Queue.AddAsync(item);
         }
-
-        return query;
+        else
+        {
+            await player.PlayAsync(singleTrack);
+        }
     }
 
-    /// <summary>
-    /// Factory method required by Lavalink4NET to instantiate a
-    /// <see cref="CustomPlayer"/> with the provided player properties.
-    /// </summary>
+    private async Task InsertPlaylistAsNextAsync(
+        LavalinkPlayer player, TrackLoadResult tracks, string guildIdStr, string userName)
+    {
+        var queued = await GetPlayerAsync(connectToVoiceChannel: false);
+
+        if (queued?.Queue.Count > 0)
+        {
+            var saved = queued.Queue.ToList();
+            await queued.Queue.ClearAsync();
+            await EnqueueAllAsync(player, tracks, guildIdStr, userName);
+            foreach (var item in saved)
+                await queued.Queue.AddAsync(item);
+        }
+        else
+        {
+            await EnqueueAllAsync(player, tracks, guildIdStr, userName);
+        }
+    }
+
+    private async Task EnqueueAllAsync(
+        LavalinkPlayer player, TrackLoadResult tracks, string guildIdStr, string userName)
+    {
+        foreach (var t in tracks.Tracks)
+        {
+            await player.PlayAsync(t);
+            AddMusicTable(t, guildIdStr, userName);
+        }
+    }
+
+
+    private async Task AdjustVolumeAsync(int delta)
+    {
+        var player = await GetPlayerAsync(connectToVoiceChannel: false);
+        if (player is null) return;
+
+        int current = GetVolume(GuildId);
+        int newVol = Math.Clamp(current + delta, 0, 100);
+
+        await player.SetVolumeAsync(newVol / 100f);
+
+        new StoredProcedure().UpdateCreate(Constants.Constants.discordBotConnStr, "UpdateVolume",
+        [
+            new SqlParameter("@ServerUID", GuildId),
+            new SqlParameter("@Volume",    newVol)
+        ]);
+
+        await UpdateNowPlayingMessageAsync(player, player.State is PlayerState.Paused);
+    }
+
+
+    private async Task ReplyNowPlayingAsync(QueuedLavalinkPlayer player, bool paused)
+    {
+        if (player.CurrentTrack is null) return;
+
+        await FollowupAsync(
+            embed: BuildNowPlayingEmbed(player.CurrentTrack, player.Queue.Count).Build(),
+            components: BuildPlaybackButtons(paused));
+    }
+
+    private async Task UpdateNowPlayingMessageAsync(LavalinkPlayer player, bool paused)
+    {
+        if (player.CurrentTrack is null) return;
+
+        await ModifyOriginalResponseAsync(m =>
+        {
+            m.Embed = BuildNowPlayingEmbed(player.CurrentTrack, 0).Build();
+            m.Components = BuildPlaybackButtons(paused);
+        });
+    }
+
+    private async Task RespondWithWarningUpdateAsync(string message)
+    {
+        await ModifyOriginalResponseAsync(m =>
+            m.Embed = MakeEmbed(EmojiError, "Warning", ColourWarning)
+                          .WithDescription(message)
+                          .Build());
+    }
+
+
+    private static string HandleTwitter(string query) =>
+        query switch
+        {
+            _ when query.Contains("https://twitter.com") => query.Replace("twitter", "dl.fxtwitter"),
+            _ when query.Contains("https://x.com") => query.Replace("x.com", "dl.fxtwitter.com"),
+            _ => query
+        };
+
+    private static string ExtractAdditionalInfo(LavalinkTrack track, string key) =>
+        track.AdditionalInformation is { Count: > 0 } info && info.TryGetValue(key, out var val)
+            ? val.ToString() ?? ""
+            : "";
+
     private static ValueTask<CustomPlayer> CreatePlayerAsync(
         IPlayerProperties<CustomPlayer, CustomPlayerOptions> properties,
         CancellationToken cancellationToken = default)
@@ -905,36 +953,24 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
 
     #endregion
 
-    #region Embed Factories
+    // =========================================================================
+    // Embed / Component Factories
+    // =========================================================================
 
-    /// <summary>
-    /// Creates a base <see cref="EmbedBuilder"/> with a consistent title,
-    /// colour, footer (showing the requesting user), and current timestamp.
-    /// </summary>
-    private EmbedBuilder Embed(string emoji, string title, Color color) =>
+    #region Embed & Component Factories
+
+    private EmbedBuilder MakeEmbed(string emoji, string title, Color color) =>
         new EmbedBuilder()
             .WithTitle($"{emoji}  {title}")
             .WithColor(color)
             .WithFooter($"Requested by {Context.User.Username}", Context.User.GetAvatarUrl())
             .WithCurrentTimestamp();
 
-    /// <summary>
-    /// Builds and sends a simple description-only embed as a follow-up message.
-    /// Used for short success, warning, and error responses.
-    /// </summary>
-    private async Task ReplyEmbedAsync(string emoji, string title, string description, Color color)
-    {
-        var embed = Embed(emoji, title, color).WithDescription(description);
-        await FollowupAsync(embed: embed.Build());
-    }
+    private async Task ReplyEmbedAsync(string emoji, string title, string description, Color color) =>
+        await FollowupAsync(embed: MakeEmbed(emoji, title, color).WithDescription(description).Build());
 
-    /// <summary>
-    /// Builds a rich "Now Playing" embed showing track artwork, title as a
-    /// hyperlink, artist, duration, source, and the number of remaining tracks.
-    /// </summary>
-    private EmbedBuilder BuildNowPlayingEmbed(LavalinkTrack track, int queueRemaining)
-    {
-        var embed = Embed(EmojiPlay, "Now Playing", ColourDefault)
+    private EmbedBuilder BuildNowPlayingEmbed(LavalinkTrack track, int queueRemaining) =>
+        MakeEmbed(EmojiPlay, "Now Playing", ColourDefault)
             .WithThumbnailUrl(track.ArtworkUri?.ToString())
             .WithDescription($"### [{track.Title}]({track.Uri})")
             .AddField("Artist", track.Author, inline: true)
@@ -942,52 +978,64 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
             .AddField("Source", track.SourceName.ToUpperInvariant(), inline: true)
             .AddField("Up Next", $"{queueRemaining} track(s)", inline: true);
 
-        return embed;
-    }
-
     /// <summary>
-    /// Builds a single page for the paginated queue display, showing the
-    /// currently playing track and a numbered list of upcoming items.
+    /// Builds a single-page queue embed. Does NOT use PageBuilder — the Fergun.Interactive
+    /// paginator is avoided due to a SelectMenuBuilder constructor mismatch with
+    /// the current Discord.Net build.
     /// </summary>
-    private PageBuilder QueuePage(string content, int total, LavalinkTrack current) =>
-        new PageBuilder()
-            .WithTitle($"{EmojiQueue}  Queue  —  {total} track(s)")
+    private EmbedBuilder BuildQueuePageEmbed(
+        string content, int total, LavalinkTrack current, int page, int pageCount)
+    {
+        string title = pageCount > 1
+            ? $"{EmojiQueue}  Queue  —  {total} track(s)  (Page {page}/{pageCount})"
+            : $"{EmojiQueue}  Queue  —  {total} track(s)";
+
+        return new EmbedBuilder()
+            .WithTitle(title)
             .WithDescription($"**Now playing:** {current.Title}\n\n{content}")
             .WithColor(ColourDefault)
+            .WithFooter($"Requested by {Context.User.Username}", Context.User.GetAvatarUrl())
             .WithCurrentTimestamp();
+    }
 
-    /// <summary>
-    /// Builds the standard "Disconnected / Goodbye" embed used by both
-    /// <c>/leave</c> and <c>/stop</c>.
-    /// </summary>
+    private static MessageComponent BuildPlaybackButtons(bool paused) =>
+        new ComponentBuilder()
+            .WithButton(
+                paused ? "Resume" : "Pause",
+                paused ? BtnResume : BtnPause,
+                paused ? ButtonStyle.Success : ButtonStyle.Primary,
+                new Emoji(paused ? EmojiPlay : EmojiPause), row: 0)
+            .WithButton("Skip", BtnSkip, ButtonStyle.Secondary, new Emoji(EmojiSkip), row: 0)
+            .WithButton("Stop", BtnStop, ButtonStyle.Danger, new Emoji(EmojiStop), row: 0)
+            .WithButton("Shuffle", BtnShuffle, ButtonStyle.Secondary, new Emoji(EmojiShuffle), row: 0)
+            .WithButton("Loop ×1", BtnLoop1, ButtonStyle.Secondary, new Emoji(EmojiLoop), row: 0)
+            .WithButton("Vol −", BtnVolDown, ButtonStyle.Secondary, new Emoji(EmojiVolDown), row: 1)
+            .WithButton("Vol +", BtnVolUp, ButtonStyle.Secondary, new Emoji(EmojiVolume), row: 1)
+            .WithButton("Queue", BtnQueueB, ButtonStyle.Secondary, new Emoji(EmojiQueue), row: 1)
+            .Build();
+
     private EmbedBuilder LeaveEmbed() =>
-        Embed(EmojiLeave, "Disconnected", ColourDefault)
+        MakeEmbed(EmojiLeave, "Disconnected", ColourDefault)
             .WithDescription("Goodbye! Have a great time. 👋");
 
-    /// <summary>
-    /// Generates a 10-block Unicode progress bar representing the current
-    /// volume level, e.g. <c>████████░░</c> for 80%.
-    /// </summary>
     private static string VolumeBar(int volume)
     {
         int filled = volume / 10;
-        return string.Create(10, filled, (span, f) =>
+        return string.Create(10, filled, static (span, f) =>
         {
-            for (int i = 0; i < 10; i++)
-            {
-                span[i] = i < f ? '█' : '░';
-            }
+            span.Fill('░');
+            span[..f].Fill('█');
         });
     }
 
     #endregion
 
+    // =========================================================================
+    // Database Helpers
+    // =========================================================================
+
     #region DB Helpers
 
-    /// <summary>
-    /// Retrieves the stored playback volume for the given guild from the
-    /// database. Returns 50 as a safe default if no record is found.
-    /// </summary>
     private int GetVolume(long guildId)
     {
         var dt = new StoredProcedure().Select(Constants.Constants.discordBotConnStr, "GetVolume",
@@ -998,61 +1046,40 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
         foreach (DataRow row in dt.Rows)
         {
             if (int.TryParse(row["Volume"]?.ToString(), out int v))
-            {
                 return v;
-            }
         }
 
         return 50;
     }
 
-    /// <summary>
-    /// Inserts a record into the database indicating that the bot has connected
-    /// to a voice channel, storing the guild, voice channel, text channel, and
-    /// the user who triggered the connection.
-    /// </summary>
-    private void AddPlayerConnected(IVoiceState voiceState)
-    {
+    private void AddPlayerConnected(IVoiceState voiceState) =>
         new StoredProcedure().UpdateCreate(Constants.Constants.discordBotConnStr, "AddPlayerConnected",
         [
-            new SqlParameter("@ServerID", GuildId),
+            new SqlParameter("@ServerID",       GuildId),
             new SqlParameter("@VoiceChannelID", (long)voiceState.VoiceChannel.Id),
-            new SqlParameter("@TextChannelID", (long)((ITextChannel)Context.Channel).Id),
-            new SqlParameter("@CreatedBy", Context.User.Id.ToString())
+            new SqlParameter("@TextChannelID",  (long)((ITextChannel)Context.Channel).Id),
+            new SqlParameter("@CreatedBy",      Context.User.Id.ToString())
         ]);
-    }
 
-    /// <summary>
-    /// Removes the connected-player record and clears all queued music entries
-    /// for the given guild from the database.
-    /// </summary>
     private void DeletePlayerConnected(long serverId)
     {
+        SqlParameter[] p = [new SqlParameter("@ServerID", serverId)];
         var sp = new StoredProcedure();
-        SqlParameter[] serverParam = [new SqlParameter("@ServerID", serverId)];
-        sp.UpdateCreate(Constants.Constants.discordBotConnStr, "DeletePlayerConnected", [.. serverParam]);
-        sp.UpdateCreate(Constants.Constants.discordBotConnStr, "DeleteMusicQueueAll", [.. serverParam]);
+        sp.UpdateCreate(Constants.Constants.discordBotConnStr, "DeletePlayerConnected", [.. p]);
+        sp.UpdateCreate(Constants.Constants.discordBotConnStr, "DeleteMusicQueueAll", [.. p]);
     }
 
-    /// <summary>
-    /// Records an audit entry in the database for a track that has been queued,
-    /// capturing the guild, video identifier, author, title, URL, and the
-    /// username of the person who requested it.
-    /// </summary>
     private void AddMusicTable(LavalinkTrack? track, string serverId, string createdBy)
     {
-        if (track is null)
-        {
-            return;
-        }
+        if (track is null) return;
 
         new StoredProcedure().UpdateCreate(Constants.Constants.discordBotConnStr, "AddMusic",
         [
-            new SqlParameter("@ServerID", long.Parse(serverId)),
-            new SqlParameter("@VideoID", track.Identifier),
-            new SqlParameter("@Author", track.Author),
-            new SqlParameter("@Title", track.Title),
-            new SqlParameter("@URL", track.Uri?.OriginalString ?? ""),
+            new SqlParameter("@ServerID",  long.Parse(serverId)),
+            new SqlParameter("@VideoID",   track.Identifier),
+            new SqlParameter("@Author",    track.Author),
+            new SqlParameter("@Title",     track.Title),
+            new SqlParameter("@URL",       track.Uri?.OriginalString ?? ""),
             new SqlParameter("@CreatedBy", createdBy)
         ]);
     }

@@ -10,38 +10,87 @@ namespace DiscordBot.SlashCommands
 {
     public class AdminCommands : InteractionModuleBase<SocketInteractionContext>
     {
-        [SlashCommand("pronoun", "Select a list of available pronouns.")]
+        private readonly EmbedHelper _embed = new();
+        private readonly StoredProcedure _sp = new();
+
+        private string Username => Context.User.Username;
+
+        [SlashCommand("pronoun", "Post a pronoun selection menu for members.")]
         [EnabledInDm(false)]
-        [Discord.Interactions.RequireUserPermission(ChannelPermission.ManageMessages)]
-        public async Task HandlePronoun()
+        [RequireUserPermission(ChannelPermission.ManageMessages)]
+        public async Task HandlePronounAsync()
         {
-            StoredProcedure stored = new StoredProcedure();
-            string connStr = Constants.Constants.discordBotConnStr;
-            DataTable dt = new DataTable();
-            EmbedHelper embed = new EmbedHelper();
             await DeferAsync();
 
-            // We will need to implement clickable buttons with the pronouns returned from the DB as a modal
-            ComponentBuilder builder = new ComponentBuilder();
+            var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetPronouns", []);
 
-            dt = stored.Select(connStr, "GetPronouns", new List<SqlParameter>());
-
+            var builder = new ComponentBuilder();
             foreach (DataRow dr in dt.Rows)
                 builder.WithButton(dr["Pronoun"].ToString(), dr["ID"].ToString());
 
-            await FollowupAsync(embed: embed.BuildMessageEmbed("Pronoun Selection", "Please select from the list of available pronouns.", "", Context.User.Username, Discord.Color.Blue).Build(), components: builder.Build()).ConfigureAwait(false);
+            await FollowupAsync(
+                embed: _embed.BuildMessageEmbed(
+                    "Pronoun Selection",
+                    "Select your pronouns from the list below.",
+                    "", Username, Color.Blue).Build(),
+                components: builder.Build());
         }
 
-        [SlashCommand("editbotnickname", "Change the bot's nickname from BigBirdBot to anything you would like.")]
+        [SlashCommand("editbotnickname", "Change the bot's nickname in this server.")]
         [EnabledInDm(false)]
-        [Discord.Interactions.RequireUserPermission(ChannelPermission.ManageRoles)]
-        public async Task HandleBotNickname(string nickName)
+        [RequireUserPermission(ChannelPermission.ManageRoles)]
+        public async Task HandleBotNicknameAsync(
+            [MinLength(1), MaxLength(32)] string nickName)
         {
             await DeferAsync(ephemeral: true);
-            EmbedHelper embed = new EmbedHelper();
+            await Context.Guild.CurrentUser.ModifyAsync(p => p.Nickname = nickName);
+            await FollowupAsync(embed: _embed.BuildMessageEmbed(
+                "Bot Nickname Updated",
+                $"Nickname changed to **{nickName}**.",
+                "", Username, Color.Blue).Build(), ephemeral: true);
+        }
 
-            await Context.Guild.CurrentUser.ModifyAsync(s => s.Nickname = nickName);
-            await FollowupAsync(embed: embed.BuildMessageEmbed("Edit Bot Nickname", "The bot's nickname was successfully updated to **" + nickName + "**.", "", Context.User.Username, Discord.Color.Blue).Build(), ephemeral: true).ConfigureAwait(false);
+        /// <summary>
+        /// Bulk-deletes up to 100 messages from the current channel.
+        /// Discord only allows bulk-delete on messages newer than 14 days;
+        /// older messages are skipped and the skipped count is reported.
+        /// </summary>
+        [SlashCommand("purge", "Bulk-delete up to 100 messages from this channel.")]
+        [EnabledInDm(false)]
+        [RequireUserPermission(ChannelPermission.ManageMessages)]
+        [RequireBotPermission(ChannelPermission.ManageMessages)]
+        public async Task HandlePurgeAsync(
+            [MinValue(1), MaxValue(100),
+         Summary("count", "Number of messages to delete (1–100)")] int count)
+        {
+            await DeferAsync(ephemeral: true);
+
+            var messages = await Context.Channel.GetMessagesAsync(count + 1).FlattenAsync();
+
+            // Discord bulk-delete only works on messages < 14 days old.
+            var cutoff = DateTimeOffset.UtcNow.AddDays(-14);
+            var eligible = messages.Where(m => m.Timestamp > cutoff).ToList();
+            int skipped = messages.Count() - eligible.Count;
+
+            if (eligible.Count == 0)
+            {
+                await FollowupAsync(embed: _embed.BuildErrorEmbed(
+                    "Purge", "No messages found that are younger than 14 days.", Username).Build(),
+                    ephemeral: true);
+                return;
+            }
+
+            await ((ITextChannel)Context.Channel).DeleteMessagesAsync(eligible);
+
+            string note = skipped > 0
+                ? $"\n*{skipped} message(s) older than 14 days were skipped.*"
+                : "";
+
+            await FollowupAsync(embed: _embed.BuildMessageEmbed(
+                "🗑️  Purge Complete",
+                $"Deleted **{eligible.Count}** message(s).{note}",
+                "", Username, Color.Orange).Build(), ephemeral: true);
         }
     }
 }
+
