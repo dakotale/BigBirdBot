@@ -19,13 +19,13 @@ public static class CreditHelper
         delta >= 0 ? $"+{CurrencyEmoji} {delta:N0}" : $"-{CurrencyEmoji} {Math.Abs(delta):N0}";
 
 
-    public const long DailyAmount = 500;
+    public const long DailyAmount = 5000;
     public const int DailyCooldownHours = 24;
     public const int WorkCooldownMinutes = 60;
     public const long WorkMin = 50;
-    public const long WorkMax = 500;
+    public const long WorkMax = 5000;
     public const long PassiveMessageAmount = 5;
-    public const long PuzzleSolveAmount = 1000;
+    public const long PuzzleSolveAmount = 10000;
 
     /// <summary>Credits awarded on pet level-up: 50 × new level.</summary>
     public static long PetLevelUpAmount(int newLevel) => 50 * newLevel;

@@ -143,7 +143,7 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
     [EnabledInDm(false)]
     public async Task HandleBuyAsync(
         [MinLength(1), MaxLength(8)] string ticker,
-        [MinValue(1), MaxValue(10000)] int shares)
+        [MinValue(1), MaxValue(10000000000)] int shares)
     {
         await DeferAsync();
 
@@ -217,7 +217,7 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
     [EnabledInDm(false)]
     public async Task HandleSellAsync(
         [MinLength(1), MaxLength(8)] string ticker,
-        [MinValue(1), MaxValue(10000)] int shares)
+        [MinValue(1), MaxValue(10000000000)] int shares)
     {
         await DeferAsync();
 

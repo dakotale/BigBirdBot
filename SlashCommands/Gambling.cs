@@ -959,7 +959,7 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
         long balance = _eco.GetBalance(UserId, ServerId);
 
         bool hasMegaBet = ShopHelper.HasActiveEffect(UserId, ServerId, "mega_bet");
-        long effectiveCap = hasMegaBet ? 100_000L : CreditHelper.MaxBet;
+        long effectiveCap = hasMegaBet ? 1100000000000 : CreditHelper.MaxBet;
 
         if (bet < CreditHelper.MinBet)
         {
