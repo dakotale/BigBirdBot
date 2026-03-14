@@ -20,7 +20,7 @@
   --text:    #ede6ff;
   --muted:   #6e638c;
   --code-bg: #0c0a18;
-  --max-w:   900px;
+  --max-w:   1200px;
 }
 
 
@@ -296,7 +296,7 @@ body::after {
   padding: 0 1.5rem;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 0.9rem;
+  gap: 1.1rem;
 }
 
 .stat {
@@ -414,7 +414,7 @@ body::after {
 
 .cmd-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 0.8rem;
 }
 
