@@ -1,7 +1,7 @@
 /* ============================================================
-   BigBirdBot Documentation
-   style.css
-   ============================================================ */
+ *  BigBirdBot Documentation
+ *  style.css
+ *  ============================================================ */
 
 
 /* ── Custom properties ─────────────────────────────────────── */
@@ -17,8 +17,8 @@
   --purple:  #b06eff;
   --gold:    #ffcc33;
   --orange:  #ff7a30;
-  --text:    #ede6ff;
-  --muted:   #6e638c;
+  --text:    #f5f0ff;
+  --muted:   #9e96b8;
   --code-bg: #0c0a18;
   --max-w:   1200px;
 }
@@ -48,8 +48,8 @@ body {
   overflow-x: hidden;
   /* Dot grid — more character than a plain solid background */
   background-image:
-    radial-gradient(circle, rgba(255, 77, 149, 0.055) 1px, transparent 1px),
-    radial-gradient(circle, rgba(0, 212, 240, 0.035) 1px, transparent 1px);
+  radial-gradient(circle, rgba(255, 77, 149, 0.055) 1px, transparent 1px),
+  radial-gradient(circle, rgba(0, 212, 240, 0.035) 1px, transparent 1px);
   background-size: 48px 48px, 96px 96px;
   background-position: 0 0, 24px 24px;
 }
@@ -419,9 +419,9 @@ body::after {
 }
 
 /*
-  Left-border accent hover pattern — more decisive than a radial gradient overlay.
-  Cards shift right slightly on hover to "lean into" the accent.
-*/
+ * Left-border accent hover pattern — more decisive than a radial gradient overlay.
+ * Cards shift right slightly on hover to "lean into" the accent.
+ */
 .cmd-card {
   background: var(--card);
   border: 1px solid var(--border);
