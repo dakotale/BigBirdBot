@@ -12,6 +12,7 @@ namespace DiscordBot.SlashCommands;
 /// Answer checking is handled in BotHost.OnMessageReceivedAsync.
 /// DB state: AddScrambleGame / GetScrambleByChannel / DeleteScrambleGame / GetScrambleHint
 /// </summary>
+[Group("game", "Play a minigame.")]
 public class Scramble : InteractionModuleBase<SocketInteractionContext>
 {
     private readonly EmbedHelper _embed = new();
