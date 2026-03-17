@@ -11,31 +11,76 @@ public static class CreditHelper
     public const string CurrencyName = "Credits";
 
     /// <summary>Formats a credit value with emoji, e.g. "⚡ 1,250"</summary>
-    public static string Format(long amount) =>
+    public static string Format(decimal amount) =>
         $"{CurrencyEmoji} **{amount:N0}**";
 
     /// <summary>Formats a signed delta, e.g. "+⚡ 500" or "-⚡ 200"</summary>
-    public static string FormatDelta(long delta) =>
+    public static string FormatDelta(decimal delta) =>
         delta >= 0 ? $"+{CurrencyEmoji} {delta:N0}" : $"-{CurrencyEmoji} {Math.Abs(delta):N0}";
 
+    // ── Prestige ranks ────────────────────────────────────────────────────────
+    private static readonly (decimal threshold, string rank)[] PrestigeTiers =
+    [
+        (0m,                  "🪨 Broke"),
+        (1_000_000m,          "🥉 Bronze"),
+        (10_000_000m,         "🥈 Silver"),
+        (100_000_000m,        "🥇 Gold"),
+        (1_000_000_000m,      "💎 Diamond"),
+        (10_000_000_000m,     "👑 Elite"),
+        (100_000_000_000m,    "🌟 Legend"),
+        (1_000_000_000_000m,  "🚀 Mythic"),
+    ];
 
-    public const long DailyAmount = 5000;
+    public static string PrestigeRank(decimal lifetimeEarned)
+    {
+        var tier = PrestigeTiers[0];
+        foreach (var t in PrestigeTiers)
+            if (lifetimeEarned >= t.threshold) tier = t;
+        return tier.rank;
+    }
+
+
+    public const decimal DailyAmount = 100_000m;
     public const int DailyCooldownHours = 24;
     public const int WorkCooldownMinutes = 60;
-    public const long WorkMin = 50;
-    public const long WorkMax = 5000;
-    public const long PassiveMessageAmount = 5;
-    public const long PuzzleSolveAmount = 10000;
+    public const decimal WorkMin = 5_000m;
+    public const decimal WorkMax = 75_000m;
+    public const decimal PassiveMessageAmount = 25m;
+    public const decimal PuzzleSolveAmount = 250_000m;
 
-    /// <summary>Credits awarded on pet level-up: 50 × new level.</summary>
-    public static long PetLevelUpAmount(int newLevel) => 50 * newLevel;
+    // ── Daily streak multiplier table ─────────────────────────────────────────
+    // Thresholds are inclusive lower bounds. The highest matching tier wins.
+    private static readonly (int minDay, decimal multiplier, string label)[] StreakTiers =
+    [
+        (1,  1.00m, ""),
+        (3,  1.25m, "🔥 3-day streak"),
+        (5,  1.50m, "🔥 5-day streak"),
+        (7,  2.00m, "⚡ Week streak!"),
+        (14, 3.00m, "💎 2-week streak!"),
+        (30, 5.00m, "👑 Monthly streak!"),
+    ];
+
+    /// <summary>
+    /// Returns (multiplier, label) for the given consecutive day streak.
+    /// multiplier=1 and label="" for streaks below 3 days.
+    /// </summary>
+    public static (decimal multiplier, string label) StreakMultiplier(int streak)
+    {
+        var tier = StreakTiers[0];
+        foreach (var t in StreakTiers)
+            if (streak >= t.minDay) tier = t;
+        return (tier.multiplier, tier.label);
+    }
+
+    /// <summary>Credits awarded on pet level-up: 500 × new level.</summary>
+    public static decimal PetLevelUpAmount(int newLevel) => 500m * newLevel;
 
 
-    public const long MinBet = 10;
-    public const long MaxBet = 100000000_000;
-    public const long DailyLossLimit = 100000000_000;  // max credits losable per 24h
+    public const decimal MinBet = 10m;
+    public const decimal MaxBet = 100_000_000_000m;
+    public const decimal DailyLossLimit = 100_000_000_000m; // max credits losable per 24h
 
-    public static bool IsValidBet(long bet, long balance, out string error)
+    public static bool IsValidBet(decimal bet, decimal balance, out string error)
     {
         if (bet < MinBet) { error = $"Minimum bet is {Format(MinBet)}."; return false; }
         if (bet > MaxBet) { error = $"Maximum bet is {Format(MaxBet)}."; return false; }
@@ -79,32 +124,32 @@ public static class CreditHelper
         return SlotSymbols[^1].symbol;
     }
 
-    public static (long payout, string result) CalculateSlotPayout(
-        string r1, string r2, string r3, long bet)
+    public static (decimal payout, string result) CalculateSlotPayout(
+        string r1, string r2, string r3, decimal bet)
     {
         // Three of a kind
         if (r1 == r2 && r2 == r3)
         {
             var sym = SlotSymbols.FirstOrDefault(s => s.symbol == r1);
-            long payout = (long)(bet * sym.multiplier);
+            decimal payout = bet * (decimal)sym.multiplier;
             return (payout, $"🎰 **Three {sym.name}s!** {FormatDelta(payout)}");
         }
 
         // Two of a kind (partial win = 0.5× bet back)
         if (r1 == r2 || r2 == r3 || r1 == r3)
         {
-            long payout = bet / 2;
+            decimal payout = bet / 2m;
             return (payout, $"Almost! Two matching. {FormatDelta(payout)}");
         }
 
         // Any cherry = small consolation
         if (r1 == "🍒" || r2 == "🍒" || r3 == "🍒")
         {
-            long payout = bet / 4;
+            decimal payout = bet / 4m;
             return (payout, $"🍒 Cherry consolation prize! {FormatDelta(payout)}");
         }
 
-        return (0, $"No match. {FormatDelta(-bet)}");
+        return (0m, $"No match. {FormatDelta(-bet)}");
     }
 
 
@@ -113,8 +158,8 @@ public static class CreditHelper
 
     public static int SpinRoulette() => Random.Shared.Next(0, 37); // 0–36
 
-    public static (long payout, string result) CalculateRoulettePayout(
-        int spin, string bet, long amount)
+    public static (decimal payout, string result) CalculateRoulettePayout(
+        int spin, string bet, decimal amount)
     {
         string spinStr = spin.ToString();
         bool isRed = RedNumbers.Contains(spinStr);
@@ -127,20 +172,20 @@ public static class CreditHelper
 
         return bet.ToLower() switch
         {
-            "red" => isRed ? ((long)(amount * 1.9), $"{spinDisplay} — Red wins! {FormatDelta((long)(amount * 1.9))}")
-                               : (0, $"{spinDisplay} — Red loses. {FormatDelta(-amount)}"),
-            "black" => isBlack ? ((long)(amount * 1.9), $"{spinDisplay} — Black wins! {FormatDelta((long)(amount * 1.9))}")
-                               : (0, $"{spinDisplay} — Black loses. {FormatDelta(-amount)}"),
-            "even" => isEven ? ((long)(amount * 1.9), $"{spinDisplay} — Even wins! {FormatDelta((long)(amount * 1.9))}")
-                               : (0, $"{spinDisplay} — Even loses. {FormatDelta(-amount)}"),
-            "odd" => isOdd ? ((long)(amount * 1.9), $"{spinDisplay} — Odd wins! {FormatDelta((long)(amount * 1.9))}")
-                               : (0, $"{spinDisplay} — Odd loses. {FormatDelta(-amount)}"),
-            "low" => isLow ? ((long)(amount * 1.9), $"{spinDisplay} — 1-18 wins! {FormatDelta((long)(amount * 1.9))}")
-                               : (0, $"{spinDisplay} — 1-18 loses. {FormatDelta(-amount)}"),
-            "high" => isHigh ? ((long)(amount * 1.9), $"{spinDisplay} — 19-36 wins! {FormatDelta((long)(amount * 1.9))}")
-                               : (0, $"{spinDisplay} — 19-36 loses. {FormatDelta(-amount)}"),
+            "red" => isRed ? (amount * 1.9m, $"{spinDisplay} — Red wins! {FormatDelta(amount * 1.9m)}")
+                               : (0m, $"{spinDisplay} — Red loses. {FormatDelta(-amount)}"),
+            "black" => isBlack ? (amount * 1.9m, $"{spinDisplay} — Black wins! {FormatDelta(amount * 1.9m)}")
+                               : (0m, $"{spinDisplay} — Black loses. {FormatDelta(-amount)}"),
+            "even" => isEven ? (amount * 1.9m, $"{spinDisplay} — Even wins! {FormatDelta(amount * 1.9m)}")
+                               : (0m, $"{spinDisplay} — Even loses. {FormatDelta(-amount)}"),
+            "odd" => isOdd ? (amount * 1.9m, $"{spinDisplay} — Odd wins! {FormatDelta(amount * 1.9m)}")
+                               : (0m, $"{spinDisplay} — Odd loses. {FormatDelta(-amount)}"),
+            "low" => isLow ? (amount * 1.9m, $"{spinDisplay} — 1-18 wins! {FormatDelta(amount * 1.9m)}")
+                               : (0m, $"{spinDisplay} — 1-18 loses. {FormatDelta(-amount)}"),
+            "high" => isHigh ? (amount * 1.9m, $"{spinDisplay} — 19-36 wins! {FormatDelta(amount * 1.9m)}")
+                               : (0m, $"{spinDisplay} — 19-36 loses. {FormatDelta(-amount)}"),
             _ when int.TryParse(bet, out int num) && num == spin
-                    => (amount * 35, $"{spinDisplay} — Exact number wins! {FormatDelta(amount * 35)}"),
+                    => (amount * 35m, $"{spinDisplay} — Exact number wins! {FormatDelta(amount * 35m)}"),
             _ when int.TryParse(bet, out _)
                     => (0, $"{spinDisplay} — Wrong number. {FormatDelta(-amount)}"),
             _ => (0, $"{spinDisplay} — Invalid bet. {FormatDelta(-amount)}")
@@ -150,11 +195,14 @@ public static class CreditHelper
 
     public static readonly (string name, string emoji, int weight, double odds)[] Horses =
     [
-        ("Thunderbolt",  "🐎", 30, 2.0),   // favourite
-        ("Silver Wind",  "🏇", 25, 2.5),
-        ("Crimson Dawn", "🦄", 20, 3.5),
-        ("Dark Matter",  "🐴", 15, 5.0),
-        ("Lucky Star",   "⭐", 10, 8.0),   // longshot
+        ("Thunderbolt",  "🐎", 28, 2.0),   // favourite
+        ("Silver Wind",  "🏇", 22, 2.5),
+        ("Crimson Dawn", "🦄", 17, 3.5),
+        ("Iron Fist",    "🐴", 13, 5.0),
+        ("Dark Matter",  "🐎", 9,  7.0),
+        ("Lucky Star",   "⭐", 6,  12.0),
+        ("Ghost Rider",  "💀", 3,  25.0),
+        ("Miracle Run",  "✨", 2,  50.0),
     ];
 
     public static int RunRace()
@@ -182,23 +230,23 @@ public static class CreditHelper
     }
 
 
-    public const long ScratchCardCost = 50;
+    public const decimal ScratchCardCost = 2_000m;
 
-    public static readonly (string[] symbols, long multiplier, string label)[] ScratchPrizes =
+    public static readonly (string[] symbols, decimal multiplier, string label)[] ScratchPrizes =
     [
-        (["💎","💎","💎"], 100, "JACKPOT"),
-        (["7️⃣","7️⃣","7️⃣"],  50, "Triple 7s"),
-        (["⭐","⭐","⭐"],  20, "Triple Stars"),
-        (["🔔","🔔","🔔"],  10, "Triple Bells"),
-        (["🍀","🍀","🍀"],   5, "Triple Clovers"),
-        (["💰","💰","💰"],   3, "Triple Coins"),
-        (["🎁","🎁","🎁"],   2, "Triple Gifts"),
+        (["💎","💎","💎"], 100m, "JACKPOT"),
+        (["7️⃣","7️⃣","7️⃣"],  50m, "Triple 7s"),
+        (["⭐","⭐","⭐"],  20m, "Triple Stars"),
+        (["🔔","🔔","🔔"],  10m, "Triple Bells"),
+        (["🍀","🍀","🍀"],   5m, "Triple Clovers"),
+        (["💰","💰","💰"],   3m, "Triple Coins"),
+        (["🎁","🎁","🎁"],   2m, "Triple Gifts"),
     ];
 
     private static readonly string[] ScratchPool =
         ["💎", "7️⃣", "⭐", "🔔", "🍀", "💰", "🎁", "❌", "❌", "❌", "❌", "❌"];
 
-    public static (string s1, string s2, string s3, long payout, string label) ScratchCard(long cost)
+    public static (string s1, string s2, string s3, decimal payout, string label) ScratchCard(decimal cost)
     {
         // Small chance to award a prize
         int roll = Random.Shared.Next(100);
@@ -213,14 +261,51 @@ public static class CreditHelper
 
         // No win — random non-matching symbols from distinct pool
         var distinct = ScratchPool.Distinct().OrderBy(_ => Random.Shared.Next()).Take(3).ToArray();
-        return (distinct[0], distinct[1], distinct[2], 0, "No match");
+        return (distinct[0], distinct[1], distinct[2], 0m, "No match");
+    }
+
+    /// <summary>
+    /// Chaos Card variant — shuffles the prize table and picks from a
+    /// randomized order, then applies a random multiplier tweak (0.5×–3×)
+    /// to whatever prize is hit. Win odds and payouts are completely unpredictable.
+    /// </summary>
+    public static (string s1, string s2, string s3, decimal payout, string label) ScratchCardChaos(decimal cost)
+    {
+        // Shuffle prize table
+        var shuffled = ScratchPrizes.OrderBy(_ => Random.Shared.Next()).ToArray();
+
+        // Random win roll — same total range but prizes in chaos order
+        int roll = Random.Shared.Next(100);
+        int cursor = 0;
+        int[] thresholds = [2, 5, 10, 18, 28, 40, 52];
+
+        for (int i = 0; i < shuffled.Length && i < thresholds.Length; i++)
+        {
+            if (roll < thresholds[i])
+            {
+                var prize = shuffled[i];
+                // Random multiplier twist: 0.5×, 1×, 1.5×, 2×, or 3× the normal payout
+                decimal[] twists = [0.5m, 1m, 1.5m, 2m, 3m];
+                decimal twist = twists[Random.Shared.Next(twists.Length)];
+                decimal payout = cost * prize.multiplier * twist;
+                string label = twist != 1m
+                    ? $"🃏 {prize.label} ({twist}× chaos)"
+                    : $"🃏 {prize.label}";
+                return (prize.symbols[0], prize.symbols[1], prize.symbols[2], payout, label);
+            }
+            cursor = thresholds[i];
+        }
+
+        // No win — chaos symbols (may look like they should match but don't)
+        var pool = ScratchPool.OrderBy(_ => Random.Shared.Next()).Take(3).ToArray();
+        return (pool[0], pool[1], pool[2], 0m, "🃏 No match");
     }
 
 
     /// <summary>
     /// Payout for dice. pick values: "over","under","seven","doubles".
     /// </summary>
-    public static long DicePayout(string pick, int d1, int d2, long bet)
+    public static decimal DicePayout(string pick, int d1, int d2, decimal bet)
     {
         int total = d1 + d2;
         bool won = pick switch
@@ -231,12 +316,12 @@ public static class CreditHelper
             "doubles" => d1 == d2,
             _ => false
         };
-        if (!won) return 0;
+        if (!won) return 0m;
         return pick switch
         {
-            "seven" => bet * 4,
-            "doubles" => (long)(bet * 6.0),
-            _ => (long)(bet * 1.8)
+            "seven" => bet * 4m,
+            "doubles" => bet * 6.0m,
+            _ => bet * 1.8m
         };
     }
 
@@ -252,7 +337,7 @@ public static class CreditHelper
     }
 
 
-    public static string WorkMessage(long earned) => Random.Shared.Next(10) switch
+    public static string WorkMessage(decimal earned) => Random.Shared.Next(10) switch
     {
         0 => $"You fixed a production bug at 2am. Compensation: {Format(earned)}",
         1 => $"You walked someone's dog and found a fiver in your pocket. {Format(earned)}",
@@ -269,29 +354,29 @@ public static class CreditHelper
 
     public const int FishCooldownMinutes = 45;
 
-    public static readonly (string name, string emoji, long min, long max, int weight, string flavour)[] FishTable =
+    public static readonly (string name, string emoji, decimal min, decimal max, int weight, string flavour)[] FishTable =
     [
         // Junk
-        ("Old Boot",        "👢",  0,    0,    10, "You reeled in an old boot. The lake is not impressed with you."),
-        ("Seaweed",         "🌿",  0,    0,    9,  "A soggy clump of seaweed. The fish are laughing."),
-        ("Tin Can",         "🥫",  0,    0,    6,  "Someone else's problem is now your problem."),
+        ("Old Boot",        "👢",  0,       0,       10, "You reeled in an old boot. The lake is not impressed with you."),
+        ("Seaweed",         "🌿",  0,       0,       9,  "A soggy clump of seaweed. The fish are laughing."),
+        ("Tin Can",         "🥫",  0,       0,       6,  "Someone else's problem is now your problem."),
         // Common
-        ("Minnow",          "🐟",  10,   40,   20, "A tiny minnow. Technically a fish."),
-        ("Perch",           "🐠",  30,   70,   18, "A solid perch. Dinner is sorted."),
-        ("Bass",            "🎣",  55,   110,  15, "A decent bass. The rod barely bent."),
+        ("Minnow",          "🐟",  1_000,   4_000,   20, "A tiny minnow. Technically a fish."),
+        ("Perch",           "🐠",  3_000,   7_000,   18, "A solid perch. Dinner is sorted."),
+        ("Bass",            "🎣",  5_500,   11_000,  15, "A decent bass. The rod barely bent."),
         // Uncommon
-        ("Trout",           "🐟",  90,   160,  10, "A plump trout. The river was generous today."),
-        ("Salmon",          "🍣",  130,  220,  8,  "A beautiful salmon leapt straight into the net."),
-        ("Carp",            "🐡",  110,  190,  8,  "A hefty carp. It put up a real fight."),
+        ("Trout",           "🐟",  9_000,   16_000,  10, "A plump trout. The river was generous today."),
+        ("Salmon",          "🍣",  13_000,  22_000,  8,  "A beautiful salmon leapt straight into the net."),
+        ("Carp",            "🐡",  11_000,  19_000,  8,  "A hefty carp. It put up a real fight."),
         // Rare
-        ("Swordfish",       "⚔️",   220,  420,  5,  "A swordfish! Your arms are still trembling."),
-        ("Giant Tuna",      "🐟",  320,  620,  3,  "A giant tuna! The rod nearly snapped clean in half."),
-        ("Golden Koi",      "🏅",  550,  1050, 2,  "A golden koi! It practically glows in your hands."),
+        ("Swordfish",       "⚔️",  22_000,  42_000,  5,  "A swordfish! Your arms are still trembling."),
+        ("Giant Tuna",      "🐟",  40_000,  70_000,  3,  "A giant tuna! The rod nearly snapped clean in half."),
+        ("Golden Koi",      "🏅",  60_000,  110_000, 2,  "A golden koi! It practically glows in your hands."),
         // Legendary
-        ("Legendary Carp",  "👑",  1100, 2600, 1,  "A LEGENDARY CARP. Witnesses gather. Someone starts clapping."),
+        ("Legendary Carp",  "👑",  120_000, 250_000, 1,  "A LEGENDARY CARP. Witnesses gather. Someone starts clapping."),
     ];
 
-    public static (string name, string emoji, long credits, string flavour) CastLine()
+    public static (string name, string emoji, decimal credits, string flavour) CastLine()
     {
         int total = FishTable.Sum(f => f.weight);
         int roll = Random.Shared.Next(total);
@@ -302,31 +387,33 @@ public static class CreditHelper
             cum += weight;
             if (roll < cum)
             {
-                long credits = max > 0 ? Random.Shared.NextInt64(min, max + 1) : 0;
+                decimal credits = max > 0 ? (decimal)Random.Shared.NextInt64((long)min, (long)max + 1) : 0m;
                 return (name, emoji, credits, flavour);
             }
         }
 
         var last = FishTable[^1];
-        return (last.name, last.emoji, last.max, last.flavour);
+        return (last.name, last.emoji, (decimal)last.max, last.flavour);
     }
 
 
     public static readonly (string label, double multiplier, int weight, string emoji)[] WheelSegments =
     [
-        ("BANKRUPT", 0.0, 9, "💀"),      // loss
-        ("0.25×",    0.25, 18, "💸"),     // loss
-        ("0.5×",     0.5, 21, "😬"),      // loss
-        ("0.75×",    0.75, 17, "😕"),     // loss
-        ("1×",       1.0, 25, "😐"),      // push
-        ("1.5×",     1.5, 9, "🙂"),       // win
-        ("2×",       2.0, 8, "😊"),       // win
-        ("3×",       3.0, 6, "😁"),       // win
-        ("5×",       5.0, 5, "🤩"),       // win
-        ("10×",     10.0, 6, "🔥"),       // win
-        ("25×",     25.0, 2, "💎"),       // win
-        ("50×",     50.0, 2, "👑"),       // win
-        ("100×",   100.0, 1, "🚀")        // win
+        ("BANKRUPT", 0.0,    5, "💀"),
+        ("0.125×",   0.125,  7, "🪦"),
+        ("0.25×",    0.25,  10, "💸"),
+        ("0.375×",   0.375,  9, "😰"),
+        ("0.5×",     0.5,   11, "😬"),
+        ("0.75×",    0.75,  12, "😕"),
+        ("1×",       1.0,    6, "😐"),
+        ("1.5×",     1.5,    9, "🙂"),
+        ("2×",       2.0,    8, "😊"),
+        ("3×",       3.0,    6, "😁"),
+        ("5×",       5.0,    5, "🤩"),
+        ("10×",     10.0,    5, "🔥"),
+        ("25×",     25.0,    2, "💎"),
+        ("50×",     50.0,    3, "👑"),
+        ("100×",   100.0,    2, "🚀"),
     ];
 
     public static int SpinWheel()
@@ -343,17 +430,36 @@ public static class CreditHelper
     }
 
     /// <summary>
+    /// Chaos Card variant — randomizes each segment's weight before spinning.
+    /// Any outcome is possible at any probability, including extreme jackpots or
+    /// repeated BANKRUPTs. Weights are re-rolled per-segment from 1–30.
+    /// </summary>
+    public static int SpinWheelChaos()
+    {
+        var chaosWeights = WheelSegments.Select(_ => Random.Shared.Next(1, 31)).ToArray();
+        int total = chaosWeights.Sum();
+        int roll = Random.Shared.Next(total);
+        int cum = 0;
+        for (int i = 0; i < WheelSegments.Length; i++)
+        {
+            cum += chaosWeights[i];
+            if (roll < cum) return i;
+        }
+        return WheelSegments.Length - 1;
+    }
+
+    /// <summary>
     /// Renders the Big Wheel as a horizontal wheel-of-fortune display.
     ///
-    /// Layout (viewed from front — fixed pointer, segments scroll left→right):
+    /// Layout (viewed from front — fixed pointer, segments scroll left-right):
     ///
     ///   top arc  : segments on the back of the wheel (half-rotation away)
-    ///   ──────── : wheel rim
-    ///   rim band : 3 context segments · ▶ SELECTED ◀ · 3 context segments
-    ///   ──────── : wheel rim
+    ///   -------- : wheel rim
+    ///   rim band : 3 context segments . SELECTED . 3 context segments
+    ///   -------- : wheel rim
     ///   bot arc  : more back-of-wheel segments (opposite side)
     ///
-    /// Each frame the centreIndex advances, so all three rows shift together —
+    /// Each frame the centreIndex advances, so all three rows shift together --
     /// giving the impression of a circular wheel rotating as a unit.
     /// </summary>
     public static string BuildWheelDisplay(int centreIndex)
@@ -399,27 +505,25 @@ public static class CreditHelper
 
     public static readonly (PokerHand hand, long multiplier, string label)[] PokerPayouts =
     [
-        (PokerHand.RoyalFlush,    800, "👑 ROYAL FLUSH"),
-        (PokerHand.StraightFlush,  50, "🔥 Straight Flush"),
-        (PokerHand.FourOfAKind,    25, "4️⃣  Four of a Kind"),
-        (PokerHand.FullHouse,       9, "🏠 Full House"),
-        (PokerHand.Flush,           6, "♠️  Flush"),
-        (PokerHand.Straight,        4, "➡️  Straight"),
-        (PokerHand.ThreeOfAKind,    3, "3️⃣  Three of a Kind"),
-        (PokerHand.TwoPair,         2, "2️⃣  Two Pair"),
-        (PokerHand.JacksOrBetter,   1, "🃏 Jacks or Better"),
-        (PokerHand.HighCard,        0, "❌ No Win"),
+        (PokerHand.RoyalFlush,    800, "ROYAL FLUSH"),
+        (PokerHand.StraightFlush,  50, "Straight Flush"),
+        (PokerHand.FourOfAKind,    25, "Four of a Kind"),
+        (PokerHand.FullHouse,       9, "Full House"),
+        (PokerHand.Flush,           6, "Flush"),
+        (PokerHand.Straight,        4, "Straight"),
+        (PokerHand.ThreeOfAKind,    3, "Three of a Kind"),
+        (PokerHand.TwoPair,         2, "Two Pair"),
+        (PokerHand.JacksOrBetter,   1, "Jacks or Better"),
+        (PokerHand.HighCard,        0, "No Win"),
     ];
 
     public static PokerHand EvaluatePokerHand(List<string> hand)
     {
-        // Parse rank indices and suits from "rank|suit" format
         var ranks = hand.Select(c => Array.IndexOf(CardRanks, c.Split('|')[0])).OrderBy(r => r).ToArray();
         var suits = hand.Select(c => c.Split('|')[1]).ToArray();
 
         bool isFlush = suits.Distinct().Count() == 1;
         bool isStraight = ranks[4] - ranks[0] == 4 && ranks.Distinct().Count() == 5;
-        // Ace-low straight: A-2-3-4-5 → ranks 12,0,1,2,3
         bool isAceLow = ranks.SequenceEqual(new[] { 0, 1, 2, 3, 12 });
         if (isAceLow) isStraight = true;
 
@@ -429,7 +533,6 @@ public static class CreditHelper
 
         if (isFlush && isStraight)
         {
-            // Royal = 10,J,Q,K,A (indices 8,9,10,11,12)
             bool isRoyal = ranks.SequenceEqual(new[] { 8, 9, 10, 11, 12 });
             return isRoyal ? PokerHand.RoyalFlush : PokerHand.StraightFlush;
         }
@@ -439,21 +542,19 @@ public static class CreditHelper
         if (isStraight) return PokerHand.Straight;
         if (first == 3) return PokerHand.ThreeOfAKind;
         if (first == 2 && second == 2) return PokerHand.TwoPair;
-        // Jacks or Better: pair of J(9), Q(10), K(11), A(12)
         if (first == 2 && groups[0].Key >= 9) return PokerHand.JacksOrBetter;
         return PokerHand.HighCard;
     }
 
-    public static long PokerPayout(PokerHand hand, long bet)
+    public static decimal PokerPayout(PokerHand hand, decimal bet)
     {
         var entry = PokerPayouts.First(p => p.hand == hand);
-        return bet * entry.multiplier;
+        return bet * (decimal)entry.multiplier;
     }
 
     public static string PokerHandLabel(PokerHand hand) =>
         PokerPayouts.First(p => p.hand == hand).label;
 
-    /// <summary>Formats a poker hand card for display, e.g. "A♠".</summary>
     public static string FormatPokerCard(string card, bool held)
     {
         var parts = card.Split('|');
@@ -461,7 +562,6 @@ public static class CreditHelper
         return held ? $"[**{display}**]" : display;
     }
 
-    /// <summary>Builds and shuffles a standard 52-card deck in "rank|suit" format.</summary>
     public static List<string> BuildPokerDeck()
     {
         var deck = (from suit in CardSuits
@@ -476,19 +576,18 @@ public static class CreditHelper
     }
 
 
-    /// <summary>Outcomes for /invest. Multiplier applied to the locked amount after 24h.</summary>
     public static readonly (decimal multiplier, int weight, string label)[] InvestOutcomes =
     [
-        (0.20m,  3,  "📉 Market crash — lost most of it"),
-        (0.50m,  8,  "📉 Poor return — took a significant loss"),
-        (0.75m,  12, "📊 Below average — small loss"),
-        (1.00m,  17, "➡️  Break even"),
-        (1.10m,  20, "📈 Modest gain"),
-        (1.25m,  15, "📈 Good return"),
-        (1.50m,  12, "📈 Strong return"),
-        (2.00m,  8,  "🚀 Great return!"),
-        (3.00m,  4,  "🚀 Excellent return!"),
-        (5.00m,  1,  "🌟 Jackpot investment!"),
+        (0.20m,  3,  "Market crash"),
+        (0.50m,  8,  "Poor return"),
+        (0.75m,  12, "Below average"),
+        (1.00m,  17, "Break even"),
+        (1.10m,  20, "Modest gain"),
+        (1.25m,  15, "Good return"),
+        (1.50m,  12, "Strong return"),
+        (2.00m,  8,  "Great return!"),
+        (3.00m,  4,  "Excellent return!"),
+        (5.00m,  1,  "Jackpot investment!"),
     ];
 
     public static (decimal multiplier, string label) RollInvestment()
@@ -501,23 +600,17 @@ public static class CreditHelper
             cum += weight;
             if (roll < cum) return (mult, label);
         }
-        return (1.0m, "➡️  Break even");
+        return (1.0m, "Break even");
     }
 
 
     public const string PokerBotId = "BOT";
 
-    /// <summary>Display a card without held brackets, e.g. "A♠".</summary>
     public static string ShowCard(string card) => FormatPokerCard(card, held: false);
 
-    /// <summary>Display a hand of cards space-separated.</summary>
     public static string ShowHand(IEnumerable<string> cards) =>
         string.Join("  ", cards.Select(ShowCard));
 
-    /// <summary>
-    /// Best PokerHand achievable from 7 cards (2 hole + 5 community).
-    /// Checks all C(7,5) = 21 five-card combinations.
-    /// </summary>
     public static (PokerHand hand, string name) BestHandType(List<string> sevenCards)
     {
         PokerHand best = PokerHand.HighCard;
@@ -531,10 +624,6 @@ public static class CreditHelper
         return (best, PokerHandLabel(best));
     }
 
-    /// <summary>
-    /// Integer score for showdown comparison. Hand category × 1M + rank-index sum.
-    /// Handles ties for casual bot use.
-    /// </summary>
     public static int HandScore(List<string> sevenCards)
     {
         var (hand, _) = BestHandType(sevenCards);

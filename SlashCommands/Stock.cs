@@ -28,6 +28,7 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
     private static readonly Color ColourRed = new(237, 66, 69);
     private static readonly Color ColourGold = new(255, 215, 0);
 
+    // ── /stock market ─────────────────────────────────────────────────────────
 
     [SlashCommand("market", "View all stocks and current prices.")]
     [EnabledInDm(false)]
@@ -74,6 +75,7 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
             .Build());
     }
 
+    // ── /stock info ───────────────────────────────────────────────────────────
 
     [SlashCommand("info", "Detailed info and price history for a stock.")]
     [EnabledInDm(false)]
@@ -138,12 +140,13 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
         await FollowupAsync(embed: eb.Build());
     }
 
+    // ── /stock buy ────────────────────────────────────────────────────────────
 
     [SlashCommand("buy", "Buy shares in a company.")]
     [EnabledInDm(false)]
     public async Task HandleBuyAsync(
         [MinLength(1), MaxLength(8)] string ticker,
-        [MinValue(1), MaxValue(10000000000)] int shares)
+        [MinValue(1), MaxValue(10000)] int shares)
     {
         await DeferAsync();
 
@@ -168,8 +171,8 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
         }
 
         decimal priceEach = decimal.Parse(stockRow["Price"].ToString()!);
-        long totalCost = (long)Math.Ceiling(priceEach * shares);
-        long balance = _eco.GetBalance(UserId, ServerId);
+        decimal totalCost = Math.Ceiling(priceEach * shares);
+        decimal balance = _eco.GetBalance(UserId, ServerId);
 
         if (balance < totalCost)
         {
@@ -194,7 +197,7 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
 
         int totalShares = result.Rows.Count > 0 ? int.Parse(result.Rows[0]["Shares"].ToString()!) : shares;
         decimal avgBuy = result.Rows.Count > 0 ? decimal.Parse(result.Rows[0]["AvgBuyPrice"].ToString()!) : priceEach;
-        long newBalance = _eco.GetBalance(UserId, ServerId);
+        decimal newBalance = _eco.GetBalance(UserId, ServerId);
 
         string company = stockRow["CompanyName"].ToString()!;
 
@@ -212,23 +215,24 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
             .Build());
     }
 
+    // ── /stock sell ───────────────────────────────────────────────────────────
 
     [SlashCommand("sell", "Sell shares you own.")]
     [EnabledInDm(false)]
     public async Task HandleSellAsync(
-        [MinLength(1), MaxLength(8)] string ticker,
-        [MinValue(1), MaxValue(10000000000)] int shares)
+    [MinLength(1), MaxLength(8)] string ticker,
+    [MinValue(1), MaxValue(10000000000)] int shares = 1,
+    [Summary("sell_all", "Sell your entire position.")] bool sellAll = false)
     {
         await DeferAsync();
 
         ticker = ticker.ToUpperInvariant();
 
-        // Check holding
         var holdingDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetHolding",
         [
             new SqlParameter("@UserID",   UserId),
-            new SqlParameter("@ServerID", ServerId),
-            new SqlParameter("@Ticker",   ticker)
+        new SqlParameter("@ServerID", ServerId),
+        new SqlParameter("@Ticker",   ticker)
         ]);
 
         if (holdingDt.Rows.Count == 0)
@@ -240,13 +244,15 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
         int owned = int.Parse(holdingDt.Rows[0]["Shares"].ToString()!);
         decimal avgBuy = decimal.Parse(holdingDt.Rows[0]["AvgBuyPrice"].ToString()!);
 
-        if (shares > owned)
+        // Resolve quantity — sell_all overrides the shares param
+        int qty = sellAll ? owned : shares;
+
+        if (qty > owned)
         {
             await ErrorAsync($"You only own **{owned:N0} share{(owned == 1 ? "" : "s")}** of **{ticker}**.");
             return;
         }
 
-        // Get current price
         var allDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetAllStocks", []);
         System.Data.DataRow? stockRow = null;
         foreach (System.Data.DataRow r in allDt.Rows)
@@ -255,32 +261,31 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
         if (stockRow == null) { await ErrorAsync($"Ticker **{ticker}** not found."); return; }
 
         decimal priceEach = decimal.Parse(stockRow["Price"].ToString()!);
-        long totalGain = (long)Math.Floor(priceEach * shares);
-        decimal pnl = (priceEach - avgBuy) * shares;
+        decimal totalGain = Math.Floor(priceEach * qty);
+        decimal pnl = (priceEach - avgBuy) * qty;
         string company = stockRow["CompanyName"].ToString()!;
 
-        // Execute sell
         _sp.Select(Constants.Constants.discordBotConnStr, "SellStock",
         [
             new SqlParameter("@UserID",    UserId),
-            new SqlParameter("@ServerID",  ServerId),
-            new SqlParameter("@Ticker",    ticker),
-            new SqlParameter("@Shares",    shares),
-            new SqlParameter("@PriceEach", priceEach),
-            new SqlParameter("@TotalGain", totalGain)
+        new SqlParameter("@ServerID",  ServerId),
+        new SqlParameter("@Ticker",    ticker),
+        new SqlParameter("@Shares",    qty),
+        new SqlParameter("@PriceEach", priceEach),
+        new SqlParameter("@TotalGain", totalGain)
         ]);
 
-        // Credit the proceeds
         _eco.AddCredits(UserId, ServerId, totalGain, $"stock_sell_{ticker}");
-        long newBalance = _eco.GetBalance(UserId, ServerId);
+        decimal newBalance = _eco.GetBalance(UserId, ServerId);
 
-        Color colour = pnl >= 0 ? ColourGreen : ColourRed;
-        int remain = owned - shares;
+        int remain = owned - qty;
 
         await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"📉  Sold {ticker}")
-            .WithColor(colour)
-            .WithDescription($"Sold **{shares:N0} share{(shares == 1 ? "" : "s")}** of **{company}**.")
+            .WithTitle(sellAll ? $"📉  Sold all {ticker}" : $"📉  Sold {ticker}")
+            .WithColor(pnl >= 0 ? ColourGreen : ColourRed)
+            .WithDescription(sellAll
+                ? $"Sold your entire position of **{qty:N0} share{(qty == 1 ? "" : "s")}** in **{company}**."
+                : $"Sold **{qty:N0} share{(qty == 1 ? "" : "s")}** of **{company}**.")
             .AddField("Sale Price", StockHelper.FormatPrice(priceEach), inline: true)
             .AddField("Total Gained", CreditHelper.Format(totalGain), inline: true)
             .AddField("P&L", StockHelper.FormatPnL(pnl), inline: true)
@@ -291,6 +296,7 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
             .Build());
     }
 
+    // ── /stock portfolio ──────────────────────────────────────────────────────
 
     [SlashCommand("portfolio", "View your stock holdings and unrealized P&L.")]
     [EnabledInDm(false)]
@@ -323,6 +329,7 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
         decimal totalCost = 0;
         var sb = new StringBuilder();
 
+        // ── Table header ──────────────────────────────────────────────────────
         // Columns: TICKER(5) SHARES(6) PRICE(9) CHG%(7) P&L(9)  = 46 chars + spaces
         // "PRICE" is current; CHG% is (cur-avg)/avg; P&L is compact $K/$M/$B
         sb.AppendLine("```");
@@ -389,6 +396,7 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
             .Build());
     }
 
+    // ── /stock history ────────────────────────────────────────────────────────
 
     [SlashCommand("history", "View your recent stock transactions.")]
     [EnabledInDm(false)]
@@ -424,7 +432,7 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
             string tkr = row["Ticker"].ToString()!;
             int shrs = int.Parse(row["Shares"].ToString()!);
             decimal each = decimal.Parse(row["PriceEach"].ToString()!);
-            long total = long.Parse(row["TotalCost"].ToString()!);
+            decimal total = decimal.Parse(row["TotalCost"].ToString()!);
             string date = DateTime.Parse(row["TxTime"].ToString()!).ToString("MM/dd HH:mm");
             string arrow = type == "BUY" ? "▲" : "▼";
 
@@ -444,6 +452,7 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
             .Build());
     }
 
+    // ── Error helper ──────────────────────────────────────────────────────────
 
     private async Task ErrorAsync(string message) =>
         await FollowupAsync(embed: _embed.BuildErrorEmbed("Stock Market", message, Username).Build());

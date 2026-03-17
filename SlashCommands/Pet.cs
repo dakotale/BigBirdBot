@@ -15,6 +15,7 @@ namespace DiscordBot.SlashCommands;
 /// and level them up to unlock new abilities and forms.
 /// Up to 5 pets per user — one is "active" at a time.
 /// </summary>
+[Group("pet", "Pet commands")]
 public class Pet : InteractionModuleBase<SocketInteractionContext>
 {
     private readonly StoredProcedure _sp = new();
@@ -99,7 +100,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
             .WithDescription(
                 $"You adopted a **{breed}** named **{name}**! 🎉\n\n" +
                 $"Take good care of them — feed them, play with them, and keep them happy.\n\n" +
-                $"Use `/petcard` to see their stats, and `/feed` when they get hungry!")
+                $"Use `/pet card` to see their stats, and `/pet feed` when they get hungry!")
             .WithFooter($"Adopted by {Username}", AvatarUrl)
             .WithCurrentTimestamp()
             .Build());
@@ -108,7 +109,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
 
     private const int PetsPerPage = 5;
 
-    [SlashCommand("pets", "List all your pets.")]
+    [SlashCommand("list", "List all your pets.")]
     [EnabledInDm(false)]
     public async Task HandlePetsAsync()
     {
@@ -192,7 +193,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
             .WithTitle($"🐾  {Username}'s Pets ({total} total)")
             .WithColor(ColourPet)
             .WithDescription(sb.ToString())
-            .WithFooter($"Page {page + 1}/{totalPages} • Use /setactivepet [ID] to switch")
+            .WithFooter($"Page {page + 1}/{totalPages} • Use /pet setactive [ID] to switch")
             .WithCurrentTimestamp();
     }
 
@@ -208,7 +209,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
     }
 
 
-    [SlashCommand("petcard", "Show your active pet's full stat card.")]
+    [SlashCommand("card", "Show your active pet's full stat card.")]
     [EnabledInDm(false)]
     public async Task HandlePetCardAsync()
     {
@@ -348,7 +349,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
     }
 
 
-    [SlashCommand("petpet", "Pet your active pet to boost their happiness!")]
+    [SlashCommand("pat", "Pet your active pet to boost their happiness!")]
     [EnabledInDm(false)]
     public async Task HandlePetPetAsync()
     {
@@ -500,7 +501,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
     }
 
 
-    [SlashCommand("playwith", "Play with your active pet!")]
+    [SlashCommand("play", "Play with your active pet!")]
     [EnabledInDm(false)]
     public async Task HandlePlayWithAsync()
     {
@@ -588,7 +589,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
     }
 
 
-    [SlashCommand("petsleep", "Put your pet to sleep to restore their energy.")]
+    [SlashCommand("sleep", "Put your pet to sleep to restore their energy.")]
     [EnabledInDm(false)]
     public async Task HandlePetSleepAsync()
     {
@@ -651,7 +652,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
     }
 
 
-    [SlashCommand("pethug", "Give your pet a warm hug! Small happiness boost, no XP.")]
+    [SlashCommand("hug", "Give your pet a warm hug! Small happiness boost, no XP.")]
     [EnabledInDm(false)]
     public async Task HandlePetHugAsync()
     {
@@ -727,7 +728,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
     }
 
 
-    [SlashCommand("petjournal", "View the recent activity log for your active pet.")]
+    [SlashCommand("journal", "View the recent activity log for your active pet.")]
     [EnabledInDm(false)]
     public async Task HandlePetJournalAsync()
     {
@@ -858,7 +859,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
     }
 
 
-    [SlashCommand("setactivepet", "Switch which pet is currently active.")]
+    [SlashCommand("setactive", "Switch which pet is currently active.")]
     [EnabledInDm(false)]
     public async Task HandleSetActiveAsync([MinValue(1)] int petId)
     {
@@ -892,7 +893,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
     }
 
 
-    [SlashCommand("renamepet", "Rename your active pet.")]
+    [SlashCommand("rename", "Rename your active pet.")]
     [EnabledInDm(false)]
     public async Task HandleRenameAsync([MinLength(1), MaxLength(32)] string newName)
     {
@@ -1011,7 +1012,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
     }
 
 
-    [SlashCommand("petleaderboard", "Show the top pets in this server by level.")]
+    [SlashCommand("leaderboard", "Show the top pets in this server by level.")]
     [EnabledInDm(false)]
     public async Task HandleLeaderboardAsync()
     {
@@ -1235,7 +1236,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
     }
 
 
-    [SlashCommand("petbattle", "Challenge another user's active pet to a battle!")]
+    [SlashCommand("battle", "Challenge another user's active pet to a battle!")]
     [EnabledInDm(false)]
     public async Task HandlePetBattleAsync(IUser opponent)
     {
@@ -1446,7 +1447,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
     }
 
 
-    [SlashCommand("petpicture", "Upload a photo of your active pet — it will appear in all their embeds.")]
+    [SlashCommand("picture", "Upload a photo of your active pet — it will appear in all their embeds.")]
     [EnabledInDm(false)]
     public async Task HandlePetPictureAsync(
         IAttachment? picture = null)
@@ -1472,8 +1473,8 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
                     .WithColor(ColourPet)
                     .WithDescription(
                         $"**{petName}** already has a picture set.\n\n" +
-                        $"Upload a new image with `/petpicture [image]` to replace it, " +
-                        $"or use `/petpicture clear` to remove it.")
+                        $"Upload a new image with `/pet picture [image]` to replace it, " +
+                        $"or use `/pet pictureclear` to remove it.")
                     .WithImageUrl(current)
                     .WithFooter(Username, AvatarUrl)
                     .WithCurrentTimestamp()
@@ -1486,7 +1487,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
                     .WithColor(ColourInfo)
                     .WithDescription(
                         $"**{petName}** doesn't have a picture yet.\n\n" +
-                        $"Attach an image when using `/petpicture` to set one.\n" +
+                        $"Attach an image when using `/pet picture` to set one.\n" +
                         $"Supported formats: PNG, JPG, GIF, WEBP")
                     .WithFooter(Username, AvatarUrl)
                     .WithCurrentTimestamp()
@@ -1527,7 +1528,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
             .Build());
     }
 
-    [SlashCommand("petpictureclear", "Remove the photo from your active pet.")]
+    [SlashCommand("pictureclear", "Remove the photo from your active pet.")]
     [EnabledInDm(false)]
     public async Task HandlePetPictureClearAsync()
     {
@@ -1556,7 +1557,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
     }
 
 
-    [SlashCommand("petbio", "Set a custom bio for your active pet (up to 1000 characters). Leave blank to clear it.")]
+    [SlashCommand("bio", "Set a custom bio for your active pet (up to 1000 characters). Leave blank to clear it.")]
     [EnabledInDm(false)]
     public async Task HandlePetBioAsync(
         [MaxLength(1000)] string bio = "")

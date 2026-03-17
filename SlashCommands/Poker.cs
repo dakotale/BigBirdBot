@@ -41,6 +41,7 @@ public class Poker : InteractionModuleBase<SocketInteractionContext>
 
     private const int MaxHumans = 4;
 
+    // ── /poker ────────────────────────────────────────────────────────────────
 
     [SlashCommand("poker", "Start a Texas Hold'em table! Up to 4 players vs the bot.")]
     [EnabledInDm(false)]
@@ -59,8 +60,8 @@ public class Poker : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        long balance = _eco.GetBalance(UserId, ServerId);
-        if (bet > balance)
+        decimal balance = _eco.GetBalance(UserId, ServerId);
+        if ((decimal)bet > balance)
         {
             await FollowupAsync(embed: _embed.BuildErrorEmbed("Poker",
                 $"You don't have enough credits. Balance: {CreditHelper.Format(balance)}.", Username).Build());
@@ -92,7 +93,7 @@ public class Poker : InteractionModuleBase<SocketInteractionContext>
         ]);
 
         // Deduct host's bet and add them as a player
-        _eco.DeductCredits(UserId, ServerId, bet, "poker_buy_in");
+        _eco.DeductCredits(UserId, ServerId, (decimal)bet, "poker_buy_in");
         var (hostHand, deckAfterHost) = DealFromDeck(remaining, 2);
 
         _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "UpdatePokerDeck",
@@ -130,6 +131,7 @@ public class Poker : InteractionModuleBase<SocketInteractionContext>
         await TrySendHoleCards(Context.User, hostHand, bet);
     }
 
+    // ── Join button ───────────────────────────────────────────────────────────
 
     [ComponentInteraction("poker:join:*")]
     public async Task OnPokerJoinAsync(string gameIdStr)
@@ -171,11 +173,11 @@ public class Poker : InteractionModuleBase<SocketInteractionContext>
         }
 
         // Check balance
-        long balance = _eco.GetBalance(UserId, ServerId);
-        if (bet > balance)
+        decimal balance = _eco.GetBalance(UserId, ServerId);
+        if ((decimal)bet > balance)
         {
             await FollowupAsync(
-                $"You need {CreditHelper.Format(bet)} to join. You have {CreditHelper.Format(balance)}.",
+                $"You need {CreditHelper.Format((decimal)bet)} to join. You have {CreditHelper.Format(balance)}.",
                 ephemeral: true);
             return;
         }
@@ -184,7 +186,7 @@ public class Poker : InteractionModuleBase<SocketInteractionContext>
         var deckCards = gameRow["Deck"].ToString()!.Split(',').ToList();
         var (hand, deckAfter) = DealFromDeck(deckCards, 2);
 
-        _eco.DeductCredits(UserId, ServerId, bet, "poker_buy_in");
+        _eco.DeductCredits(UserId, ServerId, (decimal)bet, "poker_buy_in");
 
         _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "UpdatePokerDeck",
         [
@@ -226,6 +228,7 @@ public class Poker : InteractionModuleBase<SocketInteractionContext>
         await TrySendHoleCards(Context.User, hand, bet);
     }
 
+    // ── Start button ──────────────────────────────────────────────────────────
 
     [ComponentInteraction("poker:start:*")]
     public async Task OnPokerStartAsync(string gameIdStr)
@@ -276,6 +279,7 @@ public class Poker : InteractionModuleBase<SocketInteractionContext>
             isBot: p["UserID"].ToString() == CreditHelper.PokerBotId
         )).ToList();
 
+        // ── Step 1: pre-flop (hands hidden) ───────────────────────────────────
         var gameMsg = await ModifyOriginalResponseAsync(m =>
         {
             m.Embed = BuildGameEmbed("🃏  Dealing cards…", community, 0, playerList, bet, null).Build();
@@ -284,21 +288,25 @@ public class Poker : InteractionModuleBase<SocketInteractionContext>
 
         await Task.Delay(1500);
 
+        // ── Step 2: Flop (3 community cards) ──────────────────────────────────
         await gameMsg.ModifyAsync(m =>
             m.Embed = BuildGameEmbed("🌊  Flop", community, 3, playerList, bet, null).Build());
 
         await Task.Delay(2000);
 
+        // ── Step 3: Turn (4th card) ────────────────────────────────────────────
         await gameMsg.ModifyAsync(m =>
             m.Embed = BuildGameEmbed("🌊  Turn", community, 4, playerList, bet, null).Build());
 
         await Task.Delay(2000);
 
+        // ── Step 4: River (5th card) ───────────────────────────────────────────
         await gameMsg.ModifyAsync(m =>
             m.Embed = BuildGameEmbed("🌊  River", community, 5, playerList, bet, null).Build());
 
         await Task.Delay(2000);
 
+        // ── Step 5: Showdown ───────────────────────────────────────────────────
         var results = playerList.Select(p =>
         {
             var seven = p.hand.Concat(community).ToList();
@@ -309,11 +317,21 @@ public class Poker : InteractionModuleBase<SocketInteractionContext>
 
         var winner = results.First();
         bool botWon = winner.isBot;
-        long humanPot = humanCount * bet;   // bot's "buy-in" is house money
-        long winnerPay = botWon ? 0 : humanPot;
+        decimal humanPot = humanCount * (decimal)bet;   // bot's "buy-in" is house money
+        decimal winnerPay = botWon ? 0m : humanPot;
 
         if (!botWon)
+        {
             _eco.AddCredits(winner.userId, ServerId, winnerPay, "poker_win");
+            try
+            {
+                _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "IncrementChallengeProgress",
+                [ new SqlParameter("@UserID",   winner.userId),
+                  new SqlParameter("@ServerID", ServerId),
+                  new SqlParameter("@GameType", "poker") ]);
+            }
+            catch { }
+        }
 
         // Mark done
         _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "UpdatePokerStatus",
@@ -328,6 +346,7 @@ public class Poker : InteractionModuleBase<SocketInteractionContext>
                                          bet, humanPot, winnerPay).Build());
     }
 
+    // ── Embed builders ─────────────────────────────────────────────────────────
 
     private static EmbedBuilder BuildLobbyEmbed(
         long bet,
@@ -346,8 +365,8 @@ public class Poker : InteractionModuleBase<SocketInteractionContext>
             .WithTitle("🃏  Texas Hold'em — Lobby")
             .WithColor(ColourInfo)
             .WithDescription(
-                $"💰 **Buy-in:** {CreditHelper.Format(bet)} per player\n" +
-                $"🏆 **Pot:** {CreditHelper.Format(humanCount * bet)} ({humanCount} human{(humanCount == 1 ? "" : "s")})\n\n" +
+                $"💰 **Buy-in:** {CreditHelper.Format((decimal)bet)} per player\n" +
+                $"🏆 **Pot:** {CreditHelper.Format(humanCount * (decimal)bet)} ({humanCount} human{(humanCount == 1 ? "" : "s")})\n\n" +
                 $"**Players:**\n{sb.ToString().TrimEnd()}")
             .WithFooter("Click Join to enter • Host clicks Start when ready");
     }
@@ -380,7 +399,7 @@ public class Poker : InteractionModuleBase<SocketInteractionContext>
             .WithDescription(
                 $"**Community:** {commLine}\n\n" +
                 $"**Players:**\n{sb.ToString().TrimEnd()}")
-            .WithFooter($"Buy-in: {CreditHelper.Format(bet)} each");
+            .WithFooter($"Buy-in: {CreditHelper.Format((decimal)bet)} each");
     }
 
     private EmbedBuilder BuildShowdownEmbed(
@@ -389,8 +408,8 @@ public class Poker : InteractionModuleBase<SocketInteractionContext>
         string winnerId,
         bool botWon,
         long bet,
-        long humanPot,
-        long winnerPay)
+        decimal humanPot,
+        decimal winnerPay)
     {
         string commLine = string.Join("  ", community.Select(CreditHelper.ShowCard));
         var sb = new System.Text.StringBuilder();
@@ -418,10 +437,11 @@ public class Poker : InteractionModuleBase<SocketInteractionContext>
             .WithDescription(
                 $"**Community:** {commLine}\n\n" +
                 $"**Showdown:**\n{sb.ToString().TrimEnd()}")
-            .WithFooter($"Buy-in was {CreditHelper.Format(bet)} per player • Pot: {CreditHelper.Format(humanPot)}")
+            .WithFooter($"Buy-in was {CreditHelper.Format((decimal)bet)} per player • Pot: {CreditHelper.Format(humanPot)}")
             .WithCurrentTimestamp();
     }
 
+    // ── Component builder ──────────────────────────────────────────────────────
 
     private static MessageComponent BuildLobbyButtons(int gameId, bool joinDisabled = false) =>
         new ComponentBuilder()
@@ -429,6 +449,7 @@ public class Poker : InteractionModuleBase<SocketInteractionContext>
             .WithButton("▶ Start", $"poker:start:{gameId}", ButtonStyle.Success)
             .Build();
 
+    // ── Helpers ────────────────────────────────────────────────────────────────
 
     private static (List<string> hand, List<string> remaining) DealFromDeck(
         List<string> deck, int count)
@@ -446,7 +467,7 @@ public class Poker : InteractionModuleBase<SocketInteractionContext>
             await dm.SendMessageAsync(
                 $"🃏 **Your hole cards for the current poker game:**\n" +
                 $"{CreditHelper.ShowHand(hand)}\n\n" +
-                $"*Buy-in: {CreditHelper.Format(bet)}*");
+                $"*Buy-in: {CreditHelper.Format((decimal)bet)}*");
         }
         catch { /* DMs disabled — cards were already shown ephemerally */ }
     }

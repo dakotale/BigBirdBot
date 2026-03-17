@@ -353,8 +353,8 @@ internal sealed class BotHost(
                         string emoji = DiscordBot.Helper.PetHelper.PetEmoji(
                             species, 100, 100, false, newLevel >= 50);
 
-                        long lvlBonus = CreditHelper.PetLevelUpAmount(newLevel);
-                        long newBalance = _creditEco.AddCredits(userId, serverId, lvlBonus, "pet_levelup");
+                        decimal lvlBonus = CreditHelper.PetLevelUpAmount(newLevel);
+                        decimal newBalance = _creditEco.AddCredits(userId, serverId, lvlBonus, "pet_levelup");
 
                         await msg.Channel.SendMessageAsync(embed: new EmbedBuilder()
                             .WithTitle($"{emoji}  {petName} levelled up!")
@@ -798,6 +798,15 @@ internal sealed class BotHost(
         {
             _schedulerTick++;
 
+            // ── Wrap the entire tick body so a single failure never kills the loop ──
+            try
+            {
+                await RunScheduledKeywordsAsync();
+            }
+            catch (Exception ex)
+            {
+                await NotifyOwnerAsync($"[Scheduler] RunScheduledKeywordsAsync failed (tick {_schedulerTick}):\n{ex.Message}");
+            }
 
             if (_schedulerTick % 30 == 0)
             {
@@ -827,7 +836,6 @@ internal sealed class BotHost(
                     catch { /* DMs disabled or user not found */ }
                 }
             }
-
 
             if (_schedulerTick % 15 == 0)
             {
@@ -868,7 +876,6 @@ internal sealed class BotHost(
                     }
                 }
             }
-
 
             if (_schedulerTick % 60 == 0)
             {
@@ -940,9 +947,6 @@ internal sealed class BotHost(
                 }
             }
 
-            await RunScheduledKeywordsAsync();
-
-
             if (_schedulerTick % 60 == 0)
             {
                 foreach (var guild in client.Guilds)
@@ -1007,7 +1011,17 @@ internal sealed class BotHost(
 
     private async Task RunScheduledKeywordsAsync()
     {
-        var dt = _sp.Select(Constants.discordBotConnStr, "GetUsersScheduledKeyword", []);
+        System.Data.DataTable dt;
+        try
+        {
+            dt = _sp.Select(Constants.discordBotConnStr, "GetUsersScheduledKeyword", []);
+        }
+        catch (Exception ex)
+        {
+            await NotifyOwnerAsync($"[Keywords] SP call failed: {ex.Message}");
+            return;
+        }
+
         if (dt.Rows.Count == 0) return;
 
         foreach (DataRow row in dt.Rows)
@@ -1023,7 +1037,13 @@ internal sealed class BotHost(
                 var user = await client.GetUserAsync(ulong.Parse(userId));
 
                 if (filePath.StartsWith(@"C:\"))
-                    await user.SendFileAsync(filePath, $"**{tableName} - {timestamp}**");
+                {
+                    if (File.Exists(filePath))
+                        await user.SendFileAsync(filePath, $"**{tableName} - {timestamp}**");
+                    else
+                        _sp.Select(Constants.discordBotConnStr, "UpdateUsersScheduledKeywordRequeue", [new SqlParameter("@UserID", userId)]);
+                }
+
                 else if (await IsLinkWorkingAsync(filePath))
                     await user.SendMessageAsync($"**{tableName} - {timestamp}**\n**URL:** {filePath}");
                 else
@@ -1087,6 +1107,10 @@ internal sealed class BotHost(
     {
         try
         {
+            // Clean expired shop effects on every tick (every 15 min)
+            try { _sp.UpdateCreate(Constants.discordBotConnStr, "CleanExpiredEffects", []); }
+            catch { /* non-fatal */ }
+
             var dt = _sp.Select(Constants.discordBotConnStr, "GetAllStocks", []);
 
             foreach (System.Data.DataRow row in dt.Rows)

@@ -24,16 +24,19 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
     private string UserId => Context.User.Id.ToString();
     private string ServerId => Context.Guild?.Id.ToString() ?? "DM";
 
+    // ── Button IDs ────────────────────────────────────────────────────────────
 
     private const string BtnHit = "bj:hit";
     private const string BtnStand = "bj:stand";
     private const string BtnDouble = "bj:double";
     private const string BtnPlayAgain = "bj:again";
 
+    // ── Suits / values ────────────────────────────────────────────────────────
 
     private static readonly string[] Suits = ["♠️", "♥️", "♦️", "♣️"];
     private static readonly string[] Ranks = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
 
+    // ── Command ───────────────────────────────────────────────────────────────
 
     [SlashCommand("blackjack", "Play a hand of blackjack against the dealer!")]
     [EnabledInDm(true)]
@@ -44,13 +47,13 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
         // Validate bet if one was placed
         if (bet > 0)
         {
-            long balance = _eco.GetBalance(UserId, ServerId);
-            if (!CreditHelper.IsValidBet(bet, balance, out string betError))
+            decimal balance = _eco.GetBalance(UserId, ServerId);
+            if (!CreditHelper.IsValidBet((decimal)bet, balance, out string betError))
             {
                 await FollowupAsync(embed: _embed.BuildErrorEmbed("Blackjack", betError, Username).Build());
                 return;
             }
-            _eco.DeductCredits(UserId, ServerId, bet, "blackjack");
+            _eco.DeductCredits(UserId, ServerId, (decimal)bet, "blackjack");
         }
 
         // One active game per user
@@ -91,14 +94,24 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
 
             if (bet > 0)
             {
-                long creditResult = (playerBJ, dealerBJ) switch
+                decimal creditResult = (playerBJ, dealerBJ) switch
                 {
-                    (true, true) => bet,
-                    (true, false) => (long)(bet * 2.5),
-                    _ => 0
+                    (true, true) => (decimal)bet,
+                    (true, false) => (decimal)bet * 2.5m,
+                    _ => 0m
                 };
-                if (creditResult > 0) _eco.AddCredits(UserId, ServerId, creditResult, "blackjack_win");
-                outcome += $"\n{CreditHelper.FormatDelta(creditResult - bet)} | Balance: {CreditHelper.Format(_eco.GetBalance(UserId, ServerId))}";
+                if (creditResult > 0m) _eco.AddCredits(UserId, ServerId, creditResult, "blackjack_win");
+                if (creditResult > (decimal)bet)
+                {
+                    try
+                    {
+                        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "IncrementChallengeProgress",
+                        [ new SqlParameter("@UserID", UserId), new SqlParameter("@ServerID", ServerId),
+                          new SqlParameter("@GameType", "blackjack") ]);
+                    }
+                    catch { }
+                }
+                outcome += $"\n{CreditHelper.FormatDelta(creditResult - (decimal)bet)} | Balance: {CreditHelper.Format(_eco.GetBalance(UserId, ServerId))}";
             }
 
             await FollowupAsync(
@@ -130,6 +143,7 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
         ]);
     }
 
+    // ── Button: Hit ───────────────────────────────────────────────────────────
 
     [ComponentInteraction(BtnHit)]
     public async Task OnHitAsync()
@@ -179,6 +193,7 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
         });
     }
 
+    // ── Button: Stand ─────────────────────────────────────────────────────────
 
     [ComponentInteraction(BtnStand)]
     public async Task OnStandAsync()
@@ -197,6 +212,7 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
         await ResolveStandAsync(player, dealer!, deck!, userId, bet);
     }
 
+    // ── Button: Double Down ───────────────────────────────────────────────────
 
     [ComponentInteraction(BtnDouble)]
     public async Task OnDoubleAsync()
@@ -214,14 +230,14 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
 
         if (bet > 0)
         {
-            long balance = _eco.GetBalance(userId, ServerId);
-            if (balance < bet)
+            decimal balance = _eco.GetBalance(userId, ServerId);
+            if (balance < (decimal)bet)
             {
                 // Can't afford to double — treat as stand
                 await ResolveStandAsync(player, dealer!, deck!, userId, bet);
                 return;
             }
-            _eco.DeductCredits(userId, ServerId, bet, "blackjack_double");
+            _eco.DeductCredits(userId, ServerId, (decimal)bet, "blackjack_double");
             bet *= 2;
         }
 
@@ -247,6 +263,7 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
         await ResolveStandAsync(player, dealer!, deck!, userId, bet);
     }
 
+    // ── Button: Play Again ────────────────────────────────────────────────────
 
     [ComponentInteraction(BtnPlayAgain)]
     public async Task OnPlayAgainAsync()
@@ -306,6 +323,7 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
         });
     }
 
+    // ── Dealer resolution ─────────────────────────────────────────────────────
 
     private async Task ResolveStandAsync(
         List<string> player, List<string> dealer, List<string> deck, string userId, long bet)
@@ -318,25 +336,25 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
 
         string outcome;
         Color colour;
-        long creditReturn = 0;
+        decimal creditReturn = 0m;
 
         if (dealerTotal > 21)
         {
             outcome = $"Dealer busts at {dealerTotal}! You win! 🎉";
             colour = Color.Green;
-            creditReturn = bet * 2;
+            creditReturn = (decimal)bet * 2m;
         }
         else if (playerTotal > dealerTotal)
         {
             outcome = $"You win! {playerTotal} vs {dealerTotal} 🎉";
             colour = Color.Green;
-            creditReturn = bet * 2;
+            creditReturn = (decimal)bet * 2m;
         }
         else if (playerTotal == dealerTotal)
         {
             outcome = $"Push! Both have {playerTotal}. 🤝";
             colour = Color.Blue;
-            creditReturn = bet;
+            creditReturn = (decimal)bet;
         }
         else
         {
@@ -344,12 +362,24 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
             colour = Color.Red;
         }
 
-        if (bet > 0 && creditReturn > 0)
+        if (bet > 0 && creditReturn > 0m)
+        {
             _eco.AddCredits(userId, ServerId, creditReturn, "blackjack_win");
+            if (creditReturn > (decimal)bet)
+            {
+                try
+                {
+                    _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "IncrementChallengeProgress",
+                    [ new SqlParameter("@UserID", userId), new SqlParameter("@ServerID", ServerId),
+                      new SqlParameter("@GameType", "blackjack") ]);
+                }
+                catch { }
+            }
+        }
 
         if (bet > 0)
         {
-            long net = creditReturn > 0 ? creditReturn - bet : -bet;
+            decimal net = creditReturn > 0m ? creditReturn - (decimal)bet : -(decimal)bet;
             outcome += $"\n{CreditHelper.FormatDelta(net)} | Balance: {CreditHelper.Format(_eco.GetBalance(userId, ServerId))}";
         }
 
@@ -362,6 +392,7 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
         });
     }
 
+    // ── Deck helpers ──────────────────────────────────────────────────────────
 
     private static List<string> BuildDeck()
     {
@@ -421,6 +452,7 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
         return hideSecond ? display : $"{display}  **({HandValue(hand)})**";
     }
 
+    // ── Embed / component builders ────────────────────────────────────────────
 
     private EmbedBuilder BuildEmbed(
         List<string> player, List<string> dealer,
@@ -447,6 +479,7 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
             .WithButton("Play Again", BtnPlayAgain, ButtonStyle.Success, new Emoji("🔄"))
             .Build();
 
+    // ── DB helpers ────────────────────────────────────────────────────────────
 
     private (List<string>? player, List<string>? dealer, List<string>? deck,
              bool doubled, string userId, long bet) LoadGame()

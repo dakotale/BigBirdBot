@@ -69,9 +69,9 @@ namespace DiscordBot.Constants
         public static string keywordDirectory => Get(nameof(keywordDirectory), @"C:\Temp\DiscordBot\");
         public static string minecraftModsDirectory => Get(nameof(minecraftModsDirectory), @"C:\Users\Dakota\Desktop\Cobblemon\mods\");
 
-        public static string spotifyClientId => Get(nameof(spotifyClientId), "");
+        public static string spotifyClientId => Get(nameof(spotifyClientId), "9d3327c7e115414386b546393c6e935d");
 
-        public static string spotifyClientSecret => Get(nameof(spotifyClientSecret), "");
+        public static string spotifyClientSecret => Get(nameof(spotifyClientSecret), "e5c19c145b0e4ba68b8b76f3a5acf1b2");
     }
 }
 
