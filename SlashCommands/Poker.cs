@@ -9,6 +9,7 @@ using System.Data.SqlClient;
 namespace DiscordBot.SlashCommands;
 
 /// <summary>
+/// Grouped under /game poker.
 /// Multiplayer Texas Hold'em poker.
 ///
 /// Flow:
@@ -22,6 +23,7 @@ namespace DiscordBot.SlashCommands;
 /// Bot entry is free (house money). Only human bets form the real pot.
 /// If the bot wins, the house takes the pot.
 /// </summary>
+[Group("game", "Play a minigame.")]
 public class Poker : InteractionModuleBase<SocketInteractionContext>
 {
     private readonly StoredProcedure _sp = new();

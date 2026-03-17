@@ -340,6 +340,68 @@ public class Economy : InteractionModuleBase<SocketInteractionContext>
 
     // ── /creditleaderboard ────────────────────────────────────────────────────
 
+    [SlashCommand("transfer", "Send credits to another user.")]
+    [EnabledInDm(false)]
+    public async Task HandleTransferAsync(
+        SocketGuildUser recipient,
+        [MinValue(1)] long amount)
+    {
+        await DeferAsync(ephemeral: true);
+
+        if (recipient.Id == Context.User.Id)
+        {
+            await FollowupAsync(embed: _embed.BuildErrorEmbed(
+                "Transfer", "You can't transfer credits to yourself.", Username).Build(), ephemeral: true);
+            return;
+        }
+
+        if (recipient.IsBot)
+        {
+            await FollowupAsync(embed: _embed.BuildErrorEmbed(
+                "Transfer", "You can't transfer credits to a bot.", Username).Build(), ephemeral: true);
+            return;
+        }
+
+        EnsureAccount(UserId);
+        string recipientId = recipient.Id.ToString();
+        EnsureAccount(recipientId, ServerId);
+
+        long senderBalance = GetBalance(UserId);
+
+        if (amount > senderBalance)
+        {
+            await FollowupAsync(embed: _embed.BuildErrorEmbed(
+                "Transfer",
+                $"You don't have enough credits. Your balance: {CreditHelper.Format(senderBalance)}",
+                Username).Build(), ephemeral: true);
+            return;
+        }
+
+        long newSenderBalance    = DeductCredits(UserId, amount, "transfer_out");
+        long newRecipientBalance = AddCredits(recipientId, ServerId, amount, "transfer_in");
+
+        await FollowupAsync(embed: new EmbedBuilder()
+            .WithTitle($"{CreditHelper.CurrencyEmoji}  Transfer Complete")
+            .WithColor(ColourGreen)
+            .WithDescription(
+                $"Sent {CreditHelper.Format(amount)} to {recipient.Mention}.\n\n" +
+                $"Your new balance: {CreditHelper.Format(newSenderBalance)}")
+            .WithFooter(Username, AvatarUrl)
+            .WithCurrentTimestamp()
+            .Build(), ephemeral: true);
+
+        // Notify recipient via the channel (non-ephemeral follow-up in the channel)
+        await Context.Channel.SendMessageAsync(embed: new EmbedBuilder()
+            .WithTitle($"{CreditHelper.CurrencyEmoji}  Credits Received!")
+            .WithColor(ColourGold)
+            .WithDescription(
+                $"{Context.User.Mention} sent {CreditHelper.Format(amount)} to {recipient.Mention}!\n" +
+                $"{recipient.DisplayName}'s new balance: {CreditHelper.Format(newRecipientBalance)}")
+            .WithCurrentTimestamp()
+            .Build());
+    }
+
+
     [SlashCommand("creditleaderboard", "Show the richest users in this server.")]
     [EnabledInDm(false)]
     public async Task HandleLeaderboardAsync()

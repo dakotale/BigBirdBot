@@ -10,6 +10,7 @@ using System.Web;
 
 namespace DiscordBot.SlashCommands
 {
+    [Group("game", "Play a minigame.")]
     public class Interaction : InteractionModuleBase<SocketInteractionContext>
     {
         [SlashCommand("trivia", "Trivia Bot")]

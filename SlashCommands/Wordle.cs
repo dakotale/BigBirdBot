@@ -13,6 +13,7 @@ namespace DiscordBot.SlashCommands;
 /// Answer checking is handled in BotHost.OnMessageReceivedAsync.
 /// DB state: AddWordleGame / GetWordleByChannel / UpdateWordleGame / DeleteWordleGame
 /// </summary>
+[Group("game", "Play a minigame.")]
 public class Wordle : InteractionModuleBase<SocketInteractionContext>
 {
     private readonly EmbedHelper _embed = new();
