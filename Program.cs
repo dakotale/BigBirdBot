@@ -491,7 +491,7 @@ internal sealed class BotHost(
                     await msg.Channel.GetMessageAsync(messageId) is IUserMessage gameMsg)
                 {
                     await gameMsg.ModifyAsync(m =>
-                        m.Embed = DiscordBot.SlashCommands.Wordle
+                        m.Embed = DiscordBot.SlashCommands.Games
                             .BuildWordleEmbed(answer, guesses, gameOver).Build());
                 }
 
