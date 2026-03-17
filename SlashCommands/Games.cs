@@ -1,5 +1,6 @@
 using Discord.Interactions;
 using Discord.WebSocket;
+using DiscordBot.Constants;
 using DiscordBot.Helper;
 
 namespace DiscordBot.SlashCommands;
