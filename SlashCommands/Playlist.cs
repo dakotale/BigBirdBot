@@ -8,6 +8,7 @@ using Lavalink4NET.DiscordNet;
 using Lavalink4NET.Players;
 using Lavalink4NET.Players.Queued;
 using Lavalink4NET.Rest.Entities.Tracks;
+using Microsoft.Extensions.Options;
 using System.Data;
 using System.Data.SqlClient;
 using System.Text;
@@ -55,9 +56,17 @@ public sealed class Playlist(IAudioService audioService)
 
         name = name.Trim();
 
+        var options = new CustomPlayerOptions
+        {
+            SelfMute = true,
+            TextChannel = Context.Channel as ITextChannel
+        };
+
+        var retrieveOptions = new PlayerRetrieveOptions(ChannelBehavior: PlayerChannelBehavior.None);
+
         // Fetch current player
-        var player = await audioService.Players
-            .GetPlayerAsync(Context.Guild);
+        var activePlayers = await audioService.Players.RetrieveAsync<CustomPlayer, CustomPlayerOptions>(Context, CreatePlayerAsync, options, retrieveOptions);
+        var player = activePlayers.Player; // May be null if not connected, but we won't create a new one
 
         if (player is null)
         {
@@ -352,5 +361,14 @@ public sealed class Playlist(IAudioService audioService)
             await FollowupAsync(embed: _embed.BuildErrorEmbed(
                 "Playlist", ex.Message, Username).Build(), ephemeral: true);
         }
+    }
+
+    private static ValueTask<CustomPlayer> CreatePlayerAsync(
+        IPlayerProperties<CustomPlayer, CustomPlayerOptions> properties,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        ArgumentNullException.ThrowIfNull(properties);
+        return ValueTask.FromResult(new CustomPlayer(properties));
     }
 }

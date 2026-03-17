@@ -366,7 +366,7 @@ public class Economy : InteractionModuleBase<SocketInteractionContext>
         string recipientId = recipient.Id.ToString();
         EnsureAccount(recipientId, ServerId);
 
-        long senderBalance = GetBalance(UserId);
+        decimal senderBalance = GetBalance(UserId);
 
         if (amount > senderBalance)
         {
@@ -377,8 +377,8 @@ public class Economy : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        long newSenderBalance    = DeductCredits(UserId, amount, "transfer_out");
-        long newRecipientBalance = AddCredits(recipientId, ServerId, amount, "transfer_in");
+        decimal newSenderBalance    = DeductCredits(UserId, amount, "transfer_out");
+        decimal newRecipientBalance = AddCredits(recipientId, ServerId, amount, "transfer_in");
 
         await FollowupAsync(embed: new EmbedBuilder()
             .WithTitle($"{CreditHelper.CurrencyEmoji}  Transfer Complete")
