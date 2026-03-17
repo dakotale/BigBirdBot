@@ -13,15 +13,8 @@ namespace DiscordBot.SlashCommands;
 /// Answer checking is handled in BotHost.OnMessageReceivedAsync.
 /// DB state: AddWordleGame / GetWordleByChannel / UpdateWordleGame / DeleteWordleGame
 /// </summary>
-[Group("game", "Play a minigame.")]
-public class Wordle : InteractionModuleBase<SocketInteractionContext>
+public partial class Games
 {
-    private readonly EmbedHelper _embed = new();
-    private readonly StoredProcedure _sp = new();
-
-    private string Username => Context.User.Username;
-    private string AvatarUrl => Context.User.GetAvatarUrl();
-
     private const int WordLength = 5;
     private const int MaxGuesses = 6;
 

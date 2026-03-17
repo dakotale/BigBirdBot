@@ -198,12 +198,17 @@ public sealed class Playlist(IAudioService audioService)
             return;
         }
 
-        // Get or create the player (same pattern as Audio.cs)
-        var retrieveOptions = new PlayerRetrieveOptions(
-            ChannelBehavior: PlayerChannelBehavior.Join);
+        // Get or create the player (same pattern as Audio.cs / SaveAsync above)
+        var playerOptions = new CustomPlayerOptions
+        {
+            SelfMute = true,
+            TextChannel = Context.Channel as ITextChannel
+        };
+        var retrieveOptions = new PlayerRetrieveOptions(ChannelBehavior: PlayerChannelBehavior.Join);
 
         var result = await audioService.Players
-            .RetrieveAsync(Context, PlayerFactory.Queued, retrieveOptions);
+            .RetrieveAsync<CustomPlayer, CustomPlayerOptions>(
+                Context, CreatePlayerAsync, playerOptions, retrieveOptions);
 
         if (!result.IsSuccess)
         {
@@ -221,7 +226,8 @@ public sealed class Playlist(IAudioService audioService)
             string uri = row["TrackUri"].ToString()!;
             try
             {
-                var track = await audioService.Tracks.LoadTrackAsync(uri, TrackSearchMode.None);
+                TrackSearchMode searchMode = TrackSearchMode.None;
+                var track = await audioService.Tracks.LoadTrackAsync(uri, searchMode);
                 if (track is not null)
                 {
                     await player.PlayAsync(track);

@@ -23,15 +23,10 @@ namespace DiscordBot.SlashCommands;
 /// Bot entry is free (house money). Only human bets form the real pot.
 /// If the bot wins, the house takes the pot.
 /// </summary>
-[Group("game", "Play a minigame.")]
-public class Poker : InteractionModuleBase<SocketInteractionContext>
+public partial class Games
 {
-    private readonly StoredProcedure _sp = new();
-    private readonly EmbedHelper _embed = new();
     private readonly Economy _eco = new();
 
-    private string Username => Context.User.Username;
-    private string AvatarUrl => Context.User.GetAvatarUrl();
     private string UserId => Context.User.Id.ToString();
     private string ServerId => Context.Guild?.Id.ToString() ?? "DM";
     private string ChannelId => Context.Channel.Id.ToString();
