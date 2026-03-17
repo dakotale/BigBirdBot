@@ -4,7 +4,10 @@ using Discord.WebSocket;
 using DiscordBot.Constants;
 using DiscordBot.Helper;
 using Lavalink4NET;
+using Lavalink4NET.DiscordNet;
+using Lavalink4NET.Players;
 using Lavalink4NET.Players.Queued;
+using Lavalink4NET.Rest.Entities.Tracks;
 using System.Data;
 using System.Data.SqlClient;
 using System.Text;
@@ -54,7 +57,7 @@ public sealed class Playlist(IAudioService audioService)
 
         // Fetch current player
         var player = await audioService.Players
-            .GetPlayerAsync<QueuedLavalinkPlayer>(Context.Guild);
+            .GetPlayerAsync(Context.Guild);
 
         if (player is null)
         {
@@ -152,7 +155,7 @@ public sealed class Playlist(IAudioService audioService)
 
         name = name.Trim();
 
-        if (Context.User is not IVoiceState { VoiceChannel: not null } voiceState)
+        if (Context.User is not IVoiceState { VoiceChannel: not null })
         {
             await FollowupAsync(embed: _embed.BuildErrorEmbed(
                 "Playlist", "You must be in a voice channel to load a playlist.", Username).Build());
@@ -186,15 +189,12 @@ public sealed class Playlist(IAudioService audioService)
             return;
         }
 
-        // Get or create the player
-        var options = new PlayerRetrieveOptions(
+        // Get or create the player (same pattern as Audio.cs)
+        var retrieveOptions = new PlayerRetrieveOptions(
             ChannelBehavior: PlayerChannelBehavior.Join);
 
-        var result = await audioService.Players.RetrieveAsync<QueuedLavalinkPlayer, QueuedLavalinkPlayerOptions>(
-            Context.Guild.Id,
-            voiceState.VoiceChannel.Id,
-            playerFactory: PlayerFactory.Queued,
-            options: options);
+        var result = await audioService.Players
+            .RetrieveAsync(Context, PlayerFactory.Queued, retrieveOptions);
 
         if (!result.IsSuccess)
         {
@@ -212,7 +212,7 @@ public sealed class Playlist(IAudioService audioService)
             string uri = row["TrackUri"].ToString()!;
             try
             {
-                var track = await audioService.Tracks.LoadTrackAsync(uri);
+                var track = await audioService.Tracks.LoadTrackAsync(uri, TrackSearchMode.None);
                 if (track is not null)
                 {
                     await player.PlayAsync(track);
