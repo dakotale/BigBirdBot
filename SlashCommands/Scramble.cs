@@ -12,15 +12,8 @@ namespace DiscordBot.SlashCommands;
 /// Answer checking is handled in BotHost.OnMessageReceivedAsync.
 /// DB state: AddScrambleGame / GetScrambleByChannel / DeleteScrambleGame / GetScrambleHint
 /// </summary>
-[Group("game", "Play a minigame.")]
-public class Scramble : InteractionModuleBase<SocketInteractionContext>
+public partial class Games
 {
-    private readonly EmbedHelper _embed = new();
-    private readonly StoredProcedure _sp = new();
-
-    private string Username => Context.User.Username;
-
-
     private static readonly string[] Easy =
     [
         "cat", "dog", "sun", "hat", "map", "run", "log", "cup", "bed", "fox",
