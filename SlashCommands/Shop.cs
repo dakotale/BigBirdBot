@@ -134,7 +134,7 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
 
         decimal balance = _eco.GetBalance(UserId, ServerId);
 
-        decimal totalCost = (decimal)item.Price * quantity;
+        decimal totalCost = item.Price * quantity;
 
         if (balance < totalCost)
         {
@@ -363,10 +363,6 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
             case "wealth_flex":
                 await UseWealthFlex(item);
                 break;
-            case "balance_transfer":
-                await UseBalanceTransfer(item);
-                break;
-
             // ── Luxury — server-wide nukes (confirmation required) ────────────
             case "economy_nuke":
                 await UseEconomyNuke(item);
@@ -1069,12 +1065,6 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
             .Build());
     }
 
-    /// <summary>Balance Transfer — moves up to 10% of balance to any user.</summary>
-    private async Task UseBalanceTransfer(ShopHelper.ShopItem item)
-    {
-        await ErrorAsync("To use Balance Transfer, run: `/shop use balance_transfer @user`\n\n*(This item requires a target — re-use the command and mention a user.)*");
-    }
-
     /// <summary>Economy Nuke — halves every user's balance in the server.</summary>
     private async Task UseEconomyNuke(ShopHelper.ShopItem item)
     {
@@ -1176,7 +1166,7 @@ public class ShopBuyAutocompleteHandler : AutocompleteHandler
         string current = autocompleteInteraction.Data.Current.Value?.ToString() ?? "";
 
         var all = ShopHelper.Items
-            .Where(i => i.Price != 9223372036854775807); // exclude unobtainable easter eggs
+            .Where(i => i.Price != ShopHelper.EasterEggPrice); // exclude unobtainable easter eggs
 
         // If no input, return first 25 across all categories (sorted by price asc)
         // If input given, match against name/key/category name
