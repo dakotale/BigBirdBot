@@ -683,7 +683,7 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
                     $"**🎟️ Entry Jackpot** — enter via `/jackpot <amount>`\n" +
                     $"Weighted draw every hour. More you put in, better your odds.\n\n" +
                     $"**🌊 Passive Jackpot** — earned automatically\n" +
-                    $"1% of every gambling loss feeds this pool.\n" +
+                    $"1% of every bet feeds this pool.\n" +
                     $"0.5% chance to win the entire pool on slots or scratch card.")
                 .AddField("🎟️ Entry Pot", CreditHelper.Format(entryPot), inline: true)
                 .AddField("🎟️ Entries", $"{entries}", inline: true)
@@ -1431,26 +1431,17 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
         if (hotStreakTriggered)
             _eco.AddCredits(UserId, ServerId, cost, "hot_streak_refund");
 
-        // ── Passive jackpot feed (skip if tax_evasion active on a win) ─────────
-        decimal netLoss = cost - payout;
-        if (netLoss > 0m)
+        // ── Passive jackpot feed — 1% of every bet ─────────────────────────────
+        decimal feed = Math.Max(1m, Math.Floor(cost * 0.01m));
+        try
         {
-            // tax_evasion consumes one stack per winning play — only skip on net wins
-            bool skipFeed = payout > 0m && ShopHelper.ConsumeActiveEffect(UserId, ServerId, "tax_evasion");
-            if (!skipFeed)
-            {
-                decimal feed = Math.Max(1m, Math.Floor(netLoss * 0.01m));
-                try
-                {
-                    _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "FeedPassiveJackpot",
-                    [
-                        new SqlParameter("@ServerID", ServerId),
-                        new SqlParameter("@Amount",   feed)
-                    ]);
-                }
-                catch { /* non-fatal */ }
-            }
+            _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "FeedPassiveJackpot",
+            [
+                new SqlParameter("@ServerID", ServerId),
+                new SqlParameter("@Amount",   feed)
+            ]);
         }
+        catch { /* non-fatal */ }
 
         // ── Log to GambleLog ───────────────────────────────────────────────────
         LogGamble(source, cost, payout);

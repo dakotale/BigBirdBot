@@ -1034,7 +1034,17 @@ internal sealed class BotHost(
 
             try
             {
-                var user = await client.GetUserAsync(ulong.Parse(userId));
+                // GetUserAsync only checks the socket cache; fall back to REST so
+                // users who haven't recently interacted with the bot are still resolved.
+                ulong uid = ulong.Parse(userId);
+                IUser? user = client.GetUser(uid)
+                           ?? (IUser?)await client.Rest.GetUserAsync(uid);
+
+                if (user is null)
+                {
+                    await NotifyOwnerAsync($"[Keywords] Could not resolve user {userId} — skipping tick.");
+                    continue;
+                }
 
                 if (filePath.StartsWith(@"C:\"))
                 {
