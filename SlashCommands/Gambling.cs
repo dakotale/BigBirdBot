@@ -104,7 +104,7 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
         decimal newBalance = ApplyGamble((decimal)bet, payout, "slots");
 
         // Passive jackpot — 0.5% chance on every spin
-        var (pjWon, pjAmount) = TryClaimPassiveJackpot();
+        var (pjWon, pjAmount) = await TryClaimPassiveJackpotAsync();
         if (pjWon) newBalance = _eco.GetBalance(UserId, ServerId);
 
         // Challenge tracking
@@ -378,7 +378,7 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
         decimal newBalance = ApplyGamble(CreditHelper.ScratchCardCost, payout, "scratchcard");
 
         // Passive jackpot — 0.5% chance on every card
-        var (pjWon, pjAmount) = TryClaimPassiveJackpot();
+        var (pjWon, pjAmount) = await TryClaimPassiveJackpotAsync();
         if (pjWon) newBalance = _eco.GetBalance(UserId, ServerId);
         if (won) TrackChallenge("scratch");
 
@@ -1463,23 +1463,57 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
     // Returns (won, amount) — caller appends a note to the result embed if won.
     private const decimal PassiveJackpotOdds = 0.005m; // 0.5% chance per eligible play
 
-    private (bool won, decimal amount) TryClaimPassiveJackpot()
+    private async Task<(bool won, decimal amount)> TryClaimPassiveJackpotAsync()
     {
         if (Random.Shared.NextDouble() > (double)PassiveJackpotOdds) return (false, 0m);
 
         try
         {
-            var dt = _sp.Select(Constants.Constants.discordBotConnStr, "ClaimPassiveJackpot",
+            // Pre-check: read the current pool before attempting an atomic claim.
+            // ClaimPassiveJackpot resets the pool to 0; some SP implementations
+            // return the POST-reset value (0) rather than the amount claimed.
+            // Fetching the pool first gives us the correct award amount as a
+            // fallback and avoids calling the claim SP on an empty pool.
+            var checkDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetPassiveJackpot",
                 [new SqlParameter("@ServerID", ServerId)]);
 
-            decimal pool = dt.Rows.Count > 0
-                ? decimal.Parse(dt.Rows[0]["Pool"].ToString()!)
+            decimal poolBefore = checkDt.Rows.Count > 0
+                ? decimal.Parse(checkDt.Rows[0]["Pool"].ToString()!)
                 : 0m;
 
-            if (pool <= 0m) return (false, 0m);
+            if (poolBefore <= 0m) return (false, 0m);
 
-            _eco.AddCredits(UserId, ServerId, pool, "passive_jackpot_win");
-            return (true, pool);
+            // Atomically claim the pool.
+            var claimDt = _sp.Select(Constants.Constants.discordBotConnStr, "ClaimPassiveJackpot",
+                [new SqlParameter("@ServerID", ServerId)]);
+
+            // Use SP-returned amount when available; fall back to pre-check if SP
+            // returns the post-reset value (0) or no rows.
+            decimal claimed = claimDt.Rows.Count > 0
+                ? decimal.Parse(claimDt.Rows[0]["Pool"].ToString()!)
+                : 0m;
+
+            if (claimed <= 0m) claimed = poolBefore; // SP returned post-reset 0 — use pre-check
+
+            _eco.AddCredits(UserId, ServerId, claimed, "passive_jackpot_win");
+
+            // Server-wide announcement so all players see the winner.
+            try
+            {
+                var guild = Context.Guild;
+                if (guild?.DefaultChannel is not null)
+                    await guild.DefaultChannel.SendMessageAsync(embed: new EmbedBuilder()
+                        .WithTitle("🎰  PASSIVE JACKPOT WINNER!")
+                        .WithColor(new Color(255, 215, 0))
+                        .WithDescription(
+                            $"🎉 {Context.User.Mention} just hit the **server passive jackpot** and won **{CreditHelper.Format(claimed)}**!\n\n" +
+                            $"*The pool has been reset. Every gambling loss feeds it back up — good luck!*")
+                        .WithCurrentTimestamp()
+                        .Build());
+            }
+            catch { /* non-fatal — don't block credit award on channel failure */ }
+
+            return (true, claimed);
         }
         catch { return (false, 0m); }
     }
