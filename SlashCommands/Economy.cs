@@ -5,7 +5,6 @@ using DiscordBot.Constants;
 using DiscordBot.Helper;
 using System.Data;
 using System.Data.SqlClient;
-using DiscordBot.Helper;
 
 namespace DiscordBot.SlashCommands;
 
@@ -267,7 +266,7 @@ public class Economy : InteractionModuleBase<SocketInteractionContext>
             }
         }
 
-        decimal earned = (decimal)Random.Shared.NextInt64((long)CreditHelper.WorkMin, (long)CreditHelper.WorkMax + 1);
+        decimal earned = Math.Floor(CreditHelper.WorkMin + (decimal)Random.Shared.NextDouble() * (CreditHelper.WorkMax - CreditHelper.WorkMin + 1m));
         // work_boost: 2× payout, decrements stack count (3 uses total)
         bool hasWorkBoost = ShopHelper.HasActiveEffect(UserId, ServerId, "work_boost");
         if (hasWorkBoost)
@@ -302,6 +301,8 @@ public class Economy : InteractionModuleBase<SocketInteractionContext>
     {
         await DeferAsync(ephemeral: true);
 
+        decimal transferAmount = (decimal)amount;
+
         if (recipient.Id == Context.User.Id)
         {
             await FollowupAsync(embed: _embed.BuildErrorEmbed(
@@ -322,7 +323,7 @@ public class Economy : InteractionModuleBase<SocketInteractionContext>
 
         decimal senderBalance = GetBalance(UserId);
 
-        if (amount > senderBalance)
+        if (transferAmount > senderBalance)
         {
             await FollowupAsync(embed: _embed.BuildErrorEmbed(
                 "Transfer",
@@ -331,30 +332,106 @@ public class Economy : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        decimal newSenderBalance    = DeductCredits(UserId, amount, "transfer_out");
-        decimal newRecipientBalance = AddCredits(recipientId, ServerId, amount, "transfer_in");
+        decimal newSenderBalance    = DeductCredits(UserId, transferAmount, "transfer_out");
+        decimal newRecipientBalance = AddCredits(recipientId, ServerId, transferAmount, "transfer_in");
 
         await FollowupAsync(embed: new EmbedBuilder()
             .WithTitle($"{CreditHelper.CurrencyEmoji}  Transfer Complete")
             .WithColor(ColourGreen)
             .WithDescription(
-                $"Sent {CreditHelper.Format(amount)} to {recipient.Mention}.\n\n" +
+                $"Sent {CreditHelper.Format(transferAmount)} to {recipient.Mention}.\n\n" +
                 $"Your new balance: {CreditHelper.Format(newSenderBalance)}")
             .WithFooter(Username, AvatarUrl)
             .WithCurrentTimestamp()
             .Build(), ephemeral: true);
 
-        // Notify recipient via the channel (non-ephemeral follow-up in the channel)
+        // Notify recipient via the channel
         await Context.Channel.SendMessageAsync(embed: new EmbedBuilder()
             .WithTitle($"{CreditHelper.CurrencyEmoji}  Credits Received!")
             .WithColor(ColourGold)
             .WithDescription(
-                $"{Context.User.Mention} sent {CreditHelper.Format(amount)} to {recipient.Mention}!\n" +
+                $"{Context.User.Mention} sent {CreditHelper.Format(transferAmount)} to {recipient.Mention}!\n" +
                 $"{recipient.DisplayName}'s new balance: {CreditHelper.Format(newRecipientBalance)}")
             .WithCurrentTimestamp()
             .Build());
     }
 
+
+    // ── /donate ───────────────────────────────────────────────────────────────
+
+    [SlashCommand("donate", "Spread your credits equally among all server members who have a balance.")]
+    [EnabledInDm(false)]
+    public async Task HandleDonateAsync(
+        [Summary("amount", "How many credits to donate in total.")]
+        [MinValue(1)] long amount)
+    {
+        await DeferAsync();
+        EnsureAccount(UserId);
+
+        decimal donateAmount = (decimal)amount;
+        decimal balance = GetBalance(UserId);
+
+        if (donateAmount > balance)
+        {
+            await FollowupAsync(embed: _embed.BuildErrorEmbed(
+                "Donate",
+                $"You don't have enough credits. Your balance: {CreditHelper.Format(balance)}",
+                Username).Build());
+            return;
+        }
+
+        // Fetch all server members who have credits, excluding the donor
+        var lbDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetCreditLeaderboard",
+            [new SqlParameter("@ServerID", ServerId)]);
+
+        var recipients = lbDt.Rows.Cast<System.Data.DataRow>()
+            .Where(r => r["UserID"]?.ToString() != UserId)
+            .ToList();
+
+        if (recipients.Count == 0)
+        {
+            await FollowupAsync(embed: _embed.BuildErrorEmbed(
+                "Donate",
+                "There are no other members with credits in this server to donate to.",
+                Username).Build());
+            return;
+        }
+
+        decimal share = Math.Floor(donateAmount / recipients.Count);
+
+        if (share < 1m)
+        {
+            await FollowupAsync(embed: _embed.BuildErrorEmbed(
+                "Donate",
+                $"Your donation of {CreditHelper.Format(donateAmount)} is too small to split among " +
+                $"**{recipients.Count}** members (less than {CreditHelper.CurrencyEmoji} **1** each). " +
+                $"Donate at least {CreditHelper.Format(recipients.Count)}.",
+                Username).Build());
+            return;
+        }
+
+        decimal totalDistributed = share * recipients.Count;
+        decimal newBalance = DeductCredits(UserId, totalDistributed, "donate_out");
+
+        foreach (System.Data.DataRow row in recipients)
+        {
+            string recipientId = row["UserID"].ToString()!;
+            AddCredits(recipientId, ServerId, share, "donate_in");
+        }
+
+        await FollowupAsync(embed: new EmbedBuilder()
+            .WithTitle($"{CreditHelper.CurrencyEmoji}  Donation Complete!")
+            .WithColor(ColourGreen)
+            .WithDescription(
+                $"**{CreditHelper.Format(totalDistributed)}** spread equally across **{recipients.Count}** member{(recipients.Count == 1 ? "" : "s")}.\n\n" +
+                $"Each member received: {CreditHelper.Format(share)}\n" +
+                $"Your new balance: {CreditHelper.Format(newBalance)}")
+            .WithFooter(Username, AvatarUrl)
+            .WithCurrentTimestamp()
+            .Build());
+    }
+
+    // ── /creditleaderboard ────────────────────────────────────────────────────
 
     [SlashCommand("creditleaderboard", "Show the richest users in this server.")]
     [EnabledInDm(false)]

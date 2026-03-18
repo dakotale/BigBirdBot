@@ -387,7 +387,7 @@ public static class CreditHelper
             cum += weight;
             if (roll < cum)
             {
-                decimal credits = max > 0 ? (decimal)Random.Shared.NextInt64((long)min, (long)max + 1) : 0m;
+                decimal credits = max > 0 ? Math.Floor(min + (decimal)Random.Shared.NextDouble() * (max - min + 1m)) : 0m;
                 return (name, emoji, credits, flavour);
             }
         }
@@ -503,18 +503,18 @@ public static class CreditHelper
         StraightFlush = 8, RoyalFlush = 9
     }
 
-    public static readonly (PokerHand hand, long multiplier, string label)[] PokerPayouts =
+    public static readonly (PokerHand hand, decimal multiplier, string label)[] PokerPayouts =
     [
-        (PokerHand.RoyalFlush,    800, "ROYAL FLUSH"),
-        (PokerHand.StraightFlush,  50, "Straight Flush"),
-        (PokerHand.FourOfAKind,    25, "Four of a Kind"),
-        (PokerHand.FullHouse,       9, "Full House"),
-        (PokerHand.Flush,           6, "Flush"),
-        (PokerHand.Straight,        4, "Straight"),
-        (PokerHand.ThreeOfAKind,    3, "Three of a Kind"),
-        (PokerHand.TwoPair,         2, "Two Pair"),
-        (PokerHand.JacksOrBetter,   1, "Jacks or Better"),
-        (PokerHand.HighCard,        0, "No Win"),
+        (PokerHand.RoyalFlush,    800m, "ROYAL FLUSH"),
+        (PokerHand.StraightFlush,  50m, "Straight Flush"),
+        (PokerHand.FourOfAKind,    25m, "Four of a Kind"),
+        (PokerHand.FullHouse,       9m, "Full House"),
+        (PokerHand.Flush,           6m, "Flush"),
+        (PokerHand.Straight,        4m, "Straight"),
+        (PokerHand.ThreeOfAKind,    3m, "Three of a Kind"),
+        (PokerHand.TwoPair,         2m, "Two Pair"),
+        (PokerHand.JacksOrBetter,   1m, "Jacks or Better"),
+        (PokerHand.HighCard,        0m, "No Win"),
     ];
 
     public static PokerHand EvaluatePokerHand(List<string> hand)
@@ -549,7 +549,7 @@ public static class CreditHelper
     public static decimal PokerPayout(PokerHand hand, decimal bet)
     {
         var entry = PokerPayouts.First(p => p.hand == hand);
-        return bet * (decimal)entry.multiplier;
+        return bet * entry.multiplier;
     }
 
     public static string PokerHandLabel(PokerHand hand) =>

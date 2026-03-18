@@ -34,12 +34,17 @@ public static class ShopHelper
         string Emoji,
         string Description,
         string Effect,
-        long Price,
+        decimal Price,
         ShopCategory Category,
         bool IsCosmetic = false,
         string? CosmeticType = null,
         int? DurationMinutes = null,
         int StackCount = 1);
+
+    // ── Constants ─────────────────────────────────────────────────────────────
+
+    /// <summary>Sentinel price for easter-egg items that are not purchasable via autocomplete.</summary>
+    public const decimal EasterEggPrice = decimal.MaxValue;
 
     // ── Item Catalog ──────────────────────────────────────────────────────────
 
@@ -177,11 +182,11 @@ public static class ShopHelper
         new("impregnate_bot_owner", "Impregnate Bot Owner", "🤖",
             "Fills the bot owner with eggs. (Easter Egg)",
             "An unusual item that, when used, immediately impregnates the bot owner.",
-            9223372036854775807, ShopCategory.GamblingPerk),
+            EasterEggPrice, ShopCategory.GamblingPerk),
         new("destroy_bot_owner_baby", "Destroy Bot Owner's Baby", "🍼",
             "Destroys one of the bot owner's babies. (Easter Egg)",
             "An unusual item that, when use, destroys one of the bot owner's babies if they have any for the person who buys this.",
-            9223372036854775807, ShopCategory.GamblingPerk),
+            EasterEggPrice, ShopCategory.GamblingPerk),
 
         // ── Luxury — Mid-game (100M–5B) ───────────────────────────────────────
         // Meaningful for players in the 200M–20B range (ranks 3–6 on leaderboard).
@@ -263,11 +268,6 @@ public static class ShopHelper
             "Triples all credit earnings for 6 hours.",
             "For 6 hours all income is tripled: /daily, /work, gambling payouts, and fishing. Does not stack with Golden Ticket.",
             2_000_000_000_000, ShopCategory.Luxury, DurationMinutes: 360),
-
-        new("balance_transfer", "Balance Transfer",    "🔀",
-            "Transfers up to 10% of your balance to any user of your choice.",
-            "Immediately moves up to 10% of your current balance to any user on the server. Bypasses the standard /transfer daily cap.",
-            5_000_000_000_000, ShopCategory.Luxury),
 
         new("server_reset",     "Server Economy Reset","💥",
             "Resets every user's balance to 0. Nuclear option. Irreversible.",
