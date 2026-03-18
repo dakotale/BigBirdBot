@@ -1358,8 +1358,8 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
     /// </summary>
     private decimal ApplyGamble(decimal cost, decimal payout, string source)
     {
-        string streakKey = $"{UserId}:{ServerId}";
         bool won = payout > 0m;
+        string streakKey = $"{UserId}:{ServerId}";
 
         // ── Chaos Card ─────────────────────────────────────────────────────────
         // Signals to the calling command via a flag — the command must check
@@ -1367,10 +1367,14 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
         // ApplyGamble itself just handles the economy side normally.
 
         // ── Comeback Chip ──────────────────────────────────────────────────────
-        if (!won && ShopHelper.HasActiveEffect(UserId, ServerId, "comeback_chip"))
+        // Always track losses regardless of chip ownership so buying the chip
+        // mid-streak works correctly.
+        if (!won)
         {
             int losses = _lossStreaks.AddOrUpdate(streakKey, 1, (_, v) => v + 1);
-            if (losses >= 3)
+            _winStreaks.TryRemove(streakKey, out _);
+
+            if (losses >= 3 && ShopHelper.HasActiveEffect(UserId, ServerId, "comeback_chip"))
             {
                 ShopHelper.ConsumeActiveEffect(UserId, ServerId, "comeback_chip");
                 _lossStreaks.TryRemove(streakKey, out _);
@@ -1378,23 +1382,23 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
                 won = true;
             }
         }
-        else if (!won)
+        else
         {
-            _lossStreaks.AddOrUpdate(streakKey, 1, (_, v) => v + 1);
-            _winStreaks.TryRemove(streakKey, out _);
+            _lossStreaks.TryRemove(streakKey, out _);
         }
 
         // ── Hot Streak ─────────────────────────────────────────────────────────
+        // Flag set here, refund applied AFTER debit/credit below.
+        bool hotStreakTriggered = false;
         if (won)
         {
             int wins = _winStreaks.AddOrUpdate(streakKey, 1, (_, v) => v + 1);
-            _lossStreaks.TryRemove(streakKey, out _);
+
             if (wins >= 3 && ShopHelper.HasActiveEffect(UserId, ServerId, "hot_streak"))
             {
                 ShopHelper.ConsumeActiveEffect(UserId, ServerId, "hot_streak");
                 _winStreaks.TryRemove(streakKey, out _);
-                // Refund the bet cost on top of whatever they won
-                _eco.AddCredits(UserId, ServerId, cost, "hot_streak_refund");
+                hotStreakTriggered = true;
             }
         }
 
@@ -1422,6 +1426,10 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
 
         if (payout > 0m)
             _eco.AddCredits(UserId, ServerId, payout, source);
+
+        // ── Hot Streak refund — after debit so net is correct ─────────────────
+        if (hotStreakTriggered)
+            _eco.AddCredits(UserId, ServerId, cost, "hot_streak_refund");
 
         // ── Passive jackpot feed (skip if tax_evasion active on a win) ─────────
         decimal netLoss = cost - payout;

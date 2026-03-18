@@ -270,7 +270,7 @@ public class ServerCommands : InteractionModuleBase<SocketInteractionContext>
         }
 
         // ── Active Pet ───────────────────────────────────────────────────────
-        var petDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetActivePetByUser",
+        var petDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetActivePet",
             [new SqlParameter("@UserID", targetId)]);
 
         string petField = "*No active pet*";
@@ -302,9 +302,9 @@ public class ServerCommands : InteractionModuleBase<SocketInteractionContext>
         if (gambleDt.Rows.Count > 0)
         {
             var row  = gambleDt.Rows[0];
-            long wins   = long.Parse(row["TotalWins"].ToString()!);
-            long losses = long.Parse(row["TotalLosses"].ToString()!);
-            long net    = long.Parse(row["NetCredits"].ToString()!);
+            decimal wins   = decimal.Parse(row["Wins"].ToString()!);
+            decimal losses = decimal.Parse(row["Losses"].ToString()!);
+            decimal net    = decimal.Parse(row["NetTotal"].ToString()!);
             string netStr = net >= 0
                 ? $"+{CreditHelper.Format(net)}"
                 : $"-{CreditHelper.Format(Math.Abs(net))}";

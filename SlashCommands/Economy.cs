@@ -294,52 +294,6 @@ public class Economy : InteractionModuleBase<SocketInteractionContext>
             .Build());
     }
 
-    // ── /transfer ─────────────────────────────────────────────────────────────
-
-    [SlashCommand("transfer", "Send credits to another user.")]
-    [EnabledInDm(false)]
-    public async Task HandleTransferAsync(IUser recipient, [MinValue(1)] long amount)
-    {
-        await DeferAsync();
-
-        if (recipient.Id == Context.User.Id) { await ErrorAsync("You can't transfer to yourself!"); return; }
-        if (recipient.IsBot) { await ErrorAsync("Bots don't accept credits."); return; }
-
-        EnsureAccount(UserId);
-        EnsureAccount(recipient.Id.ToString());
-
-        var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetCredits",
-        [
-            new SqlParameter("@UserID",   UserId),
-            new SqlParameter("@ServerID", ServerId)
-        ]);
-
-        decimal balance = decimal.Parse(dt.Rows[0]["Balance"].ToString()!);
-
-        if (amount > balance)
-        {
-            await ErrorAsync($"You only have {CreditHelper.Format(balance)}!");
-            return;
-        }
-
-        if (amount < 1) { await ErrorAsync("Amount must be at least 1."); return; }
-
-        DeductCredits(UserId, amount, "transfer");
-        AddCredits(recipient.Id.ToString(), amount, "transfer");
-
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"💸  Transfer Sent!")
-            .WithColor(ColourGreen)
-            .WithDescription(
-                $"You sent {CreditHelper.Format(amount)} to **{recipient.Username}**!\n\n" +
-                $"Your new balance: {CreditHelper.Format(balance - amount)}")
-            .WithFooter(Username, AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
-    }
-
-    // ── /creditleaderboard ────────────────────────────────────────────────────
-
     [SlashCommand("transfer", "Send credits to another user.")]
     [EnabledInDm(false)]
     public async Task HandleTransferAsync(
