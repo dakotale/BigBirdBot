@@ -5,75 +5,102 @@ using Lavalink4NET.Players;
 using Lavalink4NET.Players.Queued;
 using Lavalink4NET.Protocol.Payloads.Events;
 
-namespace DiscordBot.Helper
+namespace DiscordBot.Helper;
+
+/// <summary>
+/// Custom Lavalink player that sends Now Playing / Track Ended notifications
+/// to a bound Discord text channel and keeps the database queue in sync.
+/// </summary>
+public sealed class CustomPlayer : QueuedLavalinkPlayer
 {
-    /// <summary>
-    /// This is the LavaLink/Audio stuff.
-    /// A custom player provides some additional functionality
-    /// needed like showing the track that is now playing and
-    /// ended.
-    /// </summary>
-    public sealed class CustomPlayer : QueuedLavalinkPlayer
+    private readonly ITextChannel? _textChannel;
+
+    public CustomPlayer(IPlayerProperties<CustomPlayer, CustomPlayerOptions> properties)
+        : base(properties)
     {
-        private readonly ITextChannel _textChannel;
+        _textChannel = properties.Options.Value.TextChannel;
+    }
 
-        public CustomPlayer(IPlayerProperties<CustomPlayer, CustomPlayerOptions> properties)
-            : base(properties)
+    /// <inheritdoc/>
+    protected override async ValueTask NotifyTrackStartedAsync(
+        ITrackQueueItem track,
+        CancellationToken cancellationToken = default)
+    {
+        await base.NotifyTrackStartedAsync(track, cancellationToken).ConfigureAwait(false);
+
+        if (_textChannel is null) return;
+
+        var t = track.Track;
+        string artwork = t.ArtworkUri?.ToString() ?? "";
+        string duration = t.Duration.ToString(@"hh\:mm\:ss");
+        string msg = $"**[{duration}]**\n**{t.Title}**\n{t.Uri}\n{t.SourceName.ToUpperInvariant()}";
+
+        await _textChannel
+            .SendMessageAsync(
+                embed: BuildNowPlayingEmbed("Playing", msg, artwork).Build(),
+                components: BuildPlaybackButtons())
+            .ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// IMPORTANT: <c>base.NotifyTrackEndedAsync</c> is called FIRST so that
+    /// <see cref="QueuedLavalinkPlayer"/> always advances the queue regardless of
+    /// what happens during the DB cleanup. A synchronous DB call placed before
+    /// base was the root cause of queue clearing — any exception or slow query
+    /// would prevent base from running, silently stalling queue progression.
+    /// </remarks>
+    protected override async ValueTask NotifyTrackEndedAsync(
+        ITrackQueueItem queueItem,
+        TrackEndReason endReason,
+        CancellationToken cancellationToken = default)
+    {
+        // Advance the queue first — must always complete before cleanup work.
+        await base.NotifyTrackEndedAsync(queueItem, endReason, cancellationToken).ConfigureAwait(false);
+
+        // DB cleanup is fire-and-forget; never let it block or throw into the event loop.
+        if (queueItem?.Track is { } t)
         {
-            _textChannel = properties.Options.Value.TextChannel;
-        }
-
-        protected override async ValueTask NotifyTrackStartedAsync(ITrackQueueItem track, CancellationToken cancellationToken = default)
-        {
-            await base
-                .NotifyTrackStartedAsync(track, cancellationToken)
-                .ConfigureAwait(false);
-
-            TimeSpan duration = new TimeSpan();
-            string artworkUrl = "";
-
-            if (track?.Track.Duration != null)
-                duration = new TimeSpan(track.Track.Duration.Hours, track.Track.Duration.Minutes, track.Track.Duration.Seconds);
-
-            string msg = $"**[{duration}]**\n**{track?.Track.Title}**\n{track?.Track.Uri}\n{track?.Track.SourceName.ToUpper()}";
-
-            if (track.Track.ArtworkUri != null)
-                artworkUrl = track.Track.ArtworkUri.ToString();
-
-            EmbedBuilder embed = BuildMusicEmbed("Playing", msg, artworkUrl);
-
-            // send a message to the text channel
-            await _textChannel
-                .SendMessageAsync(embed: embed.Build())
-                .ConfigureAwait(false);
-        }
-
-        protected override ValueTask NotifyTrackEndedAsync(ITrackQueueItem queueItem, TrackEndReason endReason, CancellationToken cancellationToken = default)
-        {
-            StoredProcedure stored = new StoredProcedure();
-
-            if (queueItem != null && queueItem.Track != null)
+            _ = Task.Run(() =>
             {
-                stored.UpdateCreate(Constants.Constants.discordBotConnStr, "DeleteMusicQueue", new List<SqlParameter>
+                try
                 {
-                    new SqlParameter("@URL", (queueItem.Track.Uri != null) ? queueItem.Track.Uri.OriginalString : "")
-                });
-            }
-
-            return base.NotifyTrackEndedAsync(queueItem, endReason, cancellationToken);
-        }
-
-        private EmbedBuilder BuildMusicEmbed(string title, string description, string artwork = "")
-        {
-            EmbedBuilder embed = new EmbedBuilder
-            {
-                Title = $"Music - {title}",
-                Color = Color.Blue,
-                Description = $"{description}",
-                ImageUrl = artwork
-            };
-
-            return embed;
+                    new StoredProcedure().UpdateCreate(
+                        Constants.Constants.discordBotConnStr,
+                        "DeleteMusicQueue",
+                        [new SqlParameter("@URL", t.Uri?.OriginalString ?? "")]);
+                }
+                catch
+                {
+                    // Intentionally swallowed — a failed DB cleanup must never
+                    // affect playback or surface as an unhandled exception.
+                }
+            });
         }
     }
+
+
+    private static EmbedBuilder BuildNowPlayingEmbed(string title, string description, string artwork = "") =>
+        new EmbedBuilder()
+            .WithTitle($"Music — {title}")
+            .WithColor(new Color(88, 101, 242))   // matches Audio.cs ColourDefault
+            .WithDescription(description)
+            .WithImageUrl(artwork)
+            .WithCurrentTimestamp();
+
+    /// <summary>
+    /// Builds the same two-row playback button row used by the slash commands
+    /// so that auto-fired Now Playing messages are also interactive.
+    /// </summary>
+    private static MessageComponent BuildPlaybackButtons() =>
+        new ComponentBuilder()
+            .WithButton("Pause", "audio:pause", ButtonStyle.Primary, new Emoji("⏸️"), row: 0)
+            .WithButton("Skip", "audio:skip", ButtonStyle.Secondary, new Emoji("⏭️"), row: 0)
+            .WithButton("Stop", "audio:stop", ButtonStyle.Danger, new Emoji("⏹️"), row: 0)
+            .WithButton("Shuffle", "audio:shuffle", ButtonStyle.Secondary, new Emoji("🔀"), row: 0)
+            .WithButton("Loop ×1", "audio:loop1", ButtonStyle.Secondary, new Emoji("🔁"), row: 0)
+            .WithButton("Vol −", "audio:vol_down", ButtonStyle.Secondary, new Emoji("🔉"), row: 1)
+            .WithButton("Vol +", "audio:vol_up", ButtonStyle.Secondary, new Emoji("🔊"), row: 1)
+            .WithButton("Queue", "audio:queue", ButtonStyle.Secondary, new Emoji("📋"), row: 1)
+            .Build();
 }

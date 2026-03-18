@@ -1,0 +1,910 @@
+﻿namespace DiscordBot.Helper;
+
+/// <summary>
+/// Static helpers for the Tamagotchi pet system.
+/// Handles XP/level maths, stat rendering, emoji lookup, and hibernation logic.
+/// </summary>
+public static class PetHelper
+{
+
+    public static readonly Dictionary<string, string[]> Breeds = new()
+    {
+        ["cat"] =
+        [
+            "Abyssinian", "Bengal", "Birman", "British Shorthair", "Burmese",
+            "Devon Rex", "Egyptian Mau", "Himalayan", "Maine Coon", "Manx",
+            "Norwegian Forest Cat", "Ocicat", "Persian", "Ragdoll", "Russian Blue",
+            "Scottish Fold", "Siamese", "Siberian", "Sphynx", "Turkish Angora"
+        ],
+        ["dog"] =
+        [
+            "Akita", "Australian Shepherd", "Beagle", "Border Collie", "Boxer",
+            "Bulldog", "Chihuahua", "Chow Chow", "Dachshund", "Dalmatian",
+            "Doberman", "French Bulldog", "German Shepherd", "Golden Retriever",
+            "Great Dane", "Husky", "Labrador Retriever", "Pomeranian", "Poodle",
+            "Rottweiler", "Samoyed", "Shih Tzu", "Shiba Inu", "Weimaraner"
+        ],
+        ["horse"] =
+        [
+            "Andalusian", "Appaloosa", "Arabian", "Clydesdale", "Friesian",
+            "Haflinger", "Lipizzaner", "Lusitano", "Mongolian", "Morgan",
+            "Mustang", "Oldenburg", "Paint", "Paso Fino", "Percheron",
+            "Quarter Horse", "Shetland Pony", "Standardbred", "Tennessee Walker", "Thoroughbred"
+        ],
+        ["bird"] =
+        [
+            "African Grey Parrot", "Amazon Parrot", "Blue Jay", "Budgerigar",
+            "Canary", "Cockatiel", "Cockatoo", "Conure", "Eclectus Parrot",
+            "Finch", "Galah", "Indian Ringneck", "Lorikeet", "Lovebird",
+            "Macaw", "Mynah", "Quaker Parrot", "Robin", "Sun Conure", "Toucan"
+        ],
+        ["dinosaur"] =
+        [
+            "Ankylosaurus", "Brachiosaurus", "Carnotaurus", "Compsognathus",
+            "Dilophosaurus", "Diplodocus", "Iguanodon", "Pachycephalosaurus",
+            "Parasaurolophus", "Pterodactyl", "Spinosaurus", "Stegosaurus",
+            "Styracosaurus", "Triceratops", "Troodon", "T-Rex",
+            "Utahraptor", "Velociraptor"
+        ],
+        ["bunny"] =
+        [
+            "American", "Angora", "Belgian Hare", "Californian", "Checkered Giant",
+            "Chinchilla", "Dutch", "Dwarf Hotot", "English Lop", "Flemish Giant",
+            "French Lop", "Harlequin", "Holland Lop", "Jersey Wooly", "Lionhead",
+            "Mini Rex", "Netherland Dwarf", "New Zealand", "Polish", "Rex"
+        ],
+        ["fish"] =
+        [
+            "Betta", "Clownfish", "Angelfish", "Goldfish", "Guppy",
+            "Koi", "Discus", "Oscar", "Neon Tetra", "Axolotl",
+            "Pufferfish", "Lionfish", "Moorish Idol", "Mandarin Fish", "Arowana",
+            "Rainbow Fish", "Cichlid", "Zebrafish", "Pleco", "Parrotfish"
+        ],
+        ["shark"] =
+        [
+            "Great White", "Hammerhead", "Bull Shark", "Tiger Shark", "Whale Shark",
+            "Nurse Shark", "Blacktip Reef", "Whitetip Reef", "Lemon Shark", "Blue Shark",
+            "Mako Shark", "Goblin Shark", "Thresher Shark", "Zebra Shark", "Wobbegong",
+            "Epaulette Shark", "Angel Shark", "Horn Shark", "Port Jackson", "Bamboo Shark"
+        ],
+        ["wolf"] =
+        [
+            "Arctic Wolf", "Black Wolf", "Eastern Timber", "Ethiopian Wolf", "Eurasian Wolf",
+            "Gray Wolf", "Great Plains Wolf", "Himalayan Wolf", "Iberian Wolf", "Indian Wolf",
+            "Iranian Wolf", "Italian Wolf", "Mackenzie Valley", "Mexican Wolf", "Northwestern Wolf",
+            "Red Wolf", "Steppe Wolf", "Tundra Wolf", "Arabian Wolf", "Chinese Wolf"
+        ],
+        ["lizard"] =
+        [
+            "Ackie Monitor", "Bearded Dragon", "Blue-Tongued Skink", "Chameleon", "Crested Gecko",
+            "Day Gecko", "Frilled Dragon", "Giant Tegu", "Green Iguana", "Jackson's Chameleon",
+            "Komodo Dragon", "Leopard Gecko", "Monitor Lizard", "Panther Chameleon", "Savannah Monitor",
+            "Spiny-Tailed Iguana", "Uromastyx", "Veiled Chameleon", "Water Dragon", "Tokay Gecko"
+        ],
+        ["otter"] =
+        [
+            "African Clawless Otter", "Asian Small-Clawed Otter", "Cape Clawless Otter", "Congo Clawless Otter",
+            "Eurasian Otter", "Giant Otter", "Hairy-Nosed Otter", "Indian Smooth-Coated Otter",
+            "Japanese River Otter", "Marine Otter", "Neotropical Otter", "North American River Otter",
+            "River Otter", "Sea Otter", "Smooth-Coated Otter", "Southern River Otter",
+            "Spotted-Necked Otter", "Brazilian Giant Otter", "Luzon Otter", "Sumatran Otter"
+        ],
+        ["bear"] =
+        [
+            "American Black Bear", "Asiatic Black Bear", "Atlas Bear", "Brown Bear", "Cave Bear",
+            "Eurasian Brown Bear", "Florida Black Bear", "Giant Panda", "Grizzly Bear",
+            "Himalayan Brown Bear", "Kermode Bear", "Kodiak Bear", "Polar Bear", "Sloth Bear",
+            "Spectacled Bear", "Spirit Bear", "Sun Bear", "Syrian Brown Bear",
+            "Ussuri Brown Bear", "Malayan Sun Bear"
+        ],
+        ["insect"] =
+        [
+            "Atlas Moth", "Blue Morpho Butterfly", "Bumblebee", "Dragonfly", "Emperor Dragonfly",
+            "Firefly", "Giant Swallowtail", "Glasswing Butterfly", "Goliath Beetle", "Hercules Beetle",
+            "Hummingbird Hawk-Moth", "Jewel Beetle", "Leafcutter Ant", "Luna Moth", "Monarch Butterfly",
+            "Orchid Mantis", "Praying Mantis", "Rainbow Scarab", "Stick Insect", "Walking Stick"
+        ],
+        ["ocean_invertebrate"] =
+        [
+            "Blue-Ringed Octopus", "Box Jellyfish", "Christmas Tree Worm", "Coconut Crab",
+            "Cuttlefish", "Decorator Crab", "Dumbo Octopus", "Fiddler Crab", "Giant Clam",
+            "Giant Pacific Octopus", "Giant Squid", "Horseshoe Crab", "Japanese Spider Crab",
+            "Mantis Shrimp", "Mimic Octopus", "Moon Jellyfish", "Nautilus", "Peacock Mantis Shrimp",
+            "Portuguese Man O' War", "Sea Slug", "Starfish", "Vampire Squid"
+        ],
+        ["land_invertebrate"] =
+        [
+            "Atlas Beetle", "Black Widow Spider", "Centipede", "Death Stalker Scorpion",
+            "Emperor Scorpion", "Garden Snail", "Giant African Millipede", "Giant Land Snail",
+            "Giant Vinegaroon", "Goliath Bird-Eating Spider", "Land Hermit Crab", "Malaysian Jewel Tarantula",
+            "Peacock Tarantula", "Pill Bug", "Pink-Toed Tarantula", "Purple Pincher Hermit Crab",
+            "Red-Knee Tarantula", "Rose Hair Tarantula", "Rusty-Patched Bumblebee", "Tailless Whip Scorpion"
+        ]
+    };
+
+    public static bool IsValidBreed(string species, string breed) =>
+        Breeds.TryGetValue(species.ToLower(), out var breeds) &&
+        breeds.Contains(breed, StringComparer.OrdinalIgnoreCase);
+
+
+    /// <summary>XP required to reach a given level. Curve: 50 * level^2</summary>
+    public static int XpForLevel(int level) => 50 * level * level;
+
+    /// <summary>Derives the current level from a raw XP value.</summary>
+    public static int LevelFromXp(int xp)
+    {
+        int level = 1;
+        while (XpForLevel(level + 1) <= xp)
+            level++;
+        return level;
+    }
+
+    /// <summary>Returns XP progress within the current level as a 0–1 float.</summary>
+    public static float LevelProgress(int xp)
+    {
+        int level = LevelFromXp(xp);
+        int current = XpForLevel(level);
+        int next = XpForLevel(level + 1);
+        return (float)(xp - current) / (next - current);
+    }
+
+
+    public const int HibernationThreshold = 15;
+
+    /// <summary>
+    /// Triggers hibernation when 2 or more stats fall below the threshold.
+    /// Requiring all 3 was almost never hit in practice.
+    /// </summary>
+    public static bool ShouldHibernate(int hunger, int happiness, int energy)
+    {
+        int below = (hunger < HibernationThreshold ? 1 : 0)
+                  + (happiness < HibernationThreshold ? 1 : 0)
+                  + (energy < HibernationThreshold ? 1 : 0);
+        return below >= 2;
+    }
+
+
+    public static string PetEmoji(string species, int happiness, int hunger,
+                                   bool hibernating, bool evolved)
+    {
+        if (hibernating) return species.ToLower() switch
+        {
+            "cat" => "😴🐱",
+            "dog" => "😴🐶",
+            "horse" => "😴🐴",
+            "bird" => "😴🐦",
+            "dinosaur" => "😴🦕",
+            "bunny" => "😴🐰",
+            "fish" => "😴🐟",
+            "shark" => "😴🦈",
+            "wolf" => "😴🐺",
+            "lizard" => "😴🦎",
+            "otter" => "😴🦦",
+            "bear" => "😴🐻",
+            "insect" => "😴🐛",
+            "ocean_invertebrate" => "😴🐙",
+            "land_invertebrate" => "😴🦂",
+            _ => "😴"
+        };
+
+        if (hunger < 20) return species.ToLower() switch
+        {
+            "cat" => "😾",
+            "dog" => "🐕",
+            "horse" => "🐎",
+            "bird" => "🐧",
+            "dinosaur" => "🦖",
+            "bunny" => "🐇",
+            "fish" => "🐡",
+            "shark" => "🦷",
+            "wolf" => "🐺",
+            "lizard" => "🦎",
+            "otter" => "🦦",
+            "bear" => "🐻",
+            "insect" => "🐜",
+            "ocean_invertebrate" => "🦑",
+            "land_invertebrate" => "🦂",
+            _ => "😟"
+        };
+
+        if (happiness >= 75) return evolved ? EvolvedEmoji(species) : HappyEmoji(species);
+
+        return NormalEmoji(species, evolved);
+    }
+
+    private static string HappyEmoji(string species) => species.ToLower() switch
+    {
+        "cat" => "😺",
+        "dog" => "🐶",
+        "horse" => "🐎",
+        "bird" => "🦜",
+        "dinosaur" => "🦕",
+        "bunny" => "🐰",
+        "fish" => "🐠",
+        "shark" => "🦈",
+        "wolf" => "🐺",
+        "lizard" => "🦎",
+        "otter" => "🦦",
+        "bear" => "🐻",
+        "insect" => "🦋",
+        "ocean_invertebrate" => "🐙",
+        "land_invertebrate" => "🕷️",
+        _ => "🐾"
+    };
+
+    private static string NormalEmoji(string species, bool evolved) => species.ToLower() switch
+    {
+        "cat" => evolved ? "🦁" : "🐱",
+        "dog" => evolved ? "🐺" : "🐶",
+        "horse" => evolved ? "🦄" : "🐴",
+        "bird" => evolved ? "🦅" : "🐦",
+        "dinosaur" => evolved ? "🐉" : "🦕",
+        "bunny" => evolved ? "🐇" : "🐰",
+        "fish" => evolved ? "🐋" : "🐟",
+        "shark" => evolved ? "🌊" : "🦈",
+        "wolf" => evolved ? "🌕" : "🐺",
+        "lizard" => evolved ? "🐲" : "🦎",
+        "otter" => evolved ? "🌊" : "🦦",
+        "bear" => evolved ? "🏔️" : "🐻",
+        "insect" => evolved ? "🐝" : "🐛",
+        "ocean_invertebrate" => evolved ? "🦑" : "🐙",
+        "land_invertebrate" => evolved ? "🦂" : "🕷️",
+        _ => "🐾"
+    };
+
+    private static string EvolvedEmoji(string species) => species.ToLower() switch
+    {
+        "cat" => "🦁",
+        "dog" => "🐺",
+        "horse" => "🦄",
+        "bird" => "🦅",
+        "dinosaur" => "🐉",
+        "bunny" => "🐇",
+        "fish" => "🐋",
+        "shark" => "🌊",
+        "wolf" => "🌕",
+        "lizard" => "🐲",
+        "otter" => "🌊",
+        "bear" => "🏔️",
+        "insect" => "🐝",
+        "ocean_invertebrate" => "🦑",
+        "land_invertebrate" => "🦂",
+        _ => "🌟"
+    };
+
+
+    public static string EvolvedName(string species) => species.ToLower() switch
+    {
+        "cat" => "Maine Coon",
+        "dog" => "Golden Retriever",
+        "horse" => "Unicorn",
+        "bird" => "Eagle",
+        "dinosaur" => "Dragon",
+        "bunny" => "Shadow Rabbit",
+        "fish" => "Leviathan",
+        "shark" => "Megalodon",
+        "wolf" => "Dire Wolf",
+        "lizard" => "Komodo Dragon",
+        "otter" => "Sea Emperor",
+        "bear" => "Spirit Bear",
+        "insect" => "Metamorph",
+        "ocean_invertebrate" => "Kraken",
+        "land_invertebrate" => "Emperor Scorpion",
+        _ => species
+    };
+
+
+    public static string StatBar(int value)
+    {
+        int filled = Math.Clamp(value, 0, 100) / 10;
+        return string.Create(10, filled, static (span, f) =>
+        {
+            span.Fill('░');
+            span[..f].Fill('█');
+        });
+    }
+
+    public static string StatDisplay(string label, int value)
+    {
+        string bar = StatBar(value);
+        string colour = value switch
+        {
+            >= 70 => "🟢",
+            >= 40 => "🟡",
+            >= 20 => "🟠",
+            _ => "🔴"
+        };
+        return $"{colour} {bar} **{value}/100**";
+    }
+
+
+    public const int XpMessage = 1;
+    public const int XpAttachment = 3;
+    public const int XpLink = 2;
+    public const int XpActivity = 5;
+    public const int XpWordPuzzle = 15;
+    public const int XpPet = 5;
+    public const int XpFeed = 3;
+    public const int XpGroom = 3;
+    public const int XpPlay = 8;
+
+
+    public const int FeedCooldownMinutes = 30;
+    public const int PetCooldownMinutes = 5;
+    public const int GroomCooldownMinutes = 60;
+    public const int PlayCooldownMinutes = 15;
+
+
+    public static string? LevelUpUnlock(int level) => level switch
+    {
+        5 => "🎪 **Unlocked:** `/trick` slot 1 — your pet can now show off!",
+        10 => "🎩 **Unlocked:** Accessory Slot 1 — equip a hat with `/accessory`",
+        15 => "👗 **Unlocked:** Accessory Slot 2 — equip a collar or outfit",
+        20 => "✨ **Unlocked:** Veteran border + `/trick` slot 2!",
+        25 => "🍖 **Unlocked:** Rare food items in `/feed`",
+        50 => "🌟 **Evolved!** Your pet has reached its final form! + `/trick` slot 3 unlocked!",
+        75 => "🎭 **Unlocked:** `/trick` slot 4 — your legendary pet's ultimate move!",
+        100 => "👑 **Hall of Fame!** Your pet is now legendary!",
+        _ => null
+    };
+
+
+    public static string PerformTrick(string species, int slot) =>
+        (species.ToLower(), slot) switch
+        {
+            // Slot 1 — level 5
+            ("cat", 1) => "*rolls over and ignores you completely*",
+            ("dog", 1) => "*sits and gives you the biggest puppy eyes*",
+            ("horse", 1) => "*rears up majestically*",
+            ("bird", 1) => "*whistles your favourite tune*",
+            ("dinosaur", 1) => "*stomps around making tiny roaring noises* 🦕",
+            ("bunny", 1) => "*binkies across the room at full speed* 🐰",
+            ("fish", 1) => "*blows a single perfectly round bubble and blinks at you*",
+            ("shark", 1) => "*circles menacingly then bumps your hand like a dog*",
+            ("wolf", 1) => "*sits and stares at you with intense yellow eyes until you feel judged*",
+            ("lizard", 1) => "*does exactly three push-ups and stares at you for approval*",
+            ("otter", 1) => "*floats on their back holding a pebble like it's the most precious thing*",
+            ("bear", 1) => "*sits up on hind legs and waves a massive paw*",
+            ("insect", 1) => "*glows softly in the dark for a solid five seconds*",
+            ("ocean_invertebrate", 1) => "*extends all eight arms simultaneously and waves at you*",
+            ("land_invertebrate", 1) => "*raises both front legs and freezes, waiting for your reaction*",
+            // Slot 2 — level 20
+            ("cat", 2) => "*knocks your water off the table, maintaining direct eye contact*",
+            ("dog", 2) => "*spins in circles and barks excitedly then collapses*",
+            ("horse", 2) => "*does a perfectly timed dressage step and bows*",
+            ("bird", 2) => "*mimics your voice and says something embarrassing*",
+            ("dinosaur", 2) => "*attempts to roar but it comes out as a squeak* 🐉",
+            ("bunny", 2) => "*stands on hind legs and begs adorably for a treat* 🐇",
+            ("fish", 2) => "*performs a corkscrew spiral and sticks the landing facing you*",
+            ("shark", 2) => "*rises from the water, opens jaws dramatically, closes them gently on a treat*",
+            ("wolf", 2) => "*howls a haunting melody that is somehow perfectly in tune*",
+            ("lizard", 2) => "*changes colour through four different shades in rapid sequence and bows*",
+            ("otter", 2) => "*juggles three pebbles simultaneously on their chest while floating*",
+            ("bear", 2) => "*lumbers in a full circle, sits, and gives you an expectant look*",
+            ("insect", 2) => "*executes a flight display so precise it spells your name in the air*",
+            ("ocean_invertebrate", 2) => "*squeezes through an impossibly small gap, pops out the other side, and bows*",
+            ("land_invertebrate", 2) => "*constructs an elaborate silk hammock, naps in it briefly, dismantles it*",
+            // Slot 3 — level 50
+            ("cat", 3) => "*performs an elegant slow-blink sequence and actually lets you pet them*",
+            ("dog", 3) => "*fetches something you didn't even throw, tail wagging violently*",
+            ("horse", 3) => "*gallops a perfect figure-eight and stops on a dime*",
+            ("bird", 3) => "*recites a full dramatic monologue in your voice*",
+            ("dinosaur", 3) => "*performs an ancient prehistoric victory dance* 🦖",
+            ("bunny", 3) => "*executes a flawless series of binkies and zooms for 30 seconds straight*",
+            ("fish", 3) => "*leaps out of the water, clears a tiny hoop, and splashes back perfectly*",
+            ("shark", 3) => "*performs a full breach — airborne for two full seconds — lands without a splash*",
+            ("wolf", 3) => "*leads an imaginary pack in a coordinated howl that rattles the windows*",
+            ("lizard", 3) => "*detaches tail, lets it wiggle for effect, then regrows it in real time*",
+            ("otter", 3) => "*constructs an elaborate pebble sculpture on their chest without looking*",
+            ("bear", 3) => "*performs a surprisingly elegant waltz on hind legs for a full minute*",
+            ("insect", 3) => "*undergoes a visible metamorphosis shimmer and emerges noticeably shinier*",
+            ("ocean_invertebrate", 3) => "*changes colour, pattern, and texture simultaneously to perfectly mimic your wallpaper*",
+            ("land_invertebrate", 3) => "*moults completely, emerges gleaming, and poses dramatically for five seconds*",
+            // Slot 4 — level 75
+            ("cat", 4) => "*enters the void, stares at nothing for 10 minutes, then acts normal*",
+            ("dog", 4) => "*learns to open the fridge, brings you a snack, closes it again*",
+            ("horse", 4) => "*performs a full airs-above-the-ground capriole and sticks the landing*",
+            ("bird", 4) => "*sings a five-minute opera in perfect pitch about their daily life*",
+            ("dinosaur", 4) => "*unleashes a roar so powerful it starts a local seismic event* 🌋",
+            ("bunny", 4) => "*vibrates at such extreme happiness frequency they briefly become translucent*",
+            ("fish", 4) => "*phases through the tank glass, laps the room once, and phases back in* 🐋",
+            ("shark", 4) => "*briefly achieves flight, circles overhead, and lands without creating a ripple* 🌊",
+            ("wolf", 4) => "*howls at the moon and the moon howls back. you don't question it*",
+            ("lizard", 4) => "*becomes completely invisible for ten minutes, then reappears wearing a tiny hat*",
+            ("otter", 4) => "*opens a locked box using only pebbles, retrieves a snack, relocks it*",
+            ("bear", 4) => "*hibernates for exactly 30 seconds, wakes up, and acts like nothing happened*",
+            ("insect", 4) => "*briefly achieves full metamorphosis, flutters magnificently, reverts, winks* 🐝",
+            ("ocean_invertebrate", 4) => "*opens a jar from the inside, retrieves a snack, reseals it, and looks smug* 🦑",
+            ("land_invertebrate", 4) => "*builds a full web replica of the Eiffel Tower, waits for your reaction, eats it* 🦂",
+            _ => "*does something impressively cute*"
+        };
+
+
+    public static readonly (string name, string emoji, int hungerRestore, int happyBonus, int minLevel)[] Foods =
+    [
+        ("Kibble",          "🥣", 20,  5,  1),
+        ("Fresh Meat",      "🥩", 35, 10,  1),
+        ("Vegetables",      "🥦", 15,  3,  1),
+        ("Fish",            "🐟", 30, 15,  1),
+        ("Bread",           "🍞", 12,  2,  1),
+        ("Apple",           "🍎", 14,  6,  1),
+        ("Carrot",          "🥕", 16,  7,  1),
+        ("Egg",             "🥚", 18,  5,  1),
+        ("Cheese",          "🧀", 20,  8,  1),
+        ("Milk",            "🥛", 10,  6,  1),
+        ("Berries",         "🫐", 12, 10,  1),
+        ("Banana",          "🍌", 14,  8,  1),
+        ("Corn",            "🌽", 15,  4,  1),
+        ("Pumpkin",         "🎃", 18,  5,  1),
+        ("Chicken",         "🍗", 32, 10,  1),
+        ("Rice Bowl",       "🍚", 22,  4,  1),
+        ("Bone Broth",      "🫙", 25,  8,  1),
+        ("Hay",             "🌾", 20,  3,  1),   // horses/dinosaurs love this
+        ("Seeds",           "🌱", 10,  5,  1),   // birds love this
+        ("Pellets",         "⚪", 18,  4,  1),
+
+        ("Salmon Fillet",   "🍣", 38, 18, 10),
+        ("Grilled Steak",   "🥓", 45, 15, 10),
+        ("Fruit Salad",     "🍓", 28, 20, 10),
+        ("Honey",           "🍯", 20, 22, 10),
+        ("Smoothie",        "🥤", 25, 18, 10),
+        ("Sweet Potato",    "🍠", 30, 12, 10),
+        ("Pasta",           "🍝", 35, 10, 10),
+        ("Sandwich",        "🥪", 32, 12, 10),
+        ("Soup",            "🍜", 30, 14, 10),
+        ("Pancakes",        "🥞", 28, 16, 10),
+
+        ("Birthday Cake",   "🎂", 25, 30, 25),
+        ("Gourmet Meal",    "🍱", 50, 25, 25),
+        ("Sushi Platter",   "🍱", 45, 28, 25),
+        ("Lobster",         "🦞", 50, 30, 25),
+        ("Truffle",         "🍄", 35, 35, 25),
+        ("Ice Cream",       "🍦", 20, 35, 25),
+        ("Chocolate",       "🍫", 22, 32, 25),
+        ("Croissant",       "🥐", 30, 25, 25),
+        ("Ramen",           "🍜", 40, 22, 25),
+        ("Taco",            "🌮", 38, 24, 25),
+
+        ("Magic Treat",     "✨", 40, 40, 50),
+        ("Dragon Fruit",    "🐉", 50, 45, 50),
+        ("Golden Apple",    "🌟", 55, 50, 50),
+        ("Cosmic Candy",    "🍬", 35, 55, 50),
+        ("Elixir",          "🧪", 60, 40, 50),
+        ("Stardust Cake",   "🎂", 45, 60, 50),
+        ("Phoenix Feather Tea","🪶",50, 55, 50),
+    ];
+
+    public static string ListFoods(int petLevel) => string.Join("\n", Foods.Where(f => f.minLevel <= petLevel).Select(f => $"{f.emoji} **{f.name}** — +{f.hungerRestore} hunger, +{f.happyBonus} happiness"));
+
+
+    public static readonly (string key, string emoji, string description, int xp, int happyBonus, int hungerCost, int energyCost, int minLevel)[] ExploreRewards =
+    [
+        ("common_bone",    "🦴", "Found an old bone!",                          10, 5,  10, 15, 1),
+        ("common_flower",  "🌸", "Brought back a pretty flower!",               10, 10, 5,  10, 1),
+        ("common_stick",   "🪵", "Dragged home a massive stick",                10, 8,  8,  12, 1),
+        ("common_rock",    "🪨", "Proudly presented a shiny rock",              10, 5,  5,  10, 1),
+        ("uncommon_coin",  "🪙", "Discovered a shiny coin in the grass!",       20, 10, 10, 20, 1),
+        ("uncommon_berry", "🫐", "Snacked on wild berries along the way!",      20, 15, 0,  15, 1),
+        ("uncommon_feather","🪶","Found a rare feather from an unknown bird!",  20, 12, 8,  18, 1),
+        ("rare_gem",       "💎", "Unearthed a sparkling gemstone!",             40, 20, 15, 25, 10),
+        ("rare_map",       "🗺️", "Found a piece of an ancient treasure map!",  40, 25, 12, 25, 10),
+        ("rare_crown",     "👑", "Somehow came home wearing a tiny crown",      40, 30, 15, 30, 10),
+        ("epic_treasure",  "💰", "Found an entire treasure chest!",             75, 35, 20, 35, 25),
+        ("epic_artifact",  "🏺", "Discovered a mysterious ancient artifact!",   75, 40, 18, 35, 25),
+        ("legendary_star", "⭐", "Caught a falling star and brought it back!",  120, 50, 25, 40, 50),
+    ];
+
+    /// <summary>
+    /// Picks a random reward weighted by rarity and gated by pet level.
+    /// Higher level pets have a better chance at rare/epic/legendary drops.
+    /// </summary>
+    public static (string key, string emoji, string description, int xp, int happyBonus, int hungerCost, int energyCost, int minLevel) PickExploreReward(int level)
+    {
+        var available = ExploreRewards.Where(r => r.minLevel <= level).ToArray();
+
+        // Weighted roll: common = 50%, uncommon = 30%, rare = 15%, epic = 4%, legendary = 1%
+        // Approximated by weighting each tier's entries
+        int roll = Random.Shared.Next(100);
+
+        IEnumerable<(string key, string emoji, string description,
+                     int xp, int happyBonus, int hungerCost, int energyCost,
+                     int minLevel)> pool;
+
+        if (roll < 50)
+            pool = available.Where(r => r.key.StartsWith("common"));
+        else if (roll < 80)
+            pool = available.Where(r => r.key.StartsWith("uncommon"));
+        else if (roll < 95)
+            pool = available.Where(r => r.key.StartsWith("rare"));
+        else if (roll < 99)
+            pool = available.Where(r => r.key.StartsWith("epic"));
+        else
+            pool = available.Where(r => r.key.StartsWith("legendary"));
+
+        var filtered = pool.ToArray();
+
+        // Fallback to common if tier is locked
+        if (filtered.Length == 0)
+            filtered = available.Where(r => r.key.StartsWith("common")).ToArray();
+
+        return filtered[Random.Shared.Next(filtered.Length)];
+    }
+
+    /// <summary>
+    /// Boosted version of <see cref="PickExploreReward"/> — guarantees Rare+ tier.
+    /// Used when the explore_boost shop item is active.
+    /// Weights: Rare = 60%, Epic = 30%, Legendary = 10%.
+    /// </summary>
+    public static (string key, string emoji, string description, int xp, int happyBonus, int hungerCost, int energyCost, int minLevel) PickExploreRewardBoosted(int level)
+    {
+        var available = ExploreRewards.Where(r => r.minLevel <= level).ToArray();
+        int roll = Random.Shared.Next(100);
+
+        IEnumerable<(string key, string emoji, string description,
+                     int xp, int happyBonus, int hungerCost, int energyCost,
+                     int minLevel)> pool;
+
+        if (roll < 60)
+            pool = available.Where(r => r.key.StartsWith("rare"));
+        else if (roll < 90)
+            pool = available.Where(r => r.key.StartsWith("epic"));
+        else
+            pool = available.Where(r => r.key.StartsWith("legendary"));
+
+        var filtered = pool.ToArray();
+
+        // Fallback chain if tier is completely locked for this level
+        if (filtered.Length == 0)
+            filtered = available.Where(r => r.key.StartsWith("rare")).ToArray();
+        if (filtered.Length == 0)
+            filtered = available.Where(r => r.key.StartsWith("uncommon")).ToArray();
+        if (filtered.Length == 0)
+            filtered = available.Where(r => r.key.StartsWith("common")).ToArray();
+
+        return filtered[Random.Shared.Next(filtered.Length)];
+    }
+
+
+    public static string ExploreDeparture(string species) => species.ToLower() switch
+    {
+        "cat" => "🐱 *slips out the door before you can stop them*",
+        "dog" => "🐶 *bolts out the front door, tail spinning like a helicopter*",
+        "horse" => "🐴 *gallops off into the distance without looking back*",
+        "bird" => "🐦 *takes to the skies with a confident chirp*",
+        "dinosaur" => "🦕 *lumbers off into the wilderness, leaving enormous footprints*",
+        "bunny" => "🐰 *hops away at an alarming speed, ears flat*",
+        "fish" => "🐟 *slips out of the tank through a gap you swear wasn't there*",
+        "shark" => "🦈 *fins out of the tank, across the floor, and into the wild with terrifying efficiency*",
+        "wolf" => "🐺 *vanishes into the treeline without a sound, only glowing eyes visible for a moment*",
+        "lizard" => "🦎 *skitters up the wall, across the ceiling, and out the window without touching the door*",
+        "otter" => "🦦 *slides down the bank on their belly and disappears into the water with a cheerful splash*",
+        "bear" => "🐻 *lumbers off at a surprisingly fast pace, sniffing everything on the way*",
+        "insect" => "🐛 *inches determinedly toward the door for two minutes, then abruptly takes flight*",
+        "ocean_invertebrate" => "🐙 *oozes under the door with unsettling ease and is gone before you process what happened*",
+        "land_invertebrate" => "🕷️ *rappels down the wall on a single silk thread and vanishes into the undergrowth*",
+        _ => "*heads off on an adventure*"
+    };
+
+    public static string ExploreNarrative(string species, string rewardKey) =>
+        species.ToLower() switch
+        {
+            "cat" => Random.Shared.Next(7) switch
+            {
+                0 => "🐱 Wandered into three different gardens, judged each one, and came back.",
+                1 => "🐱 Spent most of the time sitting on a stranger's porch being adored.",
+                2 => "🐱 Explored everywhere, accepted belly rubs from nobody.",
+                3 => "🐱 Strolled through the neighbourhood with the energy of someone who owns all of it.",
+                4 => "🐱 Knocked something off a very high shelf, observed the aftermath, and left.",
+                5 => "🐱 Spent an hour watching a bird through a window, then pretended not to care.",
+                _ => "🐱 Got caught in the rain, found shelter anyway, and acted like it was the plan all along."
+            },
+            "dog" => Random.Shared.Next(7) switch
+            {
+                0 => "🐶 Ran through the park, made six new best friends, and investigated every bin.",
+                1 => "🐶 Followed an interesting smell for two miles and ended up at a bakery.",
+                2 => "🐶 Sprinted the entire way there and the entire way back. Maximum effort.",
+                3 => "🐶 Discovered a puddle of suspicious size and dove in without hesitation.",
+                4 => "🐶 Tracked a squirrel across four gardens, lost it on a fence, and declared a moral victory.",
+                5 => "🐶 Greeted every single person they passed, got pets from most of them.",
+                _ => "🐶 Found a hill, ran up it, barked at the sky, ran back down. Mission accomplished."
+            },
+            "horse" => Random.Shared.Next(7) switch
+            {
+                0 => "🐴 Galloped through open fields and scattered several pigeons.",
+                1 => "🐴 Trotted through a village and was photographed by three tourists.",
+                2 => "🐴 Jumped every fence they could find just for fun.",
+                3 => "🐴 Cantered along a coastal cliffpath with dramatic flair.",
+                4 => "🐴 Stood magnificently on a hillside while the wind did the rest of the work.",
+                5 => "🐴 Explored a forest trail at full gallop and felt genuinely alive.",
+                _ => "🐴 Discovered an apple orchard. Stayed there for a while. No regrets."
+            },
+            "bird" => Random.Shared.Next(7) switch
+            {
+                0 => "🐦 Soared high above the clouds and saw things you wouldn't believe.",
+                1 => "🐦 Flew to a distant tree and eavesdropped on several conversations.",
+                2 => "🐦 Rode a thermal updraft all the way to the hills and back.",
+                3 => "🐦 Dive-bombed a scarecrow on principle and felt much better afterwards.",
+                4 => "🐦 Found the most acoustically perfect canyon in the region and sang into it.",
+                5 => "🐦 Perched on a weather vane and surveyed the whole town like a general.",
+                _ => "🐦 Raced the wind across three counties. The wind lost."
+            },
+            "dinosaur" => Random.Shared.Next(7) switch
+            {
+                0 => "🦕 Stomped through the forest and caused a minor local news story.",
+                1 => "🦕 Waded through a river and frightened some ducks.",
+                2 => "🦕 Explored a canyon and left footprints that confused geologists.",
+                3 => "🦕 Emerged from the treeline briefly, making several hikers rethink their life choices.",
+                4 => "🦕 Investigated a mountain. Found it acceptable. Left.",
+                5 => "🦕 Bellowed at a cliff face just to test the echo. Was satisfied with the result.",
+                _ => "🦕 Crossed a swamp, discovered an ancient ruin, and took up a lot of space doing it."
+            },
+            "bunny" => Random.Shared.Next(7) switch
+            {
+                0 => "🐰 Dug seventeen tunnels, explored five, and deemed the rest unnecessary.",
+                1 => "🐰 Binkied through a meadow at top speed for reasons unknown.",
+                2 => "🐰 Discovered a clover patch and had the best hour of their life.",
+                3 => "🐰 Thumped at a shadow, decided the shadow deserved it, moved on.",
+                4 => "🐰 Explored an entire hedgerow system with terrifying efficiency.",
+                5 => "🐰 Investigated a dandelion for ten minutes, then ate it, then found a better one.",
+                _ => "🐰 Made a complete circuit of the meadow, found nothing threatening, logged it anyway."
+            },
+            "fish" => Random.Shared.Next(7) switch
+            {
+                0 => "🐟 Navigated a labyrinth of coral, befriended a crab, and returned with treasure.",
+                1 => "🐟 Slipped through the deepest currents, saw things no fish should see.",
+                2 => "🐟 Explored a sunken wreck and emerged carrying something shiny.",
+                3 => "🐟 Descended to a pressure zone that would crush lesser creatures and felt fine.",
+                4 => "🐟 Rode the Gulf Stream for a bit just to see where it went.",
+                5 => "🐟 Found a thermal vent colony, made some connections, left before it got complicated.",
+                _ => "🐟 Slipstreamed through a kelp forest at speed and spooked an entire shoal of herrings."
+            },
+            "shark" => Random.Shared.Next(7) switch
+            {
+                0 => "🦈 Cleared an entire section of ocean with a single fin breach.",
+                1 => "🦈 Investigated a submersible, decided it was unworthy, and moved on.",
+                2 => "🦈 Patrolled a ten-mile radius and returned with something interesting.",
+                3 => "🦈 Circled a shipping lane three times. The crew never saw them. That was the point.",
+                4 => "🦈 Found the wreck of an old galleon, explored it thoroughly, and left a tooth behind.",
+                5 => "🦈 Dove to a depth where it's completely dark and felt perfectly at home.",
+                _ => "🦈 Emerged briefly near a surf beach, caused a mass exodus from the water, disappeared."
+            },
+            "wolf" => Random.Shared.Next(7) switch
+            {
+                0 => "🐺 Stalked through the forest like a shadow and returned without explaining themselves.",
+                1 => "🐺 Howled at the moon, received a howl back, and decided the errand was complete.",
+                2 => "🐺 Ranged across three hills, marked their territory extensively, and came home satisfied.",
+                3 => "🐺 Tracked something through two valleys just to see if they could. They could.",
+                4 => "🐺 Sat at the peak of a ridge in the rain for twenty minutes, communing with something.",
+                5 => "🐺 Moved through the forest without snapping a single twig. Unnecessary, but satisfying.",
+                _ => "🐺 Found a frozen lake, tested every inch of the edge, and crossed it anyway."
+            },
+            "lizard" => Random.Shared.Next(7) switch
+            {
+                0 => "🦎 Basked on a warm rock for an indeterminate amount of time, then got to business.",
+                1 => "🦎 Climbed every vertical surface in the area just to see if they could.",
+                2 => "🦎 Changed colour seventeen times and confused a photographer.",
+                3 => "🦎 Found a sun-baked wall and pressed their whole body against it with visible satisfaction.",
+                4 => "🦎 Scurried through a ruined building and claimed it as their territory.",
+                5 => "🦎 Stalked an insect across a garden for eleven minutes and then let it go. Power move.",
+                _ => "🦎 Discovered a rock formation that perfectly concentrated heat and spent most of the trip there."
+            },
+            "otter" => Random.Shared.Next(7) switch
+            {
+                0 => "🦦 Floated downstream on their back, holding the reward the entire way.",
+                1 => "🦦 Found a new rock, tested it thoroughly, and deemed it acceptable.",
+                2 => "🦦 Slid down a muddy bank repeatedly before remembering the actual errand.",
+                3 => "🦦 Wove through river reeds at high speed and startled a heron twice.",
+                4 => "🦦 Dived to the bottom of a lake, found something interesting, dived back down to check it again.",
+                5 => "🦦 Built a temporary floating raft from sticks, used it once, abandoned it without ceremony.",
+                _ => "🦦 Found a waterfall, swam up it, looked around, swam back down. Said nothing about it."
+            },
+            "bear" => Random.Shared.Next(7) switch
+            {
+                0 => "🐻 Investigated every log, overturned three boulders, and smelled a lot of interesting things.",
+                1 => "🐻 Wandered considerably further than intended and had to be coaxed back with snacks.",
+                2 => "🐻 Found a beehive, negotiated diplomatically, and left with both the treasure and their dignity.",
+                3 => "🐻 Climbed a tree that was definitely not rated for their weight. Climbed back down. Fine.",
+                4 => "🐻 Located a river with a strong salmon run and spent the best afternoon of the month there.",
+                5 => "🐻 Found a cave, investigated it extensively, decided against moving in, but thought about it.",
+                _ => "🐻 Sat in a berry patch for an undisclosed amount of time. No further questions."
+            },
+            "insect" => Random.Shared.Next(7) switch
+            {
+                0 => "🐛 Navigated a complex obstacle course of grass blades and emerged victorious.",
+                1 => "🐛 Flew fourteen hundred feet straight up just to see what was up there.",
+                2 => "🐛 Explored a flower patch so thoroughly they came back dusted in pollen.",
+                3 => "🐛 Discovered an anthill, introduced themselves, departed on good terms.",
+                4 => "🐛 Climbed a sunflower to the very top and surveyed their domain.",
+                5 => "🐛 Navigated three puddles and a compost heap without losing a single antenna.",
+                _ => "🐛 Located a rotting log of remarkable complexity and spent most of the trip inside it."
+            },
+            "ocean_invertebrate" => Random.Shared.Next(7) switch
+            {
+                0 => "🐙 Squeezed into three places they definitely shouldn't fit and explored all of them.",
+                1 => "🐙 Camouflaged as a rock for forty minutes, then got bored and went exploring.",
+                2 => "🐙 Opened every container they encountered and left them all slightly ajar.",
+                3 => "🐙 Descended into a thermal vent field and came back smelling unusual.",
+                4 => "🐙 Disassembled a small crab trap purely out of curiosity, then reassembled it wrong.",
+                5 => "🐙 Pursued eight separate interesting things simultaneously and finished all of them.",
+                _ => "🐙 Found a shipwreck, entered through eight different access points, and ranked them by quality."
+            },
+            "land_invertebrate" => Random.Shared.Next(7) switch
+            {
+                0 => "🕷️ Scaled every vertical surface in the area and mapped them all with silk markers.",
+                1 => "🕷️ Vanished into a log pile and emerged three hours later looking very pleased.",
+                2 => "🕷️ Investigated the entire garden with methodical precision, leaving no stone unturned.",
+                3 => "🕷️ Built a web in three separate locations, stress-tested each one, and kept the best.",
+                4 => "🕷️ Found a dark cellar, catalogued its contents, and approved of the humidity.",
+                5 => "🕷️ Stalked through tall grass for an hour with the energy of someone very much on a mission.",
+                _ => "🕷️ Rappelled off a cliff face eight times. The first seven were practice."
+            },
+            _ => "Set off and returned with something interesting."
+        };
+
+    /// <summary>
+    /// Returns a randomised one-liner that appears before the adventure narrative
+    /// in the return embed, adding variety to how the pet's homecoming is announced.
+    /// </summary>
+    public static string ExploreReturnOpener(string petName) =>
+        Random.Shared.Next(14) switch
+        {
+            0 => $"After a long journey, **{petName}** has finally made it home.",
+            1 => $"**{petName}** strolls back in like they were never gone.",
+            2 => $"The door creaks open — **{petName}** is back.",
+            3 => $"**{petName}** returns, slightly dirty, and clearly pleased with themselves.",
+            4 => $"Word travels fast: **{petName}** has returned from the wild.",
+            5 => $"**{petName}** drops something at your feet and looks up expectantly.",
+            6 => $"Against all odds, **{petName}** made it back in one piece.",
+            7 => $"**{petName}** appears at the threshold, carrying something interesting.",
+            8 => $"The adventure is over — **{petName}** is home safe.",
+            9 => $"**{petName}** bursts through the door with an unmistakable air of accomplishment.",
+            10 => $"You weren't worried. **{petName}** was never not going to be fine.",
+            11 => $"**{petName}** saunters back in and acts like the entire thing was routine.",
+            12 => $"Tired but triumphant, **{petName}** has returned.",
+            _ => $"**{petName}** is back — and they brought something with them."
+        };
+
+
+    public static readonly string[] PuzzleWords =
+    [
+        "biscuit", "lantern", "cobalt",  "nimble",   "frostbite", "whimsy",
+        "cascade", "ember",   "velvet",  "tangle",   "prism",     "hollow",
+        "riddle",  "flicker", "dusk",    "maple",    "cipher",    "comet",
+        "pebble",  "thistle", "warden",  "mossy",    "glimmer",   "wick",
+        "sparrow", "tunnel",  "candor",  "briar",    "solstice",  "fable",
+        "crumble", "locket",  "pewter",  "shimmer",  "acorn",     "gust",
+        "ferret",  "cobweb",  "murmur",  "trinket",  "burrow",    "dewdrop"
+    ];
+
+
+    public static string JournalEventEmoji(string eventType) => eventType.ToLower() switch
+    {
+        "feed" => "🍽️",
+        "wake" => "🌅",
+        "hug" => "🤗",
+        "pet" => "🖐️",
+        "groom" => "🛁",
+        "play" => "🎮",
+        "sleep" => "💤",
+        "explore" => "🗺️",
+        "battle" => "⚔️",
+        "levelup" => "🎉",
+        "adopt" => "🐾",
+        "trick" => "🎪",
+        _ => "📌"
+    };
+
+
+    /// <summary>
+    /// Calculates a pet's battle power from level, stats, and a luck roll.
+    /// Level contributes the most, stats tune it, and luck keeps lower-level
+    /// pets competitive so battles aren't always deterministic.
+    /// </summary>
+    public static int BattlePower(int level, int hunger, int happiness, int energy)
+    {
+        int basePower = level * 10;
+        int statBonus = (hunger + happiness + energy) / 10;
+        int luck = Random.Shared.Next(1, 26); // ±25 luck roll
+        return basePower + statBonus + luck;
+    }
+
+    /// <summary>
+    /// Returns 3 individual round strings for animated battle display.
+    /// </summary>
+    public static string[] GenerateBattleRounds(string attackerName, string attackerSpecies, int attackerPower, string defenderName, string defenderSpecies, int defenderPower, bool draw)
+    {
+        var moves = BattleMoves(attackerSpecies);
+        var counterMoves = BattleMoves(defenderSpecies);
+
+        string r3 = draw
+            ? "💥 **Round 3:** Both pets clash and neither gives an inch!"
+            : attackerPower > defenderPower
+                ? $"💥 **Round 3:** {attackerName} lands the finishing move!"
+                : $"💥 **Round 3:** {defenderName} turns the tide and lands the final blow!";
+
+        return
+        [
+            $"⚔️ **Round 1:** {attackerName} uses *{moves[Random.Shared.Next(moves.Length)]}*!",
+            $"🛡️ **Round 2:** {defenderName} counters with *{counterMoves[Random.Shared.Next(counterMoves.Length)]}*!",
+            r3
+        ];
+    }
+
+    /// <summary>Generates a short flavour battle log across 3 rounds (legacy single-string version).</summary>
+    public static string GenerateBattleLog(
+        string attackerName, string attackerSpecies, int attackerPower,
+        string defenderName, string defenderSpecies, int defenderPower,
+        bool draw)
+    {
+        var rounds = GenerateBattleRounds(
+            attackerName, attackerSpecies, attackerPower,
+            defenderName, defenderSpecies, defenderPower, draw);
+        return string.Join("\n", rounds);
+    }
+
+    /// <summary>
+    /// Returns a species-contextual flavour description for an explore reward.
+    /// Falls back to the generic description if no override exists.
+    /// </summary>
+    public static string ExploreRewardDescription(string rewardKey, string species, string genericDescription) =>
+        (rewardKey, species.ToLower()) switch
+        {
+            // Bones
+            ("common_bone", "dinosaur") => "Unearthed an ancient fossil fragment!",
+            ("common_bone", "dog") => "Found a perfectly aged bone buried in a park!",
+            ("common_bone", "cat") => "Dragged home a mysterious bone from somewhere",
+            // Flowers
+            ("common_flower", "bunny") => "Nibbled on a fresh wildflower and brought the rest back!",
+            ("common_flower", "horse") => "Pranced through a meadow and returned with flowers in their mane!",
+            // Sticks
+            ("common_stick", "dog") => "Found the ultimate stick and refuses to let go of it",
+            ("common_stick", "bird") => "Carried back a perfect nesting twig!",
+            // Rocks
+            ("common_rock", "dinosaur") => "Found a petrified rock that looks suspiciously old",
+            // Coins
+            ("uncommon_coin", "bird") => "Spotted a shiny coin from the sky and dove for it!",
+            ("uncommon_coin", "cat") => "Batted a coin out of a fountain and brought it home",
+            // Berries
+            ("uncommon_berry", "bunny") => "Discovered a wild berry patch and ate an alarming quantity",
+            ("uncommon_berry", "bird") => "Found a berry-covered bush and had a feast!",
+            // Feathers
+            ("uncommon_feather", "bird") => "Found a feather from a species they've never encountered!",
+            ("uncommon_feather", "cat") => "Stalked and observed a mystery bird, returned with proof",
+            // Gems
+            ("rare_gem", "dinosaur") => "Dug up a prehistoric gemstone embedded in ancient rock!",
+            ("rare_gem", "bird") => "Spotted a glittering gem from high altitude and retrieved it!",
+            // Crowns
+            ("rare_crown", "horse") => "Somehow returned wearing a tiny crown — regal as always",
+            ("rare_crown", "cat") => "Found a crown, tried it on, decided it was beneath them, brought it back anyway",
+            // Treasure
+            ("epic_treasure", "dinosaur") => "Uncovered a chest buried since prehistoric times!",
+            ("epic_treasure", "dog") => "Followed their nose to an entire buried treasure chest!",
+            // Artifacts
+            ("epic_artifact", "dinosaur") => "Found a fossilised artefact predating recorded history!",
+            ("epic_artifact", "bird") => "Spotted an ancient artefact from above and retrieved it!",
+            // Legendary star
+            ("legendary_star", "bunny") => "Binky'd so high they accidentally caught a falling star!",
+            ("legendary_star", "horse") => "Galloped so fast they outran the night and caught a star!",
+            _ => genericDescription
+        };
+
+    private static string[] BattleMoves(string species) => species.ToLower() switch
+    {
+        "cat" => ["Paw Swipe", "Hiss Blast", "Furball Throw", "Scratch Flurry", "Disappearing Act"],
+        "dog" => ["Bark Shock", "Pounce", "Zoomie Tackle", "Fetch Frenzy", "Puppy Eyes (confuses opponent)"],
+        "horse" => ["Hoof Stomp", "Gallop Charge", "Mane Whip", "Rear Kick", "Whinny Shockwave"],
+        "bird" => ["Wing Gust", "Talon Strike", "Sonic Chirp", "Dive Bomb", "Feather Flurry"],
+        "dinosaur" => ["Stomp Quake", "Tail Slam", "Prehistoric Roar", "Chomp", "Meteor Crash"],
+        "bunny" => ["Binky Blitz", "Thump Wave", "Ear Slap", "Speed Dash", "Adorable Stare (stuns)"],
+        "fish" => ["Bubble Burst", "Fin Slash", "Current Surge", "Ink Cloud", "Depth Charge"],
+        "shark" => ["Jaw Snap", "Death Roll", "Breach Slam", "Pressure Wave", "Feeding Frenzy"],
+        "wolf" => ["Pack Howl", "Lunge Bite", "Shadow Pounce", "Feral Snarl", "Moonlit Frenzy"],
+        "lizard" => ["Tail Whip", "Tongue Lash", "Scale Spike", "Venom Spit", "Camouflage Strike"],
+        "otter" => ["Rock Throw", "Belly Flop", "Slippery Dodge", "River Rush", "Pebble Barrage"],
+        "bear" => ["Bear Hug", "Swipe Claw", "Ground Pound", "Roar Blast", "Hibernate Charge"],
+        "insect" => ["Sting Rush", "Wing Slash", "Swarm Call", "Venom Jab", "Metamorphosis Surge"],
+        "ocean_invertebrate" => ["Ink Blast", "Tentacle Wrap", "Jet Propulsion", "Camouflage Strike", "Kraken's Grasp"],
+        "land_invertebrate" => ["Venom Strike", "Web Snare", "Pincer Crush", "Carapace Guard", "Scorpion Sting"],
+        _ => ["Tackle", "Scratch", "Growl"]
+    };
+}

@@ -1,4 +1,4 @@
-namespace DiscordBot.Constants
+﻿namespace DiscordBot.Constants
 {
     /// <summary>
     /// Static cleanup of common /fixembed handles.
@@ -11,6 +11,7 @@ namespace DiscordBot.Constants
             ["vxtwitter.com"] = "dl.fxtwitter.com",
             ["twitter.com"] = "dl.fxtwitter.com",
             ["x.com"] = "dl.fxtwitter.com",
+            ["girlcockx.com"] = "dl.fxtwitter.com",
             ["tiktok.com"] = "vxtiktok.com",
             ["bsky.app"] = "bskx.app",
             ["reddit.com"] = "rxddit.com",
