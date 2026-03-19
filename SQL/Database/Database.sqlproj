@@ -73,6 +73,7 @@
     <Build Include="dbo\Tables\BotAIMessage.sql" />
     <Build Include="dbo\Tables\Birthday.sql" />
     <Build Include="dbo\Tables\AuditLog.sql" />
+    <Build Include="dbo\Tables\PassiveJackpot.sql" />
     <Build Include="dbo\Tables\Servers.sql" />
     <Build Include="dbo\Tables\Users.sql" />
     <Build Include="dbo\Tables\PlayerConnected.sql" />
@@ -121,5 +122,8 @@
     <Build Include="dbo\Stored Procedures\GetEmbedBroken.sql" />
     <Build Include="dbo\Stored Procedures\GetChatKeywordMap.sql" />
     <Build Include="dbo\Stored Procedures\GetKeywordNSFW.sql" />
+    <Build Include="dbo\Stored Procedures\FeedPassiveJackpot.sql" />
+    <Build Include="dbo\Stored Procedures\GetPassiveJackpot.sql" />
+    <Build Include="dbo\Stored Procedures\ClaimPassiveJackpot.sql" />
   </ItemGroup>
 </Project>
