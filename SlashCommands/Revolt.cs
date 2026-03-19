@@ -251,7 +251,7 @@ public class Revolt : InteractionModuleBase<SocketInteractionContext>
         {
             var guild = Context.Guild;
             var serverDetails = ServerHelper.GetServerInfo(guild.Id);
-            var channel = guild.GetTextChannel(ulong.Parse(serverDetails.DefaultChannelID));
+            var channel = guild.GetTextChannel(UInt64.Parse(serverDetails.DefaultChannelID));
             await channel.SendMessageAsync(embed: resultEmbed.Build());
         }
         catch { }

@@ -1502,7 +1502,7 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
             {
                 var guild = Context.Guild;
                 var serverDetails = ServerHelper.GetServerInfo(guild.Id);
-                var channel = guild.GetTextChannel(ulong.Parse(serverDetails.DefaultChannelID));
+                var channel = guild.GetTextChannel(UInt64.Parse(serverDetails.DefaultChannelID));
 
                 await channel.SendMessageAsync(embed: new EmbedBuilder()
                     .WithTitle("🎰  PASSIVE JACKPOT WINNER!")

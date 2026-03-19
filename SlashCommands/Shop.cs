@@ -932,7 +932,7 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
         {
             var guild = Context.Guild;
             var serverDetails = ServerHelper.GetServerInfo(guild.Id);
-            var channel = guild.GetTextChannel(ulong.Parse(serverDetails.DefaultChannelID));
+            var channel = guild.GetTextChannel(UInt64.Parse(serverDetails.DefaultChannelID));
             await channel.SendMessageAsync(embed: new EmbedBuilder()
                     .WithTitle("📉  Market Crash!")
                     .WithColor(ColourError)
@@ -1043,7 +1043,7 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
         {
             var guild = Context.Guild;
             var serverDetails = ServerHelper.GetServerInfo(guild.Id);
-            var channel = guild.GetTextChannel(ulong.Parse(serverDetails.DefaultChannelID));
+            var channel = guild.GetTextChannel(UInt64.Parse(serverDetails.DefaultChannelID));
             await channel.SendMessageAsync(embed: new EmbedBuilder()
                     .WithTitle("💸  Wealth Flex!")
                     .WithColor(new Color(255, 215, 0))
@@ -1083,7 +1083,7 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
         {
             var guild = Context.Guild;
             var serverDetails = ServerHelper.GetServerInfo(guild.Id);
-            var channel = guild.GetTextChannel(ulong.Parse(serverDetails.DefaultChannelID));
+            var channel = guild.GetTextChannel(UInt64.Parse(serverDetails.DefaultChannelID));
             await channel.SendMessageAsync(embed: new EmbedBuilder()
                     .WithTitle("☢️  Economy Nuke!")
                     .WithColor(ColourError)
@@ -1120,7 +1120,7 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
         {
             var guild = Context.Guild;
             var serverDetails = ServerHelper.GetServerInfo(guild.Id);
-            var channel = guild.GetTextChannel(ulong.Parse(serverDetails.DefaultChannelID));
+            var channel = guild.GetTextChannel(UInt64.Parse(serverDetails.DefaultChannelID));
             await channel.SendMessageAsync(embed: new EmbedBuilder()
                     .WithTitle("💥  Server Economy Reset!")
                     .WithColor(ColourError)

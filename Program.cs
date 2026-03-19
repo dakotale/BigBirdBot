@@ -899,7 +899,7 @@ internal sealed class BotHost(
                 {
                     var serverDetails = ServerHelper.GetServerInfo(guild.Id);
                     if (serverDetails is null) continue;
-                    var channel = guild.GetTextChannel(ulong.Parse(serverDetails.DefaultChannelID));
+                    var channel = guild.GetTextChannel(UInt64.Parse(serverDetails.DefaultChannelID));
 
                     _sp.UpdateCreate(Constants.discordBotConnStr, "AddPetWordPuzzle",
                     [
@@ -1003,7 +1003,7 @@ internal sealed class BotHost(
                     _sp.UpdateCreate(Constants.discordBotConnStr, "ClearJackpot",
                         [new SqlParameter("@ServerID", guild.Id.ToString())]);
 
-                    var channel = guild.GetTextChannel(ulong.Parse(serverDetails.DefaultChannelID));
+                    var channel = guild.GetTextChannel(UInt64.Parse(serverDetails.DefaultChannelID));
                         if (channel is null) continue;
 
                     IUser? winner = null;
