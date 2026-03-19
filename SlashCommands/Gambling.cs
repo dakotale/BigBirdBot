@@ -666,8 +666,9 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
             ? int.Parse(potDt.Rows[0]["Entries"].ToString()!)
             : 0;
 
+        long.TryParse(ServerId, out long jpServerId);
         var passiveDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetPassiveJackpot",
-            [new SqlParameter("@ServerID", ServerId)]);
+            [new SqlParameter("@ServerID", jpServerId)]);
         decimal passivePot = passiveDt.Rows.Count > 0
             ? decimal.Parse(passiveDt.Rows[0]["Pool"].ToString()!)
             : 0m;
@@ -1432,16 +1433,22 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
             _eco.AddCredits(UserId, ServerId, cost, "hot_streak_refund");
 
         // ── Passive jackpot feed — 1% of every bet ─────────────────────────────
-        decimal feed = Math.Max(1m, Math.Floor(cost * 0.01m));
-        try
+        // ServerId is a string ("Guild.Id.ToString()") — parse to long so ADO.NET
+        // sends it as BIGINT rather than NVarChar, avoiding implicit-conversion failures.
+        // feed is floored to a whole number so cast to long for the DECIMAL(20,0) column.
+        if (long.TryParse(ServerId, out long feedServerId))
         {
-            _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "FeedPassiveJackpot",
-            [
-                new SqlParameter("@ServerID", ServerId),
-                new SqlParameter("@Amount",   feed)
-            ]);
+            long feed = (long)Math.Max(1m, Math.Floor(cost * 0.01m));
+            try
+            {
+                _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "FeedPassiveJackpot",
+                [
+                    new SqlParameter("@ServerID", feedServerId),
+                    new SqlParameter("@Amount",   feed)
+                ]);
+            }
+            catch (Exception ex) { Console.WriteLine($"[Jackpot] FeedPassiveJackpot failed: {ex.Message}"); }
         }
-        catch { /* non-fatal */ }
 
         // ── Log to GambleLog ───────────────────────────────────────────────────
         LogGamble(source, cost, payout);
@@ -1465,8 +1472,10 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
             // return the POST-reset value (0) rather than the amount claimed.
             // Fetching the pool first gives us the correct award amount as a
             // fallback and avoids calling the claim SP on an empty pool.
+            if (!long.TryParse(ServerId, out long claimServerId)) return (false, 0m);
+
             var checkDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetPassiveJackpot",
-                [new SqlParameter("@ServerID", ServerId)]);
+                [new SqlParameter("@ServerID", claimServerId)]);
 
             decimal poolBefore = checkDt.Rows.Count > 0
                 ? decimal.Parse(checkDt.Rows[0]["Pool"].ToString()!)
@@ -1476,7 +1485,7 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
 
             // Atomically claim the pool.
             var claimDt = _sp.Select(Constants.Constants.discordBotConnStr, "ClaimPassiveJackpot",
-                [new SqlParameter("@ServerID", ServerId)]);
+                [new SqlParameter("@ServerID", claimServerId)]);
 
             // Use SP-returned amount when available; fall back to pre-check if SP
             // returns the post-reset value (0) or no rows.
