@@ -13,7 +13,7 @@ namespace DiscordBot.Helper
         public static ServerInfo GetServerInfo(ulong serverId)
         {
             StoredProcedure stored = new StoredProcedure();
-            DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "GetServerByID", [new SqlParameter("@ServerUID", serverId)]);
+            DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "GetServerByID", [new SqlParameter("@ServerUID", (long)serverId)]);
             var serverInfo = ServerInfo.PopulateByDataTable(dt);
 
             if (serverInfo != null) return serverInfo;
