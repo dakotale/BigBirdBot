@@ -1501,17 +1501,30 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
             try
             {
                 var guild = Context.Guild;
-                var serverDetails = ServerHelper.GetServerInfo(guild.Id);
-                var channel = guild.GetTextChannel(UInt64.Parse(serverDetails.DefaultChannelID));
 
-                await channel.SendMessageAsync(embed: new EmbedBuilder()
-                    .WithTitle("🎰  PASSIVE JACKPOT WINNER!")
-                    .WithColor(new Color(255, 215, 0))
-                    .WithDescription(
-                        $"🎉 {Context.User.Mention} just hit the **server passive jackpot** and won **{CreditHelper.Format(claimed)}**!\n\n" +
-                        $"*The pool has been reset. Every gambling loss feeds it back up — good luck!*")
-                    .WithCurrentTimestamp()
-                    .Build());
+                // Resolve announcement channel: prefer the server's configured default,
+                // fall back to the channel the command was run in so it always sends.
+                ITextChannel? channel = null;
+                var serverDetails = ServerHelper.GetServerInfo(guild.Id);
+                if (serverDetails is not null
+                    && ulong.TryParse(serverDetails.DefaultChannelID, out ulong defChanId)
+                    && defChanId != 0)
+                {
+                    channel = guild.GetTextChannel(defChanId);
+                }
+                channel ??= Context.Channel as ITextChannel;
+
+                if (channel is not null)
+                {
+                    await channel.SendMessageAsync(embed: new EmbedBuilder()
+                        .WithTitle("🎰  PASSIVE JACKPOT WINNER!")
+                        .WithColor(new Color(255, 215, 0))
+                        .WithDescription(
+                            $"🎉 {Context.User.Mention} just hit the **server passive jackpot** and won **{CreditHelper.Format(claimed)}**!\n\n" +
+                            $"*The pool has been reset. Every gambling loss feeds it back up — good luck!*")
+                        .WithCurrentTimestamp()
+                        .Build());
+                }
             }
             catch { /* non-fatal — don't block credit award on channel failure */ }
 
