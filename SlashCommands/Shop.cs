@@ -931,8 +931,9 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
         try
         {
             var guild = Context.Guild;
-            if (guild?.DefaultChannel is not null)
-                await guild.DefaultChannel.SendMessageAsync(embed: new EmbedBuilder()
+            var serverDetails = ServerHelper.GetServerInfo(guild.Id);
+            var channel = guild.GetTextChannel(ulong.Parse(serverDetails.DefaultChannelID));
+            await channel.SendMessageAsync(embed: new EmbedBuilder()
                     .WithTitle("📉  Market Crash!")
                     .WithColor(ColourError)
                     .WithDescription(
@@ -1041,8 +1042,9 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
         try
         {
             var guild = Context.Guild;
-            if (guild?.DefaultChannel is not null)
-                await guild.DefaultChannel.SendMessageAsync(embed: new EmbedBuilder()
+            var serverDetails = ServerHelper.GetServerInfo(guild.Id);
+            var channel = guild.GetTextChannel(ulong.Parse(serverDetails.DefaultChannelID));
+            await channel.SendMessageAsync(embed: new EmbedBuilder()
                     .WithTitle("💸  Wealth Flex!")
                     .WithColor(new Color(255, 215, 0))
                     .WithDescription(
@@ -1080,8 +1082,9 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
         try
         {
             var guild = Context.Guild;
-            if (guild?.DefaultChannel is not null)
-                await guild.DefaultChannel.SendMessageAsync(embed: new EmbedBuilder()
+            var serverDetails = ServerHelper.GetServerInfo(guild.Id);
+            var channel = guild.GetTextChannel(ulong.Parse(serverDetails.DefaultChannelID));
+            await channel.SendMessageAsync(embed: new EmbedBuilder()
                     .WithTitle("☢️  Economy Nuke!")
                     .WithColor(ColourError)
                     .WithDescription(
@@ -1116,8 +1119,9 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
         try
         {
             var guild = Context.Guild;
-            if (guild?.DefaultChannel is not null)
-                await guild.DefaultChannel.SendMessageAsync(embed: new EmbedBuilder()
+            var serverDetails = ServerHelper.GetServerInfo(guild.Id);
+            var channel = guild.GetTextChannel(ulong.Parse(serverDetails.DefaultChannelID));
+            await channel.SendMessageAsync(embed: new EmbedBuilder()
                     .WithTitle("💥  Server Economy Reset!")
                     .WithColor(ColourError)
                     .WithDescription(

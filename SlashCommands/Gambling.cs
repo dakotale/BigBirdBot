@@ -1501,15 +1501,17 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
             try
             {
                 var guild = Context.Guild;
-                if (guild?.DefaultChannel is not null)
-                    await guild.DefaultChannel.SendMessageAsync(embed: new EmbedBuilder()
-                        .WithTitle("🎰  PASSIVE JACKPOT WINNER!")
-                        .WithColor(new Color(255, 215, 0))
-                        .WithDescription(
-                            $"🎉 {Context.User.Mention} just hit the **server passive jackpot** and won **{CreditHelper.Format(claimed)}**!\n\n" +
-                            $"*The pool has been reset. Every gambling loss feeds it back up — good luck!*")
-                        .WithCurrentTimestamp()
-                        .Build());
+                var serverDetails = ServerHelper.GetServerInfo(guild.Id);
+                var channel = guild.GetTextChannel(ulong.Parse(serverDetails.DefaultChannelID));
+
+                await channel.SendMessageAsync(embed: new EmbedBuilder()
+                    .WithTitle("🎰  PASSIVE JACKPOT WINNER!")
+                    .WithColor(new Color(255, 215, 0))
+                    .WithDescription(
+                        $"🎉 {Context.User.Mention} just hit the **server passive jackpot** and won **{CreditHelper.Format(claimed)}**!\n\n" +
+                        $"*The pool has been reset. Every gambling loss feeds it back up — good luck!*")
+                    .WithCurrentTimestamp()
+                    .Build());
             }
             catch { /* non-fatal — don't block credit award on channel failure */ }
 

@@ -897,12 +897,13 @@ internal sealed class BotHost(
 
                 foreach (var guild in client.Guilds)
                 {
-                    var channel = guild.DefaultChannel;
-                    if (channel is null) continue;
+                    var serverDetails = ServerHelper.GetServerInfo(guild.Id);
+                    if (serverDetails is null) continue;
+                    var channel = guild.GetTextChannel(ulong.Parse(serverDetails.DefaultChannelID));
 
                     _sp.UpdateCreate(Constants.discordBotConnStr, "AddPetWordPuzzle",
                     [
-                        new SqlParameter("@ChannelID", channel.Id.ToString()),
+                        new SqlParameter("@ChannelID", serverDetails.DefaultChannelID),
                         new SqlParameter("@Word",      puzzleWord),
                         new SqlParameter("@ExpiresAt", DateTime.UtcNow.AddMinutes(55))
                     ]);
@@ -973,8 +974,11 @@ internal sealed class BotHost(
 
                     if (pot <= 0 || entries == 0) continue;
 
+                    var serverDetails = ServerHelper.GetServerInfo(guild.Id);
+                    if (serverDetails is null) continue;
+
                     var entryDt = _sp.Select(Constants.discordBotConnStr, "GetJackpotEntries",
-                        [new SqlParameter("@ServerID", guild.Id.ToString())]);
+                    [new SqlParameter("@ServerID", guild.Id.ToString())]);
 
                     if (entryDt.Rows.Count == 0) continue;
 
@@ -999,8 +1003,8 @@ internal sealed class BotHost(
                     _sp.UpdateCreate(Constants.discordBotConnStr, "ClearJackpot",
                         [new SqlParameter("@ServerID", guild.Id.ToString())]);
 
-                    var channel = guild.DefaultChannel;
-                    if (channel is null) continue;
+                    var channel = guild.GetTextChannel(ulong.Parse(serverDetails.DefaultChannelID));
+                        if (channel is null) continue;
 
                     IUser? winner = null;
                     try { winner = await client.GetUserAsync(ulong.Parse(winnerId)); } catch { }
@@ -1012,9 +1016,10 @@ internal sealed class BotHost(
                         .WithColor(new Color(255, 215, 0))
                         .WithDescription(
                             $"🎉 {winnerDisplay} won the jackpot!\n\n" +
-                            $"💰 **Prize:** {DiscordBot.Helper.CreditHelper.Format(pot)}\n" +
+                            $"💰 **Prize:** {CreditHelper.Format(pot)}\n" +
                             $"🎟️ **Entries this round:** {entries}\n\n" +
-                            $"*The jackpot resets now — use `/jackpot` to enter the next round!*")
+                            $"*The jackpot resets now — use `/jackpot` to enter the next round!*\n" +
+                            $"*The jackpot will also add 1% of all gambling bets to the next round!*")
                         .WithCurrentTimestamp()
                         .Build());
                 }

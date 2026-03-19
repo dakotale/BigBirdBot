@@ -250,11 +250,9 @@ public class Revolt : InteractionModuleBase<SocketInteractionContext>
         try
         {
             var guild = Context.Guild;
-            if (guild?.DefaultChannel is not null &&
-                guild.DefaultChannel.Id != Context.Channel.Id)
-            {
-                await guild.DefaultChannel.SendMessageAsync(embed: resultEmbed.Build());
-            }
+            var serverDetails = ServerHelper.GetServerInfo(guild.Id);
+            var channel = guild.GetTextChannel(ulong.Parse(serverDetails.DefaultChannelID));
+            await channel.SendMessageAsync(embed: resultEmbed.Build());
         }
         catch { }
     }
