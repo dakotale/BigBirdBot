@@ -4,9 +4,10 @@
     [ServerName]        VARCHAR (200) NOT NULL,
     [DefaultChannelID]  BIGINT        NULL,
     [Volume]            INT           DEFAULT ((100)) NOT NULL,
-    [FixEmbed]          BIT           NOT NULL,
-    [IsPlayerConnected] BIT           DEFAULT ((0)) NOT NULL,
-    [IsActive]          BIT           DEFAULT ((1)) NOT NULL,
+    [FixEmbed]             BIT           NOT NULL,
+    [AnnouncementsEnabled] BIT           DEFAULT ((0)) NOT NULL,
+    [IsPlayerConnected]    BIT           DEFAULT ((0)) NOT NULL,
+    [IsActive]             BIT           DEFAULT ((1)) NOT NULL,
     [CreatedOn]         DATETIME      NOT NULL
 );
 

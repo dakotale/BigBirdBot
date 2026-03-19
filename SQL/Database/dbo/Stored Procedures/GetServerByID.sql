@@ -18,7 +18,8 @@ BEGIN
 		ServerUID,
 		ServerName,
 		DefaultChannelID,
-		IsActive
+		IsActive,
+		AnnouncementsEnabled
 	FROM
 		Servers
 	WHERE

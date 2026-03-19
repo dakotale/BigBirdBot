@@ -898,8 +898,10 @@ internal sealed class BotHost(
                 foreach (var guild in client.Guilds)
                 {
                     var serverDetails = ServerHelper.GetServerInfo(guild.Id);
-                    if (serverDetails is null) continue;
+                    if (serverDetails is null || !serverDetails.AnnouncementsEnabled) continue;
+                    if (string.IsNullOrWhiteSpace(serverDetails.DefaultChannelID)) continue;
                     var channel = guild.GetTextChannel(UInt64.Parse(serverDetails.DefaultChannelID));
+                    if (channel is null) continue;
 
                     _sp.UpdateCreate(Constants.discordBotConnStr, "AddPetWordPuzzle",
                     [
@@ -975,7 +977,7 @@ internal sealed class BotHost(
                     if (pot <= 0 || entries == 0) continue;
 
                     var serverDetails = ServerHelper.GetServerInfo(guild.Id);
-                    if (serverDetails is null) continue;
+                    if (serverDetails is null || !serverDetails.AnnouncementsEnabled) continue;
 
                     var entryDt = _sp.Select(Constants.discordBotConnStr, "GetJackpotEntries",
                     [new SqlParameter("@ServerID", guild.Id.ToString())]);
@@ -1003,8 +1005,9 @@ internal sealed class BotHost(
                     _sp.UpdateCreate(Constants.discordBotConnStr, "ClearJackpot",
                         [new SqlParameter("@ServerID", guild.Id.ToString())]);
 
+                    if (string.IsNullOrWhiteSpace(serverDetails.DefaultChannelID)) continue;
                     var channel = guild.GetTextChannel(UInt64.Parse(serverDetails.DefaultChannelID));
-                        if (channel is null) continue;
+                    if (channel is null) continue;
 
                     IUser? winner = null;
                     try { winner = await client.GetUserAsync(ulong.Parse(winnerId)); } catch { }

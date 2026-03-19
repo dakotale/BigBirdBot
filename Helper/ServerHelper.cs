@@ -26,6 +26,7 @@ namespace DiscordBot.Helper
             public required string ServerName { get; set; }
             public required string DefaultChannelID { get; set; }
             public bool IsActive { get; set; }
+            public bool AnnouncementsEnabled { get; set; }
 
             public static ServerInfo PopulateByDataTable(DataTable dt)
             {
@@ -39,7 +40,9 @@ namespace DiscordBot.Helper
                     ServerUID = Convert.ToUInt64(row["ServerUID"]),
                     ServerName = row["ServerName"].ToString(),
                     DefaultChannelID = row["DefaultChannelID"].ToString(),
-                    IsActive = Convert.ToBoolean(row["IsActive"])
+                    IsActive = Convert.ToBoolean(row["IsActive"]),
+                    AnnouncementsEnabled = row.Table.Columns.Contains("AnnouncementsEnabled")
+                                          && Convert.ToBoolean(row["AnnouncementsEnabled"])
                 };
             }
         }

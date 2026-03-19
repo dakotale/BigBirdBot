@@ -91,6 +91,28 @@ namespace DiscordBot.SlashCommands
                 $"Deleted **{eligible.Count}** message(s).{note}",
                 "", Username, Color.Orange).Build(), ephemeral: true);
         }
+
+        /// <summary>
+        /// Toggles timed bot announcements (word puzzles, jackpot results) for this server.
+        /// Defaults to disabled — must be explicitly enabled by an admin.
+        /// </summary>
+        [SlashCommand("announcements", "Toggle timed bot announcements (word puzzles, jackpot results) for this server.")]
+        [EnabledInDm(false)]
+        [RequireUserPermission(GuildPermission.ManageGuild)]
+        public async Task HandleAnnouncementsAsync()
+        {
+            await DeferAsync(ephemeral: true);
+
+            var dt = _sp.Select(Constants.Constants.discordBotConnStr, "ToggleAnnouncements",
+                [new SqlParameter("@ServerUID", (long)Context.Guild.Id)]);
+
+            string result = dt.Rows.Count > 0 ? dt.Rows[0]["Result"].ToString() ?? "" : "Unknown error toggling announcements.";
+
+            await FollowupAsync(embed: _embed.BuildMessageEmbed(
+                "📣  Announcements",
+                result,
+                "", Username, Color.Blue).Build(), ephemeral: true);
+        }
     }
 }
 
