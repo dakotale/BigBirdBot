@@ -104,7 +104,10 @@ namespace DiscordBot.SlashCommands
             await DeferAsync(ephemeral: true);
 
             var dt = _sp.Select(Constants.Constants.discordBotConnStr, "ToggleAnnouncements",
-                [new SqlParameter("@ServerUID", (long)Context.Guild.Id)]);
+            [
+                new SqlParameter("@ServerUID", (long)Context.Guild.Id),
+                new SqlParameter("@ChannelID", (long)Context.Channel.Id)
+            ]);
 
             string result = dt.Rows.Count > 0 ? dt.Rows[0]["Result"].ToString() ?? "" : "Unknown error toggling announcements.";
 
