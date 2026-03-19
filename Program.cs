@@ -76,6 +76,7 @@ internal sealed class BotHost(
     private System.Timers.Timer? _stockTimer;
     private System.Timers.Timer? _stockDayResetTimer;
     private int _schedulerTick = 0;
+    private Task? _schedulerTask;
 
     private readonly EmbedHelper _embed = new();
     private readonly StoredProcedure _sp = new();
@@ -94,7 +95,7 @@ internal sealed class BotHost(
     {
         await services.GetRequiredService<InteractionHandlerService>().InitializeAsync();
         RegisterEvents();
-        _ = RunSchedulerAsync();
+        _schedulerTask = RunSchedulerAsync();
         StartStockTimer();
         await ConnectAsync();
         await Task.Delay(Timeout.Infinite);
@@ -141,6 +142,22 @@ internal sealed class BotHost(
     {
         await logger.InfoAsync("Bot connected");
         await client.SetGameAsync("/reportbug");
+
+        // Restart scheduler if it died while Discord was disconnected.
+        if (_schedulerTask is null || _schedulerTask.IsCompleted)
+        {
+            await logger.InfoAsync("[Scheduler] Restarting scheduler loop after reconnect.");
+            _schedulerTask = RunSchedulerAsync();
+        }
+
+        // Restart stock timers if they stopped.
+        if (_stockTimer is null || !_stockTimer.Enabled)
+        {
+            await logger.InfoAsync("[StockMarket] Restarting stock timers after reconnect.");
+            _stockTimer?.Dispose();
+            _stockDayResetTimer?.Dispose();
+            StartStockTimer();
+        }
     }
 
     private async Task OnDisconnectedAsync(Exception ex) =>
@@ -798,15 +815,11 @@ internal sealed class BotHost(
         {
             _schedulerTick++;
 
-            // ── Wrap the entire tick body so a single failure never kills the loop ──
+            // ── Single outer try-catch: any unhandled exception in any block
+            //    logs to the owner and lets the loop continue next tick. ──────
             try
             {
                 await RunScheduledKeywordsAsync();
-            }
-            catch (Exception ex)
-            {
-                await NotifyOwnerAsync($"[Scheduler] RunScheduledKeywordsAsync failed (tick {_schedulerTick}):\n{ex.Message}");
-            }
 
             if (_schedulerTick % 30 == 0)
             {
@@ -1005,6 +1018,11 @@ internal sealed class BotHost(
                         .WithCurrentTimestamp()
                         .Build());
                 }
+            }
+            } // end outer try
+            catch (Exception ex)
+            {
+                await NotifyOwnerAsync($"[Scheduler] Tick {_schedulerTick} failed:\n{ex.GetType().Name}: {ex.Message}");
             }
         }
     }
