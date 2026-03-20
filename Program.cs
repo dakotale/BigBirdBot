@@ -433,8 +433,14 @@ internal sealed class BotHost(
                 _sp.UpdateCreate(Constants.discordBotConnStr, "ClaimPetPuzzle",
                     [new SqlParameter("@PuzzleID", puzzleId)]);
 
+                // Always award credits for solving the puzzle.
+                _creditEco.AddCredits(userId, serverId, CreditHelper.PuzzleSolveAmount, "puzzle");
+
                 var solverPet = _sp.Select(Constants.discordBotConnStr, "GetActivePet",
                     [new SqlParameter("@UserID", userId)]);
+
+                bool awardedXp = false;
+                string petLine  = string.Empty;
 
                 if (solverPet.Rows.Count > 0)
                 {
@@ -443,7 +449,8 @@ internal sealed class BotHost(
 
                     if (!solverHib)
                     {
-                        int solverPetId = int.Parse(solverPet.Rows[0]["PetID"].ToString()!);
+                        int    solverPetId   = int.Parse(solverPet.Rows[0]["PetID"].ToString()!);
+                        string solverPetName = solverPet.Rows[0]["Name"].ToString()!;
 
                         _sp.Select(Constants.discordBotConnStr, "AddPetXP",
                         [
@@ -451,21 +458,23 @@ internal sealed class BotHost(
                             new SqlParameter("@Amount", DiscordBot.Helper.PetHelper.XpWordPuzzle)
                         ]);
 
-                        _creditEco.AddCredits(userId, serverId, CreditHelper.PuzzleSolveAmount, "puzzle");
-
-                        string solverPetName = solverPet.Rows[0]["Name"].ToString()!;
-
-                        await msg.Channel.SendMessageAsync(embed: new EmbedBuilder()
-                            .WithTitle("🧩  Puzzle Solved!")
-                            .WithColor(Color.Green)
-                            .WithDescription(
-                                $"{msg.Author.Mention} solved the bonus word puzzle!\n" +
-                                $"**{solverPetName}** earned **+{DiscordBot.Helper.PetHelper.XpWordPuzzle} XP**" +
-                                $" and {CreditHelper.Format(CreditHelper.PuzzleSolveAmount)}! 🎉")
-                            .WithCurrentTimestamp()
-                            .Build());
+                        awardedXp = true;
+                        petLine   = $"\n**{solverPetName}** earned **+{DiscordBot.Helper.PetHelper.XpWordPuzzle} XP**! 🐾";
                     }
                 }
+
+                string description = awardedXp
+                    ? $"{msg.Author.Mention} solved the bonus word puzzle!\n" +
+                      $"They earned {CreditHelper.Format(CreditHelper.PuzzleSolveAmount)}!{petLine} 🎉"
+                    : $"{msg.Author.Mention} solved the bonus word puzzle!\n" +
+                      $"They earned {CreditHelper.Format(CreditHelper.PuzzleSolveAmount)}! 🎉";
+
+                await msg.Channel.SendMessageAsync(embed: new EmbedBuilder()
+                    .WithTitle("🧩  Puzzle Solved!")
+                    .WithColor(Color.Green)
+                    .WithDescription(description)
+                    .WithCurrentTimestamp()
+                    .Build());
 
                 return;
             }
