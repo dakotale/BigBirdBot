@@ -1027,6 +1027,46 @@ internal sealed class BotHost(
                         .Build());
                 }
             }
+
+            // ── Passive jackpot hourly draw ────────────────────────────────────────
+            if (_schedulerTick % 60 == 0)
+            {
+                foreach (var guild in client.Guilds)
+                {
+                    var drawDt = _sp.Select(Constants.discordBotConnStr, "DrawPassiveJackpot",
+                        [new SqlParameter("@ServerID", (long)guild.Id)]);
+
+                    if (drawDt.Rows.Count == 0) continue; // pool empty or no contributors
+
+                    string passiveWinnerId = drawDt.Rows[0]["UserID"].ToString()!;
+                    decimal passivePool    = decimal.Parse(drawDt.Rows[0]["Pool"].ToString()!);
+
+                    var passiveEco = new DiscordBot.SlashCommands.Economy();
+                    passiveEco.AddCredits(passiveWinnerId, guild.Id.ToString(), passivePool, "passive_jackpot_win");
+
+                    // Announce in the server's announcement channel (if configured and enabled).
+                    var passiveDetails = ServerHelper.GetServerInfo(guild.Id);
+                    if (passiveDetails is null || !passiveDetails.AnnouncementsEnabled) continue;
+
+                    ITextChannel? passiveChan = null;
+                    if (ulong.TryParse(passiveDetails.DefaultChannelID, out ulong pChanId) && pChanId != 0)
+                        passiveChan = guild.GetTextChannel(pChanId);
+                    if (passiveChan is null) continue;
+
+                    IUser? passiveWinner = null;
+                    try { passiveWinner = await client.GetUserAsync(ulong.Parse(passiveWinnerId)); } catch { }
+                    string passiveDisplay = passiveWinner is not null ? passiveWinner.Mention : $"<@{passiveWinnerId}>";
+
+                    await passiveChan.SendMessageAsync(embed: new EmbedBuilder()
+                        .WithTitle("🌊  Passive Jackpot Winner!")
+                        .WithColor(new Color(100, 200, 255))
+                        .WithDescription(
+                            $"🎉 {passiveDisplay} won the **passive jackpot** and took home **{DiscordBot.Helper.CreditHelper.Format(passivePool)}**!\n\n" +
+                            $"*1% of every gambling bet feeds this pool — keep playing to build it back up!*")
+                        .WithCurrentTimestamp()
+                        .Build());
+                }
+            }
             } // end outer try
             catch (Exception ex)
             {

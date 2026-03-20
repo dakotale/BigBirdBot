@@ -1444,6 +1444,7 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
                 _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "FeedPassiveJackpot",
                 [
                     new SqlParameter("@ServerID", feedServerId),
+                    new SqlParameter("@UserID",   UserId),
                     new SqlParameter("@Amount",   feed)
                 ]);
             }
