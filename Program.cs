@@ -830,6 +830,30 @@ internal sealed class BotHost(
             {
                 await RunScheduledKeywordsAsync();
 
+                // ── Reminders (every tick = every minute) ───────────────────
+                var dueReminders = _sp.Select(Constants.discordBotConnStr, "GetDueReminders", []);
+                foreach (DataRow reminderRow in dueReminders.Rows)
+                {
+                    try
+                    {
+                        ulong userId = ulong.Parse(reminderRow["UserID"].ToString()!);
+                        string message = reminderRow["Message"].ToString()!;
+                        var reminderUser = await client.GetUserAsync(userId)
+                                        ?? await client.Rest.GetUserAsync(userId);
+                        if (reminderUser is null) continue;
+
+                        var dm = await reminderUser.CreateDMChannelAsync();
+                        await dm.SendMessageAsync(embed: new EmbedBuilder()
+                            .WithTitle("⏰  Reminder")
+                            .WithColor(Color.Gold)
+                            .WithDescription(message)
+                            .WithFooter("You asked me to remind you at this time.")
+                            .WithCurrentTimestamp()
+                            .Build());
+                    }
+                    catch { /* DMs disabled or user not found */ }
+                }
+
             if (_schedulerTick % 30 == 0)
             {
                 var decayed = _sp.Select(Constants.discordBotConnStr, "DecayPetStats", []);

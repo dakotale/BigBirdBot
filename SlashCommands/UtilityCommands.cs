@@ -177,28 +177,34 @@ public class UtilityCommands : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        // Shift the user's local time to UTC
-        var offsetSpan   = TimeSpan.FromHours(utcOffset);
-        var reminderUtc  = DateTime.SpecifyKind(parsedLocal, DateTimeKind.Unspecified) - offsetSpan;
-        var delay        = reminderUtc - DateTime.UtcNow;
+        var reminderUtc = DateTime.SpecifyKind(parsedLocal, DateTimeKind.Unspecified)
+                          - TimeSpan.FromHours(utcOffset);
+        var delay = reminderUtc - DateTime.UtcNow;
 
-        if (delay < TimeSpan.FromMinutes(15))
+        if (delay < TimeSpan.FromMinutes(1))
         {
             await FollowupAsync(embed: _embed.BuildMessageEmbed(
                 "⏰  Too Soon",
-                "Reminders must be at least **15 minutes** from now.",
+                "Reminders must be at least **1 minute** from now.",
                 AvatarUrl, Username, Color.Red).Build(), ephemeral: true);
             return;
         }
 
-        if (delay > TimeSpan.FromDays(31))
+        if (delay > TimeSpan.FromDays(365))
         {
             await FollowupAsync(embed: _embed.BuildMessageEmbed(
                 "⏰  Too Far",
-                "Reminders can be set at most **1 month** in advance.",
+                "Reminders can be set at most **1 year** in advance.",
                 AvatarUrl, Username, Color.Red).Build(), ephemeral: true);
             return;
         }
+
+        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "AddReminder",
+        [
+            new SqlParameter("@UserID",      Context.User.Id.ToString()),
+            new SqlParameter("@Message",     reminder),
+            new SqlParameter("@RemindAtUtc", reminderUtc)
+        ]);
 
         string offsetLabel = utcOffset >= 0 ? $"UTC+{utcOffset}" : $"UTC{utcOffset}";
         string displayTime = parsedLocal.ToString("MMMM d, yyyy 'at' h:mm tt");
@@ -207,24 +213,6 @@ public class UtilityCommands : InteractionModuleBase<SocketInteractionContext>
             "⏰  Reminder Set",
             $"I'll DM you on **{displayTime}** ({offsetLabel}).\n> {reminder}",
             AvatarUrl, Username, Color.Gold).Build(), ephemeral: true);
-
-        var user = Context.User;
-        _ = Task.Run(async () =>
-        {
-            await Task.Delay(delay);
-            try
-            {
-                var dm = await user.CreateDMChannelAsync();
-                await dm.SendMessageAsync(embed: new EmbedBuilder()
-                    .WithTitle("⏰  Reminder")
-                    .WithColor(Color.Gold)
-                    .WithDescription(reminder)
-                    .WithFooter($"You asked me to remind you at {displayTime} ({offsetLabel}).")
-                    .WithCurrentTimestamp()
-                    .Build());
-            }
-            catch { /* User has DMs disabled — nothing actionable */ }
-        });
     }
 
 
