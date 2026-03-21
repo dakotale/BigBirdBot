@@ -919,7 +919,7 @@ internal sealed class BotHost(
                         new SqlParameter("@ExpiresAt", DateTime.UtcNow.AddMinutes(55))
                     ]);
 
-                    string blankHint = new string('_', puzzleWord.Length);
+                    string blankHint = $"{puzzleWord[0]}{new string('_', puzzleWord.Length - 1)}";
 
                     var puzzleMsg = await channel.SendMessageAsync(embed: new EmbedBuilder()
                         .WithTitle("🧩  Bonus Word Puzzle!")
