@@ -940,7 +940,7 @@ internal sealed class BotHost(
                     {
                         await Task.Delay(TimeSpan.FromMinutes(30));
 
-                        var stillActive = _sp.Select(Constants.discordBotConnStr, "GetActivePetPuzzle",
+                        var stillActive = _sp.Select(Constants.discordBotConnStr, "GetPetWordPuzzle",
                             [new SqlParameter("@ChannelID", capturedCh.Id.ToString())]);
 
                         if (stillActive.Rows.Count == 0) return;
