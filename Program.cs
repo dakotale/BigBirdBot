@@ -938,19 +938,21 @@ internal sealed class BotHost(
 
                     _ = Task.Run(async () =>
                     {
-                        await Task.Delay(TimeSpan.FromSeconds(30));
+                        await Task.Delay(TimeSpan.FromMinutes(30));
 
                         var stillActive = _sp.Select(Constants.discordBotConnStr, "GetPetWordPuzzle",
                             [new SqlParameter("@ChannelID", capturedCh.Id.ToString())]);
 
                         if (stillActive.Rows.Count == 0) return;
 
-                        int revealIdx = capturedWord.Length > 1
-                            ? Random.Shared.Next(1, capturedWord.Length)
-                            : 0;
-
+                        // Start with the first letter already revealed, then pick a second random position
                         char[] hintChars = new string('_', capturedWord.Length).ToCharArray();
-                        hintChars[revealIdx] = capturedWord[revealIdx];
+                        hintChars[0] = capturedWord[0];
+                        if (capturedWord.Length > 2)
+                        {
+                            int revealIdx = Random.Shared.Next(1, capturedWord.Length);
+                            hintChars[revealIdx] = capturedWord[revealIdx];
+                        }
                         string revealedHint = new string(hintChars);
 
                         try
@@ -963,7 +965,7 @@ internal sealed class BotHost(
                                     $"**+{DiscordBot.Helper.PetHelper.XpWordPuzzle} XP** for your active pet!\n\n" +
                                     $"**Hint:** `{revealedHint}`  ({capturedWord.Length} letters)\n" +
                                     $"*(A letter has been revealed!)*\n\n" +
-                                    $"⏳ Expires in ~54 minutes — first correct answer wins!")
+                                    $"⏳ Expires in ~25 minutes — first correct answer wins!")
                                 .WithCurrentTimestamp()
                                 .Build());
                         }
