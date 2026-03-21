@@ -44,7 +44,7 @@ public class Duel : InteractionModuleBase<SocketInteractionContext>
 
     // ── /duel ─────────────────────────────────────────────────────────────────
 
-    [SlashCommand("duel", "Challenge another user to an old-west duel for 10% of their credits!")]
+    [SlashCommand("duel", "Challenge another user to an old-west duel for a random percentage of their credits!")]
     [EnabledInDm(false)]
     public async Task HandleDuelAsync(
         [Summary("user", "The user you want to challenge")] IUser target)
@@ -95,7 +95,7 @@ public class Duel : InteractionModuleBase<SocketInteractionContext>
             .WithColor(ColourGold)
             .WithDescription(
                 $"{target.Mention}, **{Username}** has challenged you to a duel!\n\n" +
-                $"The winner takes **10%** of the loser's credits.\n\n" +
+                $"The winner takes **a random percentage** of the loser's credits.\n\n" +
                 $"⏳ You have **30 seconds** to accept or decline.")
             .WithThumbnailUrl(AvatarUrl)
             .WithCurrentTimestamp()
@@ -208,7 +208,10 @@ public class Duel : InteractionModuleBase<SocketInteractionContext>
         string loserId    = challengerWins ? targetId     : challengerId;
         decimal loserBal  = challengerWins ? targetBal    : challengerBal;
 
-        decimal prize = Math.Floor(loserBal * 0.10m);
+        Random r = new Random();
+        decimal value = 0.1m + (1.0m - 0.1m) * (decimal)r.NextDouble();
+
+        decimal prize = Math.Floor(loserBal * value);
         if (prize < 1) prize = 1;
 
         _eco.DeductCredits(loserId,  srv, prize, "duel_loss");
@@ -223,7 +226,7 @@ public class Duel : InteractionModuleBase<SocketInteractionContext>
             .WithDescription(
                 $"{winnerMention} was **faster on the draw!** 🏆\n\n" +
                 $"{loserMention} drops their iron and hands over " +
-                $"{CreditHelper.Format(prize)} **(10% of their balance)**.\n\n" +
+                $"{CreditHelper.Format(prize)} **({Math.Round(value * 100.0m, 1, MidpointRounding.AwayFromZero).ToString("0.0")}% of their balance)**.\n\n" +
                 $"💰 {winnerMention} walks away richer.")
             .WithCurrentTimestamp()
             .Build());
