@@ -158,26 +158,60 @@ public class UtilityCommands : InteractionModuleBase<SocketInteractionContext>
     }
 
 
-    [SlashCommand("remind", "Set a DM reminder for yourself.")]
+    [SlashCommand("remind", "Set a DM reminder for yourself at a specific date/time.")]
     [EnabledInDm(true)]
     public async Task HandleRemindAsync(
         [MinLength(1), MaxLength(500)] string reminder,
-        [MinValue(1), MaxValue(1440),
-         Summary("minutes", "How many minutes from now (max 1 440 = 24 h)")]
-        int minutes)
+        [Summary("when", "Date and time, e.g. '03/25/2026 3:30 PM' or '2026-03-25 15:30'")] string when,
+        [Summary("utc_offset", "Your UTC offset, e.g. -5 for EST, -8 for PST, +1 for CET")]
+        double utcOffset = 0)
     {
         await DeferAsync(ephemeral: true);
 
-        var user = Context.User;
+        if (!DateTime.TryParse(when, out DateTime parsedLocal))
+        {
+            await FollowupAsync(embed: _embed.BuildMessageEmbed(
+                "⏰  Invalid Date",
+                "Couldn't parse that date/time. Try a format like `03/25/2026 3:30 PM` or `2026-03-25 15:30`.",
+                AvatarUrl, Username, Color.Red).Build(), ephemeral: true);
+            return;
+        }
+
+        // Shift the user's local time to UTC
+        var offsetSpan   = TimeSpan.FromHours(utcOffset);
+        var reminderUtc  = DateTime.SpecifyKind(parsedLocal, DateTimeKind.Unspecified) - offsetSpan;
+        var delay        = reminderUtc - DateTime.UtcNow;
+
+        if (delay < TimeSpan.FromMinutes(15))
+        {
+            await FollowupAsync(embed: _embed.BuildMessageEmbed(
+                "⏰  Too Soon",
+                "Reminders must be at least **15 minutes** from now.",
+                AvatarUrl, Username, Color.Red).Build(), ephemeral: true);
+            return;
+        }
+
+        if (delay > TimeSpan.FromDays(31))
+        {
+            await FollowupAsync(embed: _embed.BuildMessageEmbed(
+                "⏰  Too Far",
+                "Reminders can be set at most **1 month** in advance.",
+                AvatarUrl, Username, Color.Red).Build(), ephemeral: true);
+            return;
+        }
+
+        string offsetLabel = utcOffset >= 0 ? $"UTC+{utcOffset}" : $"UTC{utcOffset}";
+        string displayTime = parsedLocal.ToString("MMMM d, yyyy 'at' h:mm tt");
 
         await FollowupAsync(embed: _embed.BuildMessageEmbed(
             "⏰  Reminder Set",
-            $"I'll DM you in **{minutes} minute(s)**.\n> {reminder}",
+            $"I'll DM you on **{displayTime}** ({offsetLabel}).\n> {reminder}",
             AvatarUrl, Username, Color.Gold).Build(), ephemeral: true);
 
+        var user = Context.User;
         _ = Task.Run(async () =>
         {
-            await Task.Delay(TimeSpan.FromMinutes(minutes));
+            await Task.Delay(delay);
             try
             {
                 var dm = await user.CreateDMChannelAsync();
@@ -185,7 +219,7 @@ public class UtilityCommands : InteractionModuleBase<SocketInteractionContext>
                     .WithTitle("⏰  Reminder")
                     .WithColor(Color.Gold)
                     .WithDescription(reminder)
-                    .WithFooter("You asked me to remind you at this time.")
+                    .WithFooter($"You asked me to remind you at {displayTime} ({offsetLabel}).")
                     .WithCurrentTimestamp()
                     .Build());
             }
