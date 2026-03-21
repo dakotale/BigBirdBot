@@ -76,6 +76,7 @@ internal sealed class BotHost(
     private System.Timers.Timer? _stockTimer;
     private System.Timers.Timer? _stockDayResetTimer;
     private int _schedulerTick = 0;
+    private Task? _schedulerTask;
 
     private readonly EmbedHelper _embed = new();
     private readonly StoredProcedure _sp = new();
@@ -94,7 +95,7 @@ internal sealed class BotHost(
     {
         await services.GetRequiredService<InteractionHandlerService>().InitializeAsync();
         RegisterEvents();
-        _ = RunSchedulerAsync();
+        _schedulerTask = RunSchedulerAsync();
         StartStockTimer();
         await ConnectAsync();
         await Task.Delay(Timeout.Infinite);
@@ -141,6 +142,22 @@ internal sealed class BotHost(
     {
         await logger.InfoAsync("Bot connected");
         await client.SetGameAsync("/reportbug");
+
+        // Restart scheduler if it died while Discord was disconnected.
+        if (_schedulerTask is null || _schedulerTask.IsCompleted)
+        {
+            await logger.InfoAsync("[Scheduler] Restarting scheduler loop after reconnect.");
+            _schedulerTask = RunSchedulerAsync();
+        }
+
+        // Restart stock timers if they stopped.
+        if (_stockTimer is null || !_stockTimer.Enabled)
+        {
+            await logger.InfoAsync("[StockMarket] Restarting stock timers after reconnect.");
+            _stockTimer?.Dispose();
+            _stockDayResetTimer?.Dispose();
+            StartStockTimer();
+        }
     }
 
     private async Task OnDisconnectedAsync(Exception ex) =>
@@ -416,12 +433,15 @@ internal sealed class BotHost(
                 _sp.UpdateCreate(Constants.discordBotConnStr, "ClaimPetPuzzle",
                     [new SqlParameter("@PuzzleID", puzzleId)]);
 
+                // Always award credits for solving the puzzle.
                 _creditEco.AddCredits(userId, serverId, CreditHelper.PuzzleSolveAmount, "puzzle");
 
                 var solverPet = _sp.Select(Constants.discordBotConnStr, "GetActivePet",
                     [new SqlParameter("@UserID", userId)]);
 
-                string solveDescription;
+                bool awardedXp = false;
+                string petLine  = string.Empty;
+
                 if (solverPet.Rows.Count > 0)
                 {
                     bool solverHib = bool.TryParse(
@@ -429,7 +449,8 @@ internal sealed class BotHost(
 
                     if (!solverHib)
                     {
-                        int solverPetId = int.Parse(solverPet.Rows[0]["PetID"].ToString()!);
+                        int    solverPetId   = int.Parse(solverPet.Rows[0]["PetID"].ToString()!);
+                        string solverPetName = solverPet.Rows[0]["Name"].ToString()!;
 
                         _sp.Select(Constants.discordBotConnStr, "AddPetXP",
                         [
@@ -437,30 +458,21 @@ internal sealed class BotHost(
                             new SqlParameter("@Amount", DiscordBot.Helper.PetHelper.XpWordPuzzle)
                         ]);
 
-                        string solverPetName = solverPet.Rows[0]["Name"].ToString()!;
-                        solveDescription =
-                            $"{msg.Author.Mention} solved the bonus word puzzle!\n" +
-                            $"**{solverPetName}** earned **+{DiscordBot.Helper.PetHelper.XpWordPuzzle} XP**" +
-                            $" and {CreditHelper.Format(CreditHelper.PuzzleSolveAmount)}! 🎉";
-                    }
-                    else
-                    {
-                        solveDescription =
-                            $"{msg.Author.Mention} solved the bonus word puzzle and earned {CreditHelper.Format(CreditHelper.PuzzleSolveAmount)}! 🎉\n" +
-                            $"*(Your pet is hibernating and did not earn XP.)*";
+                        awardedXp = true;
+                        petLine   = $"\n**{solverPetName}** earned **+{DiscordBot.Helper.PetHelper.XpWordPuzzle} XP**! 🐾";
                     }
                 }
-                else
-                {
-                    solveDescription =
-                        $"{msg.Author.Mention} solved the bonus word puzzle and earned {CreditHelper.Format(CreditHelper.PuzzleSolveAmount)}! 🎉\n" +
-                        $"*(Get a pet to earn XP from puzzles!)*";
-                }
+
+                string description = awardedXp
+                    ? $"{msg.Author.Mention} solved the bonus word puzzle!\n" +
+                      $"They earned {CreditHelper.Format(CreditHelper.PuzzleSolveAmount)}!{petLine} 🎉"
+                    : $"{msg.Author.Mention} solved the bonus word puzzle!\n" +
+                      $"They earned {CreditHelper.Format(CreditHelper.PuzzleSolveAmount)}! 🎉";
 
                 await msg.Channel.SendMessageAsync(embed: new EmbedBuilder()
                     .WithTitle("🧩  Puzzle Solved!")
                     .WithColor(Color.Green)
-                    .WithDescription(solveDescription)
+                    .WithDescription(description)
                     .WithCurrentTimestamp()
                     .Build());
 
@@ -812,15 +824,11 @@ internal sealed class BotHost(
         {
             _schedulerTick++;
 
-            // ── Wrap the entire tick body so a single failure never kills the loop ──
+            // ── Single outer try-catch: any unhandled exception in any block
+            //    logs to the owner and lets the loop continue next tick. ──────
             try
             {
                 await RunScheduledKeywordsAsync();
-            }
-            catch (Exception ex)
-            {
-                await NotifyOwnerAsync($"[Scheduler] RunScheduledKeywordsAsync failed (tick {_schedulerTick}):\n{ex.Message}");
-            }
 
             if (_schedulerTick % 30 == 0)
             {
@@ -898,12 +906,15 @@ internal sealed class BotHost(
 
                 foreach (var guild in client.Guilds)
                 {
-                    var channel = guild.DefaultChannel;
+                    var serverDetails = ServerHelper.GetServerInfo(guild.Id);
+                    if (serverDetails is null || !serverDetails.AnnouncementsEnabled) continue;
+                    if (string.IsNullOrWhiteSpace(serverDetails.DefaultChannelID)) continue;
+                    var channel = guild.GetTextChannel(UInt64.Parse(serverDetails.DefaultChannelID));
                     if (channel is null) continue;
 
                     _sp.UpdateCreate(Constants.discordBotConnStr, "AddPetWordPuzzle",
                     [
-                        new SqlParameter("@ChannelID", channel.Id.ToString()),
+                        new SqlParameter("@ChannelID", serverDetails.DefaultChannelID),
                         new SqlParameter("@Word",      puzzleWord),
                         new SqlParameter("@ExpiresAt", DateTime.UtcNow.AddMinutes(55))
                     ]);
@@ -974,8 +985,11 @@ internal sealed class BotHost(
 
                     if (pot <= 0 || entries == 0) continue;
 
+                    var serverDetails = ServerHelper.GetServerInfo(guild.Id);
+                    if (serverDetails is null || !serverDetails.AnnouncementsEnabled) continue;
+
                     var entryDt = _sp.Select(Constants.discordBotConnStr, "GetJackpotEntries",
-                        [new SqlParameter("@ServerID", guild.Id.ToString())]);
+                    [new SqlParameter("@ServerID", guild.Id.ToString())]);
 
                     if (entryDt.Rows.Count == 0) continue;
 
@@ -1000,7 +1014,8 @@ internal sealed class BotHost(
                     _sp.UpdateCreate(Constants.discordBotConnStr, "ClearJackpot",
                         [new SqlParameter("@ServerID", guild.Id.ToString())]);
 
-                    var channel = guild.DefaultChannel;
+                    if (string.IsNullOrWhiteSpace(serverDetails.DefaultChannelID)) continue;
+                    var channel = guild.GetTextChannel(UInt64.Parse(serverDetails.DefaultChannelID));
                     if (channel is null) continue;
 
                     IUser? winner = null;
@@ -1013,12 +1028,58 @@ internal sealed class BotHost(
                         .WithColor(new Color(255, 215, 0))
                         .WithDescription(
                             $"🎉 {winnerDisplay} won the jackpot!\n\n" +
-                            $"💰 **Prize:** {DiscordBot.Helper.CreditHelper.Format(pot)}\n" +
+                            $"💰 **Prize:** {CreditHelper.Format(pot)}\n" +
                             $"🎟️ **Entries this round:** {entries}\n\n" +
-                            $"*The jackpot resets now — use `/jackpot` to enter the next round!*")
+                            $"*The jackpot resets now — use `/jackpot` to enter the next round!*\n" +
+                            $"*The jackpot will also add 1% of all gambling bets to the next round!*")
                         .WithCurrentTimestamp()
                         .Build());
                 }
+            }
+
+            // ── Passive jackpot hourly draw ────────────────────────────────────────
+            if (_schedulerTick % 60 == 0)
+            {
+                foreach (var guild in client.Guilds)
+                {
+                    var drawDt = _sp.Select(Constants.discordBotConnStr, "DrawPassiveJackpot",
+                        [new SqlParameter("@ServerID", (long)guild.Id)]);
+
+                    if (drawDt.Rows.Count == 0) continue; // pool empty or no contributors
+
+                    string passiveWinnerId = drawDt.Rows[0]["UserID"].ToString()!;
+                    decimal passivePool    = decimal.Parse(drawDt.Rows[0]["Pool"].ToString()!);
+
+                    var passiveEco = new DiscordBot.SlashCommands.Economy();
+                    passiveEco.AddCredits(passiveWinnerId, guild.Id.ToString(), passivePool, "passive_jackpot_win");
+
+                    // Announce in the server's announcement channel (if configured and enabled).
+                    var passiveDetails = ServerHelper.GetServerInfo(guild.Id);
+                    if (passiveDetails is null || !passiveDetails.AnnouncementsEnabled) continue;
+
+                    ITextChannel? passiveChan = null;
+                    if (ulong.TryParse(passiveDetails.DefaultChannelID, out ulong pChanId) && pChanId != 0)
+                        passiveChan = guild.GetTextChannel(pChanId);
+                    if (passiveChan is null) continue;
+
+                    IUser? passiveWinner = null;
+                    try { passiveWinner = await client.GetUserAsync(ulong.Parse(passiveWinnerId)); } catch { }
+                    string passiveDisplay = passiveWinner is not null ? passiveWinner.Mention : $"<@{passiveWinnerId}>";
+
+                    await passiveChan.SendMessageAsync(embed: new EmbedBuilder()
+                        .WithTitle("🌊  Passive Jackpot Winner!")
+                        .WithColor(new Color(100, 200, 255))
+                        .WithDescription(
+                            $"🎉 {passiveDisplay} won the **passive jackpot** and took home **{DiscordBot.Helper.CreditHelper.Format(passivePool)}**!\n\n" +
+                            $"*1% of every gambling bet feeds this pool — keep playing to build it back up!*")
+                        .WithCurrentTimestamp()
+                        .Build());
+                }
+            }
+            } // end outer try
+            catch (Exception ex)
+            {
+                await NotifyOwnerAsync($"[Scheduler] Tick {_schedulerTick} failed:\n{ex.GetType().Name}: {ex.Message}");
             }
         }
     }
@@ -1048,7 +1109,17 @@ internal sealed class BotHost(
 
             try
             {
-                var user = await client.GetUserAsync(ulong.Parse(userId));
+                // GetUserAsync only checks the socket cache; fall back to REST so
+                // users who haven't recently interacted with the bot are still resolved.
+                ulong uid = ulong.Parse(userId);
+                IUser? user = client.GetUser(uid)
+                           ?? (IUser?)await client.Rest.GetUserAsync(uid);
+
+                if (user is null)
+                {
+                    await NotifyOwnerAsync($"[Keywords] Could not resolve user {userId} — skipping tick.");
+                    continue;
+                }
 
                 if (filePath.StartsWith(@"C:\"))
                 {
