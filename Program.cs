@@ -819,6 +819,14 @@ internal sealed class BotHost(
 
     private async Task RunSchedulerAsync()
     {
+        // Wait until the top of the next minute so every tick lands on a clock minute
+        var now = DateTime.UtcNow;
+        await Task.Delay(TimeSpan.FromSeconds(60 - now.Second));
+
+        // Seed the counter to the current UTC minute so modulo checks align to real
+        // clock boundaries: % 15 → :00/:15/:30/:45, % 30 → :00/:30, % 60 → :00
+        _schedulerTick = DateTime.UtcNow.Minute;
+
         using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
         while (await timer.WaitForNextTickAsync())
         {
