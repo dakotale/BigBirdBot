@@ -107,7 +107,8 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
     }
 
 
-    private const int PetsPerPage = 5;
+    internal const int PetsPerPage = 5;
+    internal static readonly Color PetAccentColor = new(255, 179, 71);
 
     [SlashCommand("list", "List all your pets.")]
     [EnabledInDm(false)]
@@ -126,86 +127,8 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
         }
 
         await FollowupAsync(
-            embed: BuildPetsPageEmbed(dt, 0).Build(),
-            components: BuildPetsPageButtons(UserId, 0, dt.Rows.Count));
-    }
-
-    [ComponentInteraction("pets:nav:*:*")]
-    public async Task OnPetsNavAsync(string targetUserId, string pageStr)
-    {
-        await DeferAsync();
-
-        // Only the person who ran /pets can page through their own list
-        if (targetUserId != UserId)
-        {
-            await FollowupAsync("This isn't your pet list!", ephemeral: true);
-            return;
-        }
-
-        int page = int.TryParse(pageStr, out int p) ? p : 0;
-
-        var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetPetsByUser",
-            [new SqlParameter("@UserID", UserId)]);
-
-        if (dt.Rows.Count == 0) return;
-
-        page = Math.Clamp(page, 0, (dt.Rows.Count - 1) / PetsPerPage);
-
-        await ModifyOriginalResponseAsync(m =>
-        {
-            m.Embed = BuildPetsPageEmbed(dt, page).Build();
-            m.Components = BuildPetsPageButtons(UserId, page, dt.Rows.Count);
-        });
-    }
-
-    private EmbedBuilder BuildPetsPageEmbed(System.Data.DataTable dt, int page)
-    {
-        int total = dt.Rows.Count;
-        int totalPages = (total + PetsPerPage - 1) / PetsPerPage;
-        int start = page * PetsPerPage;
-        int end = Math.Min(start + PetsPerPage, total);
-
-        var sb = new System.Text.StringBuilder();
-
-        for (int i = start; i < end; i++)
-        {
-            var row = dt.Rows[i];
-            string petName = row["Name"].ToString()!;
-            string petSpecies = row["Species"].ToString()!;
-            string petBreed = row["Breed"].ToString()!;
-            int xp = int.Parse(row["XP"].ToString()!);
-            int level = PetHelper.LevelFromXp(xp);
-            bool active = bool.TryParse(row["IsActive"].ToString(), out bool a) && a;
-            bool hibernating = bool.TryParse(row["IsHibernating"].ToString(), out bool h) && h;
-            bool evolved = level >= 50;
-            int petId = int.Parse(row["PetID"].ToString()!);
-            int happiness = int.Parse(row["Happiness"].ToString()!);
-            int hunger = int.Parse(row["Hunger"].ToString()!);
-
-            string emoji = PetHelper.PetEmoji(petSpecies, happiness, hunger, hibernating, evolved);
-            string status = hibernating ? "💤 Hibernating" : active ? "✅ Active" : "💤 Resting";
-            string breedDisplay = evolved ? PetHelper.EvolvedName(petSpecies) : petBreed;
-
-            sb.AppendLine($"{emoji} **{petName}** — {breedDisplay} — Lv.{level} — {status} `[ID: {petId}]`");
-        }
-
-        return new EmbedBuilder()
-            .WithTitle($"🐾  {Username}'s Pets ({total} total)")
-            .WithColor(ColourPet)
-            .WithDescription(sb.ToString())
-            .WithFooter($"Page {page + 1}/{totalPages} • Use /pet setactive [ID] to switch")
-            .WithCurrentTimestamp();
-    }
-
-    private static MessageComponent BuildPetsPageButtons(string userId, int page, int totalPets)
-    {
-        int totalPages = (totalPets + PetsPerPage - 1) / PetsPerPage;
-        return new ComponentBuilder()
-            .WithButton("◀ Prev", $"pets:nav:{userId}:{page - 1}",
-                        ButtonStyle.Secondary, disabled: page == 0)
-            .WithButton("Next ▶", $"pets:nav:{userId}:{page + 1}",
-                        ButtonStyle.Secondary, disabled: page >= totalPages - 1)
-            .Build();
+            embed: PetPageHelper.BuildPetsPageEmbed(dt, 0, Username).Build(),
+            components: PetPageHelper.BuildPetsPageButtons(UserId, 0, dt.Rows.Count));
     }
 
 
@@ -1743,5 +1666,97 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
             embed.WithDescription("⚠️ Your pet is too hungry, unhappy, and tired to stay awake.\nFeed them to wake them up!");
 
         return (petName, embed);
+    }
+}
+
+// ── Shared page-building helpers (used by Pet group and PetComponentHandlers) ──
+
+internal static class PetPageHelper
+{
+    internal static EmbedBuilder BuildPetsPageEmbed(System.Data.DataTable dt, int page, string username)
+    {
+        int total      = dt.Rows.Count;
+        int totalPages = (total + Pet.PetsPerPage - 1) / Pet.PetsPerPage;
+        int start      = page * Pet.PetsPerPage;
+        int end        = Math.Min(start + Pet.PetsPerPage, total);
+
+        var sb = new System.Text.StringBuilder();
+
+        for (int i = start; i < end; i++)
+        {
+            var row        = dt.Rows[i];
+            string petName = row["Name"].ToString()!;
+            string species = row["Species"].ToString()!;
+            string breed   = row["Breed"].ToString()!;
+            int xp         = int.Parse(row["XP"].ToString()!);
+            int level      = PetHelper.LevelFromXp(xp);
+            bool active      = bool.TryParse(row["IsActive"].ToString(),      out bool a) && a;
+            bool hibernating = bool.TryParse(row["IsHibernating"].ToString(), out bool h) && h;
+            bool evolved     = level >= 50;
+            int petId        = int.Parse(row["PetID"].ToString()!);
+            int happiness    = int.Parse(row["Happiness"].ToString()!);
+            int hunger       = int.Parse(row["Hunger"].ToString()!);
+
+            string emoji       = PetHelper.PetEmoji(species, happiness, hunger, hibernating, evolved);
+            string status      = hibernating ? "💤 Hibernating" : active ? "✅ Active" : "💤 Resting";
+            string breedDisplay = evolved ? PetHelper.EvolvedName(species) : breed;
+
+            sb.AppendLine($"{emoji} **{petName}** — {breedDisplay} — Lv.{level} — {status} `[ID: {petId}]`");
+        }
+
+        return new EmbedBuilder()
+            .WithTitle($"🐾  {username}'s Pets ({total} total)")
+            .WithColor(Pet.PetAccentColor)
+            .WithDescription(sb.ToString())
+            .WithFooter($"Page {page + 1}/{totalPages} • Use /pet setactive [ID] to switch")
+            .WithCurrentTimestamp();
+    }
+
+    internal static MessageComponent BuildPetsPageButtons(string userId, int page, int totalPets)
+    {
+        int totalPages = (totalPets + Pet.PetsPerPage - 1) / Pet.PetsPerPage;
+        return new ComponentBuilder()
+            .WithButton("◀ Prev", $"pets:nav:{userId}:{page - 1}",
+                        ButtonStyle.Secondary, disabled: page == 0)
+            .WithButton("Next ▶", $"pets:nav:{userId}:{page + 1}",
+                        ButtonStyle.Secondary, disabled: page >= totalPages - 1)
+            .Build();
+    }
+}
+
+// ── Component interaction handlers for the pet list (must be outside [Group]) ──
+
+public class PetComponentHandlers : InteractionModuleBase<SocketInteractionContext>
+{
+    private readonly StoredProcedure _sp = new();
+
+    private string UserId   => Context.User.Id.ToString();
+    private string Username => Context.User.Username;
+
+    [ComponentInteraction("pets:nav:*:*")]
+    public async Task OnPetsNavAsync(string targetUserId, string pageStr)
+    {
+        await DeferAsync();
+
+        if (targetUserId != UserId)
+        {
+            await FollowupAsync("This isn't your pet list!", ephemeral: true);
+            return;
+        }
+
+        int page = int.TryParse(pageStr, out int p) ? p : 0;
+
+        var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetPetsByUser",
+            [new SqlParameter("@UserID", UserId)]);
+
+        if (dt.Rows.Count == 0) return;
+
+        page = Math.Clamp(page, 0, (dt.Rows.Count - 1) / Pet.PetsPerPage);
+
+        await ModifyOriginalResponseAsync(m =>
+        {
+            m.Embed      = PetPageHelper.BuildPetsPageEmbed(dt, page, Username).Build();
+            m.Components = PetPageHelper.BuildPetsPageButtons(UserId, page, dt.Rows.Count);
+        });
     }
 }
