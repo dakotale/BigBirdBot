@@ -281,7 +281,6 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
         /// </summary>
         [SlashCommand("add", "Attach up to 10 files to one or more keywords at once.")]
         [EnabledInDm(false)]
-        [RequireUserPermission(ChannelPermission.ManageMessages)]
         public async Task HandleBulkAddAsync(
             [Summary("keywords", "Comma-separated keyword names, e.g. cat,dog,bird")] string keywords,
             IAttachment  file1,
