@@ -933,8 +933,11 @@ internal sealed class BotHost(
 
             if (_schedulerTick % 60 == 0)
             {
-                string puzzleWord = DiscordBot.Helper.PetHelper.PuzzleWords[
-                    Random.Shared.Next(DiscordBot.Helper.PetHelper.PuzzleWords.Length)];
+                // Pull a random word from the Words table
+                var wordDt = _sp.Select(Constants.discordBotConnStr, "GetRandomWord", []);
+                if (wordDt.Rows.Count == 0) goto skipPuzzle;
+                string puzzleWord = wordDt.Rows[0]["Word"].ToString()!.Trim();
+                if (string.IsNullOrWhiteSpace(puzzleWord)) goto skipPuzzle;
 
                 foreach (var guild in client.Guilds)
                 {
@@ -964,10 +967,11 @@ internal sealed class BotHost(
                         .WithCurrentTimestamp()
                         .Build());
 
-                    var capturedMsg = puzzleMsg;
+                    var capturedMsg  = puzzleMsg;
                     var capturedWord = puzzleWord;
-                    var capturedCh = channel;
+                    var capturedCh   = channel;
 
+                    // ── 30-min hint: reveal a second letter ──────────────────
                     _ = Task.Run(async () =>
                     {
                         await Task.Delay(TimeSpan.FromMinutes(30));
@@ -977,7 +981,6 @@ internal sealed class BotHost(
 
                         if (stillActive.Rows.Count == 0) return;
 
-                        // Start with the first letter already revealed, then pick a second random position
                         char[] hintChars = new string('_', capturedWord.Length).ToCharArray();
                         hintChars[0] = capturedWord[0];
                         if (capturedWord.Length > 2)
@@ -1003,7 +1006,35 @@ internal sealed class BotHost(
                         }
                         catch { /* message may have been deleted */ }
                     });
+
+                    // ── 55-min reveal: show the answer when the puzzle expires ─
+                    _ = Task.Run(async () =>
+                    {
+                        await Task.Delay(TimeSpan.FromMinutes(55));
+
+                        var expired = _sp.Select(Constants.discordBotConnStr, "GetPetWordPuzzle",
+                            [new SqlParameter("@ChannelID", capturedCh.Id.ToString())]);
+
+                        // Puzzle was already solved — word has been shown by the solve embed; nothing to do
+                        if (expired.Rows.Count == 0) return;
+
+                        try
+                        {
+                            await capturedMsg.ModifyAsync(m => m.Embed = new EmbedBuilder()
+                                .WithTitle("🧩  Puzzle Expired — No One Got It!")
+                                .WithColor(new Color(150, 150, 150))
+                                .WithDescription(
+                                    $"Time's up! Nobody guessed the word.\n\n" +
+                                    $"The answer was: **{capturedWord}**\n\n" +
+                                    $"Better luck next time! 🕐")
+                                .WithCurrentTimestamp()
+                                .Build());
+                        }
+                        catch { /* message may have been deleted */ }
+                    });
                 }
+
+                skipPuzzle:;
             }
 
             if (_schedulerTick % 60 == 0)
