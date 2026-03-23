@@ -263,6 +263,150 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
     }
 
     // ══════════════════════════════════════════════════════════════════════════
+    // /keyword attachment [subcommand]
+    // ══════════════════════════════════════════════════════════════════════════
+
+    [Group("attachment", "Bulk-upload attachments to one or more keywords.")]
+    public class AttachmentCommands : InteractionModuleBase<SocketInteractionContext>
+    {
+        private readonly EmbedHelper     _embed = new();
+        private readonly StoredProcedure _sp    = new();
+        private static readonly HttpClient _http = new();
+
+        private string Username => Context.User.Username;
+
+        /// <summary>
+        /// Upload up to 10 files at once and assign them to one or more comma-separated keywords.
+        /// The same file is copied into every keyword's directory and registered in the DB for each.
+        /// </summary>
+        [SlashCommand("add", "Attach up to 10 files to one or more keywords at once.")]
+        [EnabledInDm(false)]
+        [RequireUserPermission(ChannelPermission.ManageMessages)]
+        public async Task HandleBulkAddAsync(
+            [Summary("keywords", "Comma-separated keyword names, e.g. cat,dog,bird")] string keywords,
+            IAttachment  file1,
+            IAttachment? file2  = null,
+            IAttachment? file3  = null,
+            IAttachment? file4  = null,
+            IAttachment? file5  = null,
+            IAttachment? file6  = null,
+            IAttachment? file7  = null,
+            IAttachment? file8  = null,
+            IAttachment? file9  = null,
+            IAttachment? file10 = null)
+        {
+            await DeferAsync(ephemeral: true);
+
+            // Collect non-null attachments
+            var attachments = new[] { file1, file2, file3, file4, file5, file6, file7, file8, file9, file10 }
+                .Where(a => a is not null)
+                .Select(a => a!)
+                .ToList();
+
+            // Parse and validate keyword list
+            var keywordList = keywords
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(k => k.ToLowerInvariant())
+                .Distinct()
+                .ToList();
+
+            if (keywordList.Count == 0)
+            {
+                await FollowupAsync(embed: _embed.BuildErrorEmbed(
+                    "Bulk Attachment", "No valid keywords were provided.", Username).Build(),
+                    ephemeral: true);
+                return;
+            }
+
+            // Ensure each keyword directory exists
+            var missingKeywords = keywordList
+                .Where(k => !Directory.Exists(Path.Combine(Constants.Constants.keywordDirectory, k)))
+                .ToList();
+
+            if (missingKeywords.Count > 0)
+            {
+                await FollowupAsync(embed: _embed.BuildErrorEmbed(
+                    "Bulk Attachment",
+                    $"The following keywords don't exist — create them with `/keyword add` first:\n" +
+                    string.Join(", ", missingKeywords.Select(k => $"**{k}**")),
+                    Username).Build(), ephemeral: true);
+                return;
+            }
+
+            int saved   = 0;
+            int skipped = 0;
+            var errors  = new List<string>();
+
+            foreach (var attachment in attachments)
+            {
+                // Sanitise filename and give it a unique prefix to avoid collisions
+                string safeName   = Path.GetFileName(attachment.Filename)
+                                        .Replace(" ", "_")
+                                        .Replace("'", "");
+                string uniqueName = $"{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}_{safeName}";
+
+                // Download the file once to a temp location
+                byte[] fileBytes;
+                try
+                {
+                    fileBytes = await _http.GetByteArrayAsync(attachment.Url);
+                }
+                catch (Exception ex)
+                {
+                    errors.Add($"`{attachment.Filename}` — download failed: {ex.Message}");
+                    skipped++;
+                    continue;
+                }
+
+                // Copy into every keyword directory and register in DB
+                foreach (string keyword in keywordList)
+                {
+                    string destDir  = Path.Combine(Constants.Constants.keywordDirectory, keyword);
+                    string destPath = Path.Combine(destDir, uniqueName);
+
+                    try
+                    {
+                        await File.WriteAllBytesAsync(destPath, fileBytes);
+
+                        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "AddChatKeyword",
+                        [
+                            new SqlParameter("@FilePath",  destPath),
+                            new SqlParameter("@TableName", keyword),
+                            new SqlParameter("@UserID",    Context.User.Id.ToString())
+                        ]);
+                    }
+                    catch (Exception ex)
+                    {
+                        errors.Add($"`{attachment.Filename}` → **{keyword}**: {ex.Message}");
+                    }
+                }
+
+                saved++;
+            }
+
+            // Build result embed
+            var desc = new System.Text.StringBuilder();
+            desc.AppendLine($"**{saved}** file(s) added to **{keywordList.Count}** keyword(s): " +
+                            string.Join(", ", keywordList.Select(k => $"`{k}`")));
+
+            if (skipped > 0)
+                desc.AppendLine($"\n⚠️ **{skipped}** file(s) skipped due to download errors.");
+
+            if (errors.Count > 0)
+            {
+                desc.AppendLine("\n**Errors:**");
+                foreach (var e in errors.Take(10))
+                    desc.AppendLine($"• {e}");
+            }
+
+            await FollowupAsync(embed: _embed.BuildMessageEmbed(
+                "📎  Bulk Attachment Complete", desc.ToString(),
+                "", Username, saved > 0 ? Color.Blue : Color.Red).Build(),
+                ephemeral: true);
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
     // /keyword url [subcommand]
     // ══════════════════════════════════════════════════════════════════════════
 
