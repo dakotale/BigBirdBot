@@ -20,7 +20,7 @@
   --text:    #f5f0ff;
   --muted:   #9e96b8;
   --code-bg: #0c0a18;
-  --max-w:   1380px;
+  --max-w:   1760px;
 }
 
 
@@ -231,7 +231,7 @@ body::after {
 .hero {
   max-width: var(--max-w);
   margin: 0 auto;
-  padding: 5rem 1.5rem 3.5rem;
+  padding: 5rem 2.5rem 3.5rem;
   text-align: center;
 }
 
@@ -301,7 +301,7 @@ body::after {
 .stat-strip {
   max-width: var(--max-w);
   margin: 0 auto 3.5rem;
-  padding: 0 1.5rem;
+  padding: 0 2.5rem;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 1.1rem;
@@ -362,7 +362,7 @@ body::after {
 .content {
   max-width: var(--max-w);
   margin: 0 auto;
-  padding: 0 1.5rem 5rem;
+  padding: 0 2.5rem 5rem;
 }
 
 
@@ -422,7 +422,7 @@ body::after {
 
 .cmd-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 0.8rem;
 }
 
