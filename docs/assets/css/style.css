@@ -20,10 +20,11 @@
   --text:    #f5f0ff;
   --muted:   #9e96b8;
   --code-bg: #0c0a18;
-  /* Fluid max-width: fills the viewport minus a 2.5rem gutter on each side,
-     capped at 1800px for ultra-wide displays. This keeps the layout full-width
-     at 125% zoom (1536px CSS viewport on 1920px) and any other zoom level. */
-  --max-w:   min(1800px, calc(100vw - 5rem));
+  /* Fluid max-width: always fills the viewport minus a small gutter.
+     Capped at 3200px so the layout fills ultrawide (3440px) screens while
+     keeping a tidy margin. At 125% zoom on 1920px (1536px CSS) the calc()
+     branch wins, so the layout is always full-width at any zoom level. */
+  --max-w:   min(3200px, calc(100vw - 5rem));
 }
 
 
@@ -266,7 +267,7 @@ body::after {
 .hero p {
   font-size: 1rem;
   color: var(--muted);
-  max-width: 500px;
+  max-width: min(660px, 80%);
   margin: 0 auto 1.75rem;
   line-height: 1.7;
   font-weight: 600;
@@ -845,6 +846,18 @@ footer {
 
 
 /* ── Responsive ────────────────────────────────────────────── */
+
+/* Ultrawide (2000px+ CSS viewport — covers 3440px @100% and 3440px @125%) */
+@media (min-width: 2000px) {
+  .cmd-grid {
+    /* Fixed 5-column layout so cards aren't impossibly narrow on ultrawide */
+    grid-template-columns: repeat(5, 1fr);
+  }
+
+  .feat-grid {
+    grid-template-columns: repeat(6, 1fr);
+  }
+}
 
 @media (max-width: 700px) {
   .stat-strip {
