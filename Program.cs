@@ -971,6 +971,10 @@ internal sealed class BotHost(
                     var capturedWord = puzzleWord;
                     var capturedCh   = channel;
 
+                    // Shared between the T+30 and T+50 tasks so the later reveal
+                    // knows which index was already uncovered and avoids repeating it.
+                    int secondRevealIdx = -1;
+
                     // ── 30-min hint: reveal a second letter ──────────────────
                     _ = Task.Run(async () =>
                     {
@@ -985,8 +989,8 @@ internal sealed class BotHost(
                         hintChars[0] = capturedWord[0];
                         if (capturedWord.Length > 2)
                         {
-                            int revealIdx = Random.Shared.Next(1, capturedWord.Length);
-                            hintChars[revealIdx] = capturedWord[revealIdx];
+                            secondRevealIdx = Random.Shared.Next(1, capturedWord.Length);
+                            hintChars[secondRevealIdx] = capturedWord[secondRevealIdx];
                         }
                         string revealedHint = new string(hintChars);
 
@@ -1001,6 +1005,58 @@ internal sealed class BotHost(
                                     $"**Hint:** `{revealedHint}`  ({capturedWord.Length} letters)\n" +
                                     $"*(A letter has been revealed!)*\n\n" +
                                     $"⏳ Expires in ~25 minutes — first correct answer wins!")
+                                .WithCurrentTimestamp()
+                                .Build());
+                        }
+                        catch { /* message may have been deleted */ }
+                    });
+
+                    // ── 50-min hint: reveal a third letter (5 min warning) ────
+                    _ = Task.Run(async () =>
+                    {
+                        await Task.Delay(TimeSpan.FromMinutes(50));
+
+                        var stillActive = _sp.Select(Constants.discordBotConnStr, "GetPetWordPuzzle",
+                            [new SqlParameter("@ChannelID", capturedCh.Id.ToString())]);
+
+                        if (stillActive.Rows.Count == 0) return;
+
+                        // Rebuild hint with the first two revealed positions, then add a third
+                        char[] hintChars = new string('_', capturedWord.Length).ToCharArray();
+                        hintChars[0] = capturedWord[0];
+                        if (secondRevealIdx >= 1 && secondRevealIdx < capturedWord.Length)
+                            hintChars[secondRevealIdx] = capturedWord[secondRevealIdx];
+
+                        if (capturedWord.Length > 2)
+                        {
+                            // Pick a position that hasn't been revealed yet
+                            var alreadyRevealed = new System.Collections.Generic.HashSet<int> { 0 };
+                            if (secondRevealIdx >= 1) alreadyRevealed.Add(secondRevealIdx);
+
+                            var available = Enumerable.Range(1, capturedWord.Length - 1)
+                                .Where(i => !alreadyRevealed.Contains(i))
+                                .ToList();
+
+                            if (available.Count > 0)
+                            {
+                                int thirdRevealIdx = available[Random.Shared.Next(available.Count)];
+                                hintChars[thirdRevealIdx] = capturedWord[thirdRevealIdx];
+                            }
+                        }
+
+                        string thirdHint = new string(hintChars);
+
+                        try
+                        {
+                            await capturedMsg.ModifyAsync(m => m.Embed = new EmbedBuilder()
+                                .WithTitle("🧩  Bonus Word Puzzle — Last Chance!")
+                                .WithColor(new Color(255, 120, 40))
+                                .WithDescription(
+                                    $"Type the secret word in this channel to earn " +
+                                    $"**+{DiscordBot.Helper.PetHelper.XpWordPuzzle} XP** for your active pet!\n\n" +
+                                    $"**Hint:** `{thirdHint}`  ({capturedWord.Length} letters)\n" +
+                                    $"*(Another letter has been revealed!)*\n\n" +
+                                    $"⏳ Only **5 minutes** left — first correct answer wins!")
                                 .WithCurrentTimestamp()
                                 .Build());
                         }
