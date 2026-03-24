@@ -20,7 +20,10 @@
   --text:    #f5f0ff;
   --muted:   #9e96b8;
   --code-bg: #0c0a18;
-  --max-w:   1760px;
+  /* Fluid max-width: fills the viewport minus a 2.5rem gutter on each side,
+     capped at 1800px for ultra-wide displays. This keeps the layout full-width
+     at 125% zoom (1536px CSS viewport on 1920px) and any other zoom level. */
+  --max-w:   min(1800px, calc(100vw - 5rem));
 }
 
 
@@ -36,11 +39,8 @@
 
 html {
   scroll-behavior: smooth;
-  /* Explicit base size so rem is consistent across Chrome, Firefox, and Brave.
-     Chrome on Windows applies the OS DPI scale as an extra page zoom which
-     makes it appear larger; setting 18px here compensates so the page looks
-     the same at 100% zoom in all browsers. */
-  font-size: 18px;
+  font-size: 16px;
+  /* Prevent any browser from auto-rescaling text independently of zoom */
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
@@ -178,11 +178,11 @@ body::after {
 }
 
 .topnav-link {
-  font-size: 0.64rem;
+  font-size: 0.7rem;
   font-weight: 700;
   color: var(--muted);
   text-decoration: none;
-  padding: 0.28rem 0.44rem;
+  padding: 0.3rem 0.48rem;
   border-radius: 6px;
   transition: color 0.12s, background 0.12s;
   white-space: nowrap;
@@ -199,10 +199,10 @@ body::after {
   background: var(--code-bg);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 0.28rem 0.6rem;
+  padding: 0.3rem 0.65rem;
   color: var(--text);
   font-family: 'Nunito', sans-serif;
-  font-size: 0.7rem;
+  font-size: 0.76rem;
   outline: none;
   width: 148px;
   transition: border-color 0.2s, width 0.3s;
