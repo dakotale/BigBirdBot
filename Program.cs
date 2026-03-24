@@ -1012,11 +1012,17 @@ internal sealed class BotHost(
                     {
                         await Task.Delay(TimeSpan.FromMinutes(55));
 
-                        var expired = _sp.Select(Constants.discordBotConnStr, "GetPetWordPuzzle",
+                        // GetPetWordPuzzle filters ExpiresAt > NOW, so it returns 0 rows for both
+                        // solved and expired-unsolved puzzles — we can't use it here.
+                        // Instead check Claimed directly, skipping the expiry filter.
+                        var statusDt = _sp.Select(Constants.discordBotConnStr, "GetPuzzleClaimedStatus",
                             [new SqlParameter("@ChannelID", capturedCh.Id.ToString())]);
 
-                        // Puzzle was already solved — word has been shown by the solve embed; nothing to do
-                        if (expired.Rows.Count == 0) return;
+                        // If puzzle was claimed (solved), the solve embed already showed the word
+                        if (statusDt.Rows.Count > 0
+                            && bool.TryParse(statusDt.Rows[0]["Claimed"].ToString(), out bool wasClaimed)
+                            && wasClaimed)
+                            return;
 
                         try
                         {
