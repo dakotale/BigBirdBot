@@ -20,7 +20,7 @@
   --text:    #f5f0ff;
   --muted:   #9e96b8;
   --code-bg: #0c0a18;
-  --max-w:   1200px;
+  --max-w:   1380px;
 }
 
 
@@ -36,6 +36,13 @@
 
 html {
   scroll-behavior: smooth;
+  /* Explicit base size so rem is consistent across Chrome, Firefox, and Brave.
+     Chrome on Windows applies the OS DPI scale as an extra page zoom which
+     makes it appear larger; setting 18px here compensates so the page looks
+     the same at 100% zoom in all browsers. */
+  font-size: 18px;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 
@@ -46,6 +53,7 @@ body {
   background: var(--bg);
   color: var(--text);
   overflow-x: hidden;
+  min-width: 320px;
   /* Dot grid — more character than a plain solid background */
   background-image:
   radial-gradient(circle, rgba(255, 77, 149, 0.055) 1px, transparent 1px),
@@ -170,11 +178,11 @@ body::after {
 }
 
 .topnav-link {
-  font-size: 0.7rem;
+  font-size: 0.64rem;
   font-weight: 700;
   color: var(--muted);
   text-decoration: none;
-  padding: 0.3rem 0.48rem;
+  padding: 0.28rem 0.44rem;
   border-radius: 6px;
   transition: color 0.12s, background 0.12s;
   white-space: nowrap;
@@ -191,10 +199,10 @@ body::after {
   background: var(--code-bg);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 0.3rem 0.65rem;
+  padding: 0.28rem 0.6rem;
   color: var(--text);
   font-family: 'Nunito', sans-serif;
-  font-size: 0.76rem;
+  font-size: 0.7rem;
   outline: none;
   width: 148px;
   transition: border-color 0.2s, width 0.3s;
