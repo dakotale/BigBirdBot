@@ -78,6 +78,67 @@ internal sealed class BotHost(
     private int _schedulerTick = 0;
     private Task? _schedulerTask;
 
+    // ── Per-channel puzzle hint state ──────────────────────────────────────────
+    // Shared between the scheduler (creation), T+30/T+50 reveal tasks, and
+    // OnMessageReceivedAsync (guess tracking) so all reveals accumulate correctly.
+
+    private sealed class PuzzleHintState
+    {
+        public readonly string Word;
+        public readonly IUserMessage Message;
+        private readonly HashSet<int> _revealed = new();
+        private int _guessCount;
+
+        public PuzzleHintState(string word, IUserMessage msg)
+        {
+            Word = word;
+            Message = msg;
+            _revealed.Add(0); // first letter shown from the start
+        }
+
+        /// Tries to reveal one new unrevealed letter.
+        /// Returns true and sets <paramref name="hint"/> to the updated string when
+        /// a new letter was revealed; returns false when all letters are already shown.
+        public bool TryRevealNext(out string hint)
+        {
+            lock (_revealed)
+            {
+                var available = Enumerable.Range(1, Word.Length - 1)
+                    .Where(i => !_revealed.Contains(i))
+                    .ToList();
+
+                if (available.Count == 0)
+                {
+                    hint = BuildHint();
+                    return false;
+                }
+
+                int idx = available[Random.Shared.Next(available.Count)];
+                _revealed.Add(idx);
+                hint = BuildHint();
+                return true;
+            }
+        }
+
+        public string GetCurrentHint()
+        {
+            lock (_revealed) return BuildHint();
+        }
+
+        /// Returns the new total guess count.
+        public int IncrementGuesses() => Interlocked.Increment(ref _guessCount);
+
+        private string BuildHint()
+        {
+            char[] chars = new string('_', Word.Length).ToCharArray();
+            foreach (int i in _revealed) chars[i] = Word[i];
+            return new string(chars);
+        }
+    }
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, PuzzleHintState>
+        _puzzleHintStates = new();
+
     private readonly EmbedHelper _embed = new();
     private readonly StoredProcedure _sp = new();
     private readonly DiscordBot.SlashCommands.Economy _creditEco = new();
@@ -428,8 +489,13 @@ internal sealed class BotHost(
             string puzzleWord = petPuzzle.Rows[0]["Word"].ToString()!;
             int puzzleId = int.Parse(petPuzzle.Rows[0]["PuzzleID"].ToString()!);
 
+            string puzzleChannelId = msg.Channel.Id.ToString();
+
             if (string.Equals(message.Trim(), puzzleWord, StringComparison.OrdinalIgnoreCase))
             {
+                // Clean up shared hint state for this channel
+                _puzzleHintStates.TryRemove(puzzleChannelId, out _);
+
                 _sp.UpdateCreate(Constants.discordBotConnStr, "ClaimPetPuzzle",
                     [new SqlParameter("@PuzzleID", puzzleId)]);
 
@@ -477,6 +543,35 @@ internal sealed class BotHost(
                     .Build());
 
                 return;
+            }
+
+            // ── Every-20-guesses letter reveal ────────────────────────────────
+            // Count any single-word alphabetic attempt (wrong answers only —
+            // correct answers are handled and returned above).
+            string trimmedGuess = message.Trim();
+            bool isWordAttempt  = trimmedGuess.Length > 0 && trimmedGuess.All(char.IsLetter);
+
+            if (isWordAttempt && _puzzleHintStates.TryGetValue(puzzleChannelId, out var guessState))
+            {
+                int totalGuesses = guessState.IncrementGuesses();
+                if (totalGuesses % 20 == 0 && guessState.TryRevealNext(out string guessHint))
+                {
+                    try
+                    {
+                        await guessState.Message.ModifyAsync(m => m.Embed = new EmbedBuilder()
+                            .WithTitle("🧩  Bonus Word Puzzle!")
+                            .WithColor(new Color(255, 179, 71))
+                            .WithDescription(
+                                $"Type the secret word in this channel to earn " +
+                                $"**+{DiscordBot.Helper.PetHelper.XpWordPuzzle} XP** for your active pet!\n\n" +
+                                $"**Hint:** `{guessHint}`  ({guessState.Word.Length} letters)\n" +
+                                $"*(A letter was revealed after {totalGuesses} guesses!)*\n\n" +
+                                $"⏳ First correct answer wins!")
+                            .WithCurrentTimestamp()
+                            .Build());
+                    }
+                    catch { /* message may have been deleted */ }
+                }
             }
         }
 
@@ -967,13 +1062,15 @@ internal sealed class BotHost(
                         .WithCurrentTimestamp()
                         .Build());
 
+                    // Register shared hint state — all reveal sources (T+30, T+50, every-20-guesses)
+                    // accumulate into this so the hint only ever grows, never resets.
+                    string capturedChannelId = serverDetails.DefaultChannelID;
+                    var hintState = new PuzzleHintState(puzzleWord, puzzleMsg);
+                    _puzzleHintStates[capturedChannelId] = hintState;
+
                     var capturedMsg  = puzzleMsg;
                     var capturedWord = puzzleWord;
                     var capturedCh   = channel;
-
-                    // Shared between the T+30 and T+50 tasks so the later reveal
-                    // knows which index was already uncovered and avoids repeating it.
-                    int secondRevealIdx = -1;
 
                     // ── 30-min hint: reveal a second letter ──────────────────
                     _ = Task.Run(async () =>
@@ -982,17 +1079,9 @@ internal sealed class BotHost(
 
                         var stillActive = _sp.Select(Constants.discordBotConnStr, "GetPetWordPuzzle",
                             [new SqlParameter("@ChannelID", capturedCh.Id.ToString())]);
-
                         if (stillActive.Rows.Count == 0) return;
 
-                        char[] hintChars = new string('_', capturedWord.Length).ToCharArray();
-                        hintChars[0] = capturedWord[0];
-                        if (capturedWord.Length > 2)
-                        {
-                            secondRevealIdx = Random.Shared.Next(1, capturedWord.Length);
-                            hintChars[secondRevealIdx] = capturedWord[secondRevealIdx];
-                        }
-                        string revealedHint = new string(hintChars);
+                        if (!hintState.TryRevealNext(out string hint30)) return; // all letters already shown
 
                         try
                         {
@@ -1002,7 +1091,7 @@ internal sealed class BotHost(
                                 .WithDescription(
                                     $"Type the secret word in this channel to earn " +
                                     $"**+{DiscordBot.Helper.PetHelper.XpWordPuzzle} XP** for your active pet!\n\n" +
-                                    $"**Hint:** `{revealedHint}`  ({capturedWord.Length} letters)\n" +
+                                    $"**Hint:** `{hint30}`  ({capturedWord.Length} letters)\n" +
                                     $"*(A letter has been revealed!)*\n\n" +
                                     $"⏳ Expires in ~25 minutes — first correct answer wins!")
                                 .WithCurrentTimestamp()
@@ -1011,40 +1100,16 @@ internal sealed class BotHost(
                         catch { /* message may have been deleted */ }
                     });
 
-                    // ── 50-min hint: reveal a third letter (5 min warning) ────
+                    // ── 50-min hint: reveal a third letter (5-min warning) ───
                     _ = Task.Run(async () =>
                     {
                         await Task.Delay(TimeSpan.FromMinutes(50));
 
                         var stillActive = _sp.Select(Constants.discordBotConnStr, "GetPetWordPuzzle",
                             [new SqlParameter("@ChannelID", capturedCh.Id.ToString())]);
-
                         if (stillActive.Rows.Count == 0) return;
 
-                        // Rebuild hint with the first two revealed positions, then add a third
-                        char[] hintChars = new string('_', capturedWord.Length).ToCharArray();
-                        hintChars[0] = capturedWord[0];
-                        if (secondRevealIdx >= 1 && secondRevealIdx < capturedWord.Length)
-                            hintChars[secondRevealIdx] = capturedWord[secondRevealIdx];
-
-                        if (capturedWord.Length > 2)
-                        {
-                            // Pick a position that hasn't been revealed yet
-                            var alreadyRevealed = new System.Collections.Generic.HashSet<int> { 0 };
-                            if (secondRevealIdx >= 1) alreadyRevealed.Add(secondRevealIdx);
-
-                            var available = Enumerable.Range(1, capturedWord.Length - 1)
-                                .Where(i => !alreadyRevealed.Contains(i))
-                                .ToList();
-
-                            if (available.Count > 0)
-                            {
-                                int thirdRevealIdx = available[Random.Shared.Next(available.Count)];
-                                hintChars[thirdRevealIdx] = capturedWord[thirdRevealIdx];
-                            }
-                        }
-
-                        string thirdHint = new string(hintChars);
+                        if (!hintState.TryRevealNext(out string hint50)) return; // all letters already shown
 
                         try
                         {
@@ -1054,7 +1119,7 @@ internal sealed class BotHost(
                                 .WithDescription(
                                     $"Type the secret word in this channel to earn " +
                                     $"**+{DiscordBot.Helper.PetHelper.XpWordPuzzle} XP** for your active pet!\n\n" +
-                                    $"**Hint:** `{thirdHint}`  ({capturedWord.Length} letters)\n" +
+                                    $"**Hint:** `{hint50}`  ({capturedWord.Length} letters)\n" +
                                     $"*(Another letter has been revealed!)*\n\n" +
                                     $"⏳ Only **5 minutes** left — first correct answer wins!")
                                 .WithCurrentTimestamp()
@@ -1068,13 +1133,13 @@ internal sealed class BotHost(
                     {
                         await Task.Delay(TimeSpan.FromMinutes(55));
 
-                        // GetPetWordPuzzle filters ExpiresAt > NOW, so it returns 0 rows for both
-                        // solved and expired-unsolved puzzles — we can't use it here.
-                        // Instead check Claimed directly, skipping the expiry filter.
+                        _puzzleHintStates.TryRemove(capturedChannelId, out _);
+
+                        // GetPetWordPuzzle filters ExpiresAt > NOW — use GetPuzzleClaimedStatus
+                        // instead so we can distinguish solved vs expired-unsolved.
                         var statusDt = _sp.Select(Constants.discordBotConnStr, "GetPuzzleClaimedStatus",
                             [new SqlParameter("@ChannelID", capturedCh.Id.ToString())]);
 
-                        // If puzzle was claimed (solved), the solve embed already showed the word
                         if (statusDt.Rows.Count > 0
                             && bool.TryParse(statusDt.Rows[0]["Claimed"].ToString(), out bool wasClaimed)
                             && wasClaimed)
@@ -1339,7 +1404,15 @@ internal sealed class BotHost(
                 _sp.UpdateCreate(Constants.discordBotConnStr, "ApplyStockTick",
                 [
                     new SqlParameter("@Ticker",   ticker),
-                    new SqlParameter("@NewPrice", newPrice)
+                    // Explicitly typed to match DECIMAL(12,2) in ApplyStockTick.
+                    // Without explicit Precision/Scale ADO.NET infers them as 0,0
+                    // and SQL Server raises "Error converting data type numeric to decimal".
+                    new SqlParameter("@NewPrice", System.Data.SqlDbType.Decimal)
+                    {
+                        Value     = newPrice,
+                        Precision = 12,
+                        Scale     = 2
+                    }
                 ]);
             }
 
