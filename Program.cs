@@ -1404,13 +1404,13 @@ internal sealed class BotHost(
                 _sp.UpdateCreate(Constants.discordBotConnStr, "ApplyStockTick",
                 [
                     new SqlParameter("@Ticker",   ticker),
-                    // Explicitly typed to match DECIMAL(12,2) in ApplyStockTick.
+                    // Explicitly typed to match DECIMAL(18,2) in ApplyStockTick.
                     // Without explicit Precision/Scale ADO.NET infers them as 0,0
                     // and SQL Server raises "Error converting data type numeric to decimal".
                     new SqlParameter("@NewPrice", System.Data.SqlDbType.Decimal)
                     {
                         Value     = newPrice,
-                        Precision = 12,
+                        Precision = 18,
                         Scale     = 2
                     }
                 ]);

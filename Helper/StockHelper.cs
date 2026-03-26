@@ -10,14 +10,23 @@ public static class StockHelper
     /// <summary>How often prices update (minutes).</summary>
     public const int TickIntervalMinutes = 15;
 
+    /// <summary>Hard ceiling for any stock price. Prevents runaway inflation from
+    /// exceeding the DECIMAL(18,2) column and keeps the game sensible.</summary>
+    public const decimal MaxPrice = 9_999_999.99m;
+
 
     /// <summary>
     /// Calculates a new price using a biased random walk.
     /// Volatility is the stock's std dev; trend is a slight directional nudge.
-    /// Price floors at $1.00.
+    /// Price floors at $1.00 and is capped at <see cref="MaxPrice"/>.
     /// </summary>
     public static decimal NextPrice(decimal current, double volatility, double trend)
     {
+        // If the stored price is already above the cap (legacy inflation),
+        // bleed it back down toward the cap instead of compounding further.
+        if (current > MaxPrice)
+            current = MaxPrice;
+
         // Box-Muller transform for a normally distributed random variable
         double u1 = 1.0 - Random.Shared.NextDouble();
         double u2 = 1.0 - Random.Shared.NextDouble();
@@ -29,7 +38,7 @@ public static class StockHelper
         pctChange = Math.Clamp(pctChange, -0.30, 0.30);
 
         decimal next = current * (decimal)(1.0 + pctChange);
-        return Math.Max(1.00m, Math.Round(next, 2));
+        return Math.Clamp(Math.Round(next, 2), 1.00m, MaxPrice);
     }
 
 
