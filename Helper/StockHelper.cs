@@ -10,9 +10,9 @@ public static class StockHelper
     /// <summary>How often prices update (minutes).</summary>
     public const int TickIntervalMinutes = 15;
 
-    /// <summary>Hard ceiling for any stock price. Prevents runaway inflation from
-    /// exceeding the DECIMAL(18,2) column and keeps the game sensible.</summary>
-    public const decimal MaxPrice = 9_999_999.99m;
+    /// <summary>Hard ceiling for any stock price. Prevents runaway inflation and
+    /// keeps the game at a readable scale. Fits comfortably inside DECIMAL(18,2).</summary>
+    public const decimal MaxPrice = 9_999.99m;
 
 
     /// <summary>
@@ -32,9 +32,16 @@ public static class StockHelper
         double u2 = 1.0 - Random.Shared.NextDouble();
         double z = Math.Sqrt(-2.0 * Math.Log(u1)) * Math.Sin(2.0 * Math.PI * u2);
 
-        double pctChange = trend + volatility * z;
+        // DB columns store Volatility on a 1–10 scale and Trend on a 0.1–3.0 scale.
+        // Divide down so they represent actual per-tick fractions:
+        //   Volatility 4.03  → 0.0403  (≈4% std-dev per tick)
+        //   Trend      1.75  → 0.00175 (≈0.18% directional nudge per tick)
+        double sigmaFrac = volatility / 100.0;
+        double driftFrac  = trend     / 1000.0;
 
-        // Hard clamp: max ±30% in a single tick
+        double pctChange = driftFrac + sigmaFrac * z;
+
+        // Hard clamp: max ±30% in a single tick (only hit by extreme z values now)
         pctChange = Math.Clamp(pctChange, -0.30, 0.30);
 
         decimal next = current * (decimal)(1.0 + pctChange);
