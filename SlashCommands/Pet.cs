@@ -879,60 +879,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
             .Build(), components: components);
     }
 
-    [ComponentInteraction("release:confirm:*")]
-    public async Task OnReleaseConfirmAsync(string petIdStr)
-    {
-        await DeferAsync();
-
-        if (!int.TryParse(petIdStr, out int petId)) return;
-
-        var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetPetByID",
-        [
-            new SqlParameter("@PetID",  petId),
-            new SqlParameter("@UserID", UserId)
-        ]);
-
-        if (dt.Rows.Count == 0) { await ErrorAsync("Pet not found."); return; }
-
-        string name = dt.Rows[0]["Name"].ToString()!;
-
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "DeletePet",
-        [
-            new SqlParameter("@PetID",  petId),
-            new SqlParameter("@UserID", UserId)
-        ]);
-
-        await ModifyOriginalResponseAsync(m =>
-        {
-            m.Embed = new EmbedBuilder()
-                .WithTitle("🌈  Farewell!")
-                .WithColor(ColourInfo)
-                .WithDescription(
-                    $"You released **{name}** into the wild. 🌿\n" +
-                    "They'll always remember you. Goodbye, little friend!")
-                .WithFooter(Username, AvatarUrl)
-                .WithCurrentTimestamp()
-                .Build();
-            m.Components = new ComponentBuilder().Build();
-        });
-    }
-
-    [ComponentInteraction("release:cancel")]
-    public async Task OnReleaseCancelAsync()
-    {
-        await DeferAsync();
-        await ModifyOriginalResponseAsync(m =>
-        {
-            m.Embed = new EmbedBuilder()
-                .WithTitle("✅  Cancelled")
-                .WithColor(ColourSuccess)
-                .WithDescription("Your pet is safe. 🐾")
-                .WithFooter(Username, AvatarUrl)
-                .WithCurrentTimestamp()
-                .Build();
-            m.Components = new ComponentBuilder().Build();
-        });
-    }
+    // release:confirm and release:cancel are in PetComponentHandlers below (outside [Group])
 
 
     [SlashCommand("leaderboard", "Show the top pets in this server by level.")]
@@ -1728,10 +1675,80 @@ internal static class PetPageHelper
 
 public class PetComponentHandlers : InteractionModuleBase<SocketInteractionContext>
 {
-    private readonly StoredProcedure _sp = new();
+    private readonly StoredProcedure _sp  = new();
+    private readonly EmbedHelper     _embed = new();
 
-    private string UserId   => Context.User.Id.ToString();
-    private string Username => Context.User.Username;
+    private string UserId    => Context.User.Id.ToString();
+    private string Username  => Context.User.Username;
+    private string AvatarUrl => Context.User.GetAvatarUrl();
+
+    private static readonly Color ColourInfo    = new(88, 101, 242);
+    private static readonly Color ColourSuccess = new(87, 242, 135);
+
+    // ── release:confirm ────────────────────────────────────────────────────────
+
+    [ComponentInteraction("release:confirm:*")]
+    public async Task OnReleaseConfirmAsync(string petIdStr)
+    {
+        await DeferAsync();
+
+        if (!int.TryParse(petIdStr, out int petId)) return;
+
+        var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetPetByID",
+        [
+            new SqlParameter("@PetID",  petId),
+            new SqlParameter("@UserID", UserId)
+        ]);
+
+        if (dt.Rows.Count == 0)
+        {
+            await FollowupAsync(embed: _embed.BuildErrorEmbed("Pet", "Pet not found.", Username).Build());
+            return;
+        }
+
+        string name = dt.Rows[0]["Name"].ToString()!;
+
+        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "DeletePet",
+        [
+            new SqlParameter("@PetID",  petId),
+            new SqlParameter("@UserID", UserId)
+        ]);
+
+        await ModifyOriginalResponseAsync(m =>
+        {
+            m.Embed = new EmbedBuilder()
+                .WithTitle("🌈  Farewell!")
+                .WithColor(ColourInfo)
+                .WithDescription(
+                    $"You released **{name}** into the wild. 🌿\n" +
+                    "They'll always remember you. Goodbye, little friend!")
+                .WithFooter(Username, AvatarUrl)
+                .WithCurrentTimestamp()
+                .Build();
+            m.Components = new ComponentBuilder().Build();
+        });
+    }
+
+    // ── release:cancel ─────────────────────────────────────────────────────────
+
+    [ComponentInteraction("release:cancel")]
+    public async Task OnReleaseCancelAsync()
+    {
+        await DeferAsync();
+        await ModifyOriginalResponseAsync(m =>
+        {
+            m.Embed = new EmbedBuilder()
+                .WithTitle("✅  Cancelled")
+                .WithColor(ColourSuccess)
+                .WithDescription("Your pet is safe. 🐾")
+                .WithFooter(Username, AvatarUrl)
+                .WithCurrentTimestamp()
+                .Build();
+            m.Components = new ComponentBuilder().Build();
+        });
+    }
+
+    // ── pets:nav ───────────────────────────────────────────────────────────────
 
     [ComponentInteraction("pets:nav:*:*")]
     public async Task OnPetsNavAsync(string targetUserId, string pageStr)
