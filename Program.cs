@@ -16,10 +16,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-var builder = Host.CreateDefaultBuilder(args)
-    .UseWindowsService()
-    .ConfigureServices(ConfigureServices);
-
+var builder = Host.CreateApplicationBuilder(args);
+ConfigureServices(builder.Services);
 await builder.Build().Services
              .GetRequiredService<BotHost>()
              .RunAsync();
