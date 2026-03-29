@@ -43,7 +43,8 @@ public class AICommands : InteractionModuleBase<SocketInteractionContext>
     public async Task HandleChatAsync(
         [MinLength(1), MaxLength(1000)] string message,
         [Choice("Yes", "Yes"), Choice("No", "No")] string startNew,
-        [Choice("eSports Gamer Lesbian", "eSports Gamer Lesbian"),
+        [Choice("None", "None"),
+        Choice("eSports Gamer Lesbian", "eSports Gamer Lesbian"),
          Choice("Sett",                 "Sett"),
          Choice("T. M. Opera O",        "T. M. Opera O"),
          Choice("Meisho Doto",          "Meisho Doto")] string personality)
