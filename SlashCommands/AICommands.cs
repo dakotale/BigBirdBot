@@ -214,6 +214,7 @@ public class AICommands : InteractionModuleBase<SocketInteractionContext>
 
             string desc = rate switch
             {
+                <= 5 => $"✅ **({rate}%) This is NOT AI**",
                 <= 25 => $"✅ **Small chance ({rate}%) this is AI** — likely safe to assume it is not.",
                 <= 50 => $"⚠️ **Possible AI ({rate}%)** — worth investigating further.",
                 <= 75 => $"🔶 **High chance ({rate}%) this is AI** — investigate further.",

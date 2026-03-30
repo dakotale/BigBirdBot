@@ -328,8 +328,28 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
     private async Task ResolveStandAsync(
         List<string> player, List<string> dealer, List<string> deck, string userId, long bet)
     {
+        // Step 1: reveal dealer's hole card, remove action buttons
+        await ModifyOriginalResponseAsync(m =>
+        {
+            m.Embed = BuildEmbed(player, dealer,
+                $"Dealer reveals — {HandValue(dealer)}. Drawing…",
+                Color.Blue, revealDealer: true).Build();
+            m.Components = new ComponentBuilder().Build();
+        });
+        await Task.Delay(900);
+
+        // Step 2: dealer draws cards one at a time
         while (HandValue(dealer) < 17)
+        {
             dealer.Add(Deal(deck));
+            int dv = HandValue(dealer);
+            await ModifyOriginalResponseAsync(m =>
+                m.Embed = BuildEmbed(player, dealer,
+                    dv > 21 ? $"Dealer draws — busts at {dv}! 💥" : $"Dealer draws — {dv}.",
+                    dv > 21 ? Color.Green : Color.Blue,
+                    revealDealer: true).Build());
+            await Task.Delay(800);
+        }
 
         int playerTotal = HandValue(player);
         int dealerTotal = HandValue(dealer);

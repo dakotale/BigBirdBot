@@ -396,12 +396,156 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
 
         string[] reactions = species.ToLower() switch
         {
-            "cat" => ["*purrs contentedly* 😺", "*slow blinks at you* 😸", "*headbutts your hand* 🐱"],
-            "dog" => ["*tail wagging intensifies* 🐶", "*licks your face* 🐕", "*rolls over for belly rubs* 🐾"],
-            "horse" => ["*nuzzles you gently* 🐴", "*whinnies happily* 🐎", "*tosses their mane* 🐴"],
-            "bird" => ["*chirps excitedly* 🐦", "*flaps their wings happily* 🦜", "*whistles a little tune* 🎵"],
-            "dinosaur" => ["*nuzzles you with their snout* 🦕", "*makes a tiny happy roar* 🐉", "*wags their tail enthusiastically* 🦖"],
-            "bunny" => ["*thumps happily* 🐰", "*licks your hand* 🐇", "*flops onto their side (the highest bunny compliment)* 😊"],
+            "cat" =>
+            [
+                "*purrs contentedly* 😺",
+                "*slow blinks at you* 😸",
+                "*headbutts your hand* 🐱",
+                "*kneads the air with absolute conviction, then pretends they weren't* 😺",
+                "*tolerates exactly five seconds of petting, then bites you affectionately* 🐱",
+                "*chirps a tiny trill and looks immediately embarrassed about it* 😸",
+                "*accepts the attention as tribute, closes eyes regally, and begins purring at 40hz* 🐱",
+            ],
+            "dog" =>
+            [
+                "*tail wagging intensifies* 🐶",
+                "*licks your face* 🐕",
+                "*rolls over for belly rubs* 🐾",
+                "*entire back half wiggles independently of the front half* 🐶",
+                "*brings you a toy as a gift, then immediately wants it back* 🐕",
+                "*makes direct eye contact and wags so hard they nearly spin out* 🐾",
+                "*lets out a long, satisfied groan and melts completely onto the floor* 🐶",
+            ],
+            "horse" =>
+            [
+                "*nuzzles you gently* 🐴",
+                "*whinnies happily* 🐎",
+                "*tosses their mane* 🐴",
+                "*blows warm air through their nose directly into your hair* 🐎",
+                "*leans into your hand with the full weight of their enormous face* 🐴",
+                "*lets out a low, rumbly nicker and stamps one hoof contentedly* 🐎",
+                "*rests their chin on your shoulder and exhales a sigh of absolute peace* 🐴",
+            ],
+            "bird" =>
+            [
+                "*chirps excitedly* 🐦",
+                "*flaps their wings happily* 🦜",
+                "*whistles a little tune* 🎵",
+                "*tilts their head sideways and blinks one eye very slowly* 🦜",
+                "*fluffs up to twice their normal size and vibrates with joy* 🐦",
+                "*does a little foot-to-foot happy dance along the perch* 🎵",
+                "*opens their beak and produces a sound suspiciously close to 'thank you'* 🦜",
+            ],
+            "dinosaur" =>
+            [
+                "*lowers their enormous snout for scritches and produces a low rumble you feel through the floor* 🦕",
+                "*lets out a series of rapid chirps and trills — apparently the scientifically accurate sound — which is somehow completely adorable* 🦖",
+                "*wags their tail with such enthusiasm it rearranges nearby furniture. Totally worth it.* 🐉",
+                "*bumps you with their forehead so gently it barely registers. For their size, this restraint is heroic.* 🦕",
+                "*goes completely still as you scratch behind their frill, then tilts the entire enormous head sideways, demanding more* 🦖",
+                "*closes both eyes with unmistakable satisfaction. The rumbling continues for several minutes.* 🐉",
+                "*briefly chases their own tail, catches it, releases it with dignity, then stares off into the distance as though it never happened* 🦕",
+            ],
+            "bunny" =>
+            [
+                "*thumps happily* 🐰",
+                "*licks your hand* 🐇",
+                "*flops onto their side (the highest bunny compliment)* 😊",
+                "*binkies in a tiny circle and then freezes as if it never happened* 🐰",
+                "*grooms your finger very seriously before accepting further pats* 🐇",
+                "*does a full body shiver of joy that starts at their nose and ripples to their cottontail* 🐰",
+                "*nudges your hand back into position when you stop. You do not stop again.* 🐇",
+            ],
+            "fish" =>
+            [
+                "*does an excited lap around the tank* 🐟",
+                "*bobs to the surface and blows an approving bubble* 🐠",
+                "*flares their fins in a dazzling display of happiness* 🐡",
+                "*swims figure-eights against your finger through the glass* 🐟",
+                "*presses their tiny face to the tank wall and studies you with both eyes* 🐠",
+                "*performs a rapid barrel roll and then freezes, looking extremely pleased* 🐡",
+                "*darts to the bottom, spirals back up, and fans their tail in what can only be described as a bow* 🐟",
+            ],
+            "shark" =>
+            [
+                "*nudges your hand with their snout surprisingly gently* 🦈",
+                "*glides slowly past and leans into your hand for a brief moment* 🦈",
+                "*opens their mouth slightly and lets you scratch underneath their jaw* 🦈",
+                "*bumps you with their nose so hard you nearly topple over. It's affection. Probably.* 🦈",
+                "*rolls slightly sideways, exposing their belly — this is trust, not a threat* 🦈",
+                "*circles back three times, each pass a little slower, finally resting against your hand* 🦈",
+                "*makes direct, unblinking eye contact for a full five seconds, then leans in for scritches* 🦈",
+            ],
+            "wolf" =>
+            [
+                "*huffs softly and leans against your leg* 🐺",
+                "*allows exactly one ear scratch, then sits up with dignity* 🐺",
+                "*holds eye contact for a long moment, then briefly closes both eyes — highest wolf honour* 🐺",
+                "*presses their forehead firmly against your hand and exhales very slowly* 🐺",
+                "*lets out a low, soft rumble that vibrates right through your hand* 🐺",
+                "*looks pointedly away while very clearly enjoying every second of this* 🐺",
+                "*flicks an ear, turns their whole head to look at you, and then shoves into your palm* 🐺",
+            ],
+            "lizard" =>
+            [
+                "*tilts their head toward your hand and closes both eyes* 🦎",
+                "*does exactly two push-ups to acknowledge you and holds the second one* 🦎",
+                "*puffs their throat dramatically and turns a slightly warmer colour* 🦎",
+                "*climbs onto your hand and sits very still, absorbing warmth with obvious satisfaction* 🦎",
+                "*flicks their tongue rapidly — tasting the air, approving of what they find* 🦎",
+                "*bobs their head in a slow, deliberate nod that means something important to them* 🦎",
+                "*raises one front foot and holds it mid-air for a long moment, then presses it against your thumb* 🦎",
+            ],
+            "otter" =>
+            [
+                "*grabs your hand with both paws and examines it thoroughly before accepting the pat* 🦦",
+                "*rolls upside-down and waves all four paws in the air* 🦦",
+                "*produces a series of rapid, chittering squeaks that definitely mean 'more'* 🦦",
+                "*wraps both arms around your wrist and refuses to let go for a very comfortable amount of time* 🦦",
+                "*does a full body wiggle and then presents you with their favourite pebble as thanks* 🦦",
+                "*spins in a tight circle, flops flat onto their back, and gazes at you upside-down* 🦦",
+                "*makes a sound like a tiny squeaky door and immediately looks proud of it* 🦦",
+            ],
+            "bear" =>
+            [
+                "*huffs a warm breath and leans into your hand like a boulder slowly shifting* 🐻",
+                "*sits up straight, places one huge paw on your shoulder, and regards you warmly* 🐻",
+                "*makes a slow, resonant woof sound somewhere between a sigh and approval* 🐻",
+                "*closes their eyes and lets out the longest exhale you've ever heard* 🐻",
+                "*tilts their entire enormous head into your hand and goes very still* 🐻",
+                "*chuffs softly and bobs their head — this is a bear 'thank you'* 🐻",
+                "*rubs the side of their face against your palm so firmly they nearly knock you over* 🐻",
+            ],
+            "insect" =>
+            [
+                "*glows softly for a moment and then dims back down with a contented flutter* 🐛",
+                "*vibrates their wings at a frequency that is somehow deeply soothing* 🦋",
+                "*does a tiny antennae-wiggle that means more than it seems* 🐛",
+                "*walks very carefully across your palm like it's the most important terrain they've crossed* 🦋",
+                "*fans their wings open to full display for exactly two seconds, then closes them again* 🐛",
+                "*clicks their mandibles twice in rapid succession — this is apparently applause* 🦋",
+                "*does three slow circles on your hand, settles in the exact centre, and goes perfectly still* 🐛",
+            ],
+            "ocean_invertebrate" =>
+            [
+                "*extends two tentacles toward your hand and pats you back* 🐙",
+                "*changes colour to a warm amber — their happy colour* 🐙",
+                "*curls one arm into a neat spiral, which is their version of a wave* 🐙",
+                "*rises slightly in the water and hovers at eye level, studying you with great interest* 🐙",
+                "*wraps three arms loosely around your wrist and pulses gently* 🐙",
+                "*briefly inks a tiny cloud, then fans it away immediately, embarrassed* 🐙",
+                "*arranges their arms into a rosette shape and holds it for a suspiciously long time* 🐙",
+            ],
+            "land_invertebrate" =>
+            [
+                "*raises both front legs slowly and holds them there — high five, maybe* 🕷️",
+                "*walks very deliberately onto your outstretched hand and sits perfectly still* 🦂",
+                "*taps the ground three times, which you choose to interpret as affection* 🕷️",
+                "*produces a small silk thread, anchors it to your finger, and swings from it briefly* 🕷️",
+                "*vibrates all eight legs in a rapid shiver that reads as enthusiasm* 🦂",
+                "*rotates slowly to face you directly and holds that posture with quiet intensity* 🕷️",
+                "*extends one leg, touches your hand, withdraws it, then extends it again — clearly a greeting* 🦂",
+            ],
             _ => ["*enjoys the attention* 🐾"]
         };
 
@@ -472,8 +616,17 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
             "dog" => "bathed",
             "horse" => "groomed",
             "bird" => "preened",
-            "dinosaur" => "scrubbed down",
+            "dinosaur" => "hosed down",
             "bunny" => "gently brushed",
+            "fish" => "cleaned up after",
+            "shark" => "scrubbed down",
+            "wolf" => "brushed out",
+            "lizard" => "carefully wiped down",
+            "otter" => "dried and fluffed up",
+            "bear" => "thoroughly brushed",
+            "insect" => "gently dusted off",
+            "ocean_invertebrate" => "carefully rinsed",
+            "land_invertebrate" => "delicately tidied",
             _ => "cleaned"
         };
 
@@ -554,12 +707,156 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
 
         string[] activities = species.ToLower() switch
         {
-            "cat" => ["chased a laser pointer", "played with a ball of yarn", "pounced on a toy mouse"],
-            "dog" => ["fetched the ball 12 times", "zoomed around the yard", "played tug-of-war"],
-            "horse" => ["galloped through a field", "jumped a fence gracefully", "trotted around the paddock"],
-            "bird" => ["learned a new song", "played with a mirror", "flew acrobatic loops"],
-            "dinosaur" => ["stomped around the yard looking prehistoric", "chased a ball and accidentally sat on it", "roared at a squirrel until it left"],
-            "bunny" => ["binkied non-stop for five minutes", "zoomed laps around the living room", "tossed their toy in the air repeatedly"],
+            "cat" =>
+            [
+                "chased a laser pointer",
+                "played with a ball of yarn",
+                "pounced on a toy mouse",
+                "knocked every single item off the shelf one by one while maintaining direct eye contact",
+                "attacked a paper bag for six minutes and then sat inside it",
+                "ambushed their own tail from behind a cushion and acted surprised when they caught it",
+                "sprinted from room to room at 3am for no reason, then sat down and pretended it was normal",
+            ],
+            "dog" =>
+            [
+                "fetched the ball 12 times",
+                "zoomed around the yard",
+                "played tug-of-war",
+                "launched into full zoomies mode, lapped the garden eight times, then collapsed with complete satisfaction",
+                "played a very intense game of 'find the hidden treat' and found all six in record time",
+                "carried their favourite toy around the house to show everyone how great it is",
+                "invented a new game involving a sock and three pillows that had no rules but tremendous energy",
+            ],
+            "horse" =>
+            [
+                "galloped through a field",
+                "jumped a fence gracefully",
+                "trotted around the paddock",
+                "cleared every jump in the course and looked absolutely majestic doing it",
+                "played chase with a very confused dog who had no idea what they'd started",
+                "cantered side-by-side with the wind in the most cinematic way possible",
+                "invented a game involving rolling a ball with their nose and clearly won",
+            ],
+            "bird" =>
+            [
+                "learned a new song",
+                "played with a mirror",
+                "flew acrobatic loops",
+                "mastered a new phrase and deployed it immediately at an inappropriate moment",
+                "raided the toy basket and rearranged everything to their exact specifications",
+                "performed a full aerial display through every room of the house",
+                "played 'drop the toy and make you pick it up' for twenty-five consecutive minutes",
+            ],
+            "dinosaur" =>
+            [
+                "stomped around the yard looking magnificently prehistoric while every bird within a mile radius fled",
+                "chased a ball, caught it, sat on it triumphantly, looked confused, and declared victory anyway",
+                "roared at a squirrel until it moved to a different postcode",
+                "played fetch — brought back the ball, plus a full branch, three rocks, and somehow a garden bench",
+                "dug an archaeology-worthy pit in the garden, discovered a bone, and presented it with enormous ceremony",
+                "attempted hide-and-seek behind a tree roughly one-fifth their width. Played four rounds. Loved every second.",
+                "splashed through every puddle in a two-mile radius with maximum prehistoric enthusiasm",
+            ],
+            "bunny" =>
+            [
+                "binkied non-stop for five minutes",
+                "zoomed laps around the living room",
+                "tossed their toy in the air repeatedly",
+                "executed the zoomies at such speed they briefly became a blur in three separate rooms",
+                "dug an elaborate network through their bedding, declared it finished, and remodelled it immediately",
+                "stole a sock, ran eight circuits of the living room with it, and deposited it somewhere unknowable",
+                "binkied so high off a sofa cushion that everyone in the room gasped",
+            ],
+            "fish" =>
+            [
+                "weaved through every decoration at maximum speed for the pure joy of it",
+                "played bubble ring catch — blowing rings and darting through each one before it dissolved",
+                "investigated every corner of the tank as if seeing it for the very first time",
+                "performed a synchronised routine with their own reflection that neither could tell apart",
+                "chased a floating leaf for twenty minutes with the energy of someone who has no responsibilities",
+                "blew the most elaborate bubble nest in recorded history and stood guard over it proudly",
+                "rearranged all the gravel with their nose into a pattern that felt personally meaningful",
+            ],
+            "shark" =>
+            [
+                "played 'torpedo' — shot across the tank at full speed and somehow stopped precisely at the wall",
+                "bumped a floating toy around with their snout until it was exactly where they wanted it",
+                "played chase with a smaller fish who was somehow completely unafraid and equally enthusiastic",
+                "surfed the current from the filter for fifteen minutes with visible delight",
+                "circled the tank in increasingly rapid loops until the water was visibly spinning",
+                "worked out an elaborate routine with a suspended ball that took thirty minutes to perfect",
+                "performed three dramatic breach attempts in sequence, each getting slightly more airborne",
+            ],
+            "wolf" =>
+            [
+                "played a ferocious but entirely cooperative game of tug-of-war and only won when permitted",
+                "invented a tracking game, hid a toy in the next room, then acted amazed when they found it",
+                "raced through the woods at full sprint and returned carrying a stick of enormous personal significance",
+                "played an extended session of 'chase me', covering about four miles total, grinning the whole time",
+                "performed a howl-along session that lasted eleven minutes and involved genuinely excellent harmonies",
+                "dug a very deliberate hole, buried a toy, re-found it, and considered the exercise complete",
+                "played an intense staring contest that lasted three full minutes before someone blinked",
+            ],
+            "lizard" =>
+            [
+                "sprinted obstacle courses across the furniture at speeds that defied their apparent calm",
+                "changed colour rapidly through a full spectrum just because it was an option",
+                "played 'disappear into the basking spot' so convincingly you spent five minutes looking for them",
+                "solved a treat puzzle box on the first attempt and looked moderately unimpressed by the challenge",
+                "climbed everything climbable in sequence and ranked each surface by texture preference",
+                "chased a feather on a string with far more competitive energy than expected",
+                "invented a game involving pushing a small rock around their space with their nose",
+            ],
+            "otter" =>
+            [
+                "played a twenty-minute game of catch using their own belly as a table",
+                "launched down every available slide surface and scored each run with visible internal ratings",
+                "assembled an intricate puzzle of pebbles, solved it, and then scattered it for later",
+                "played a splashing game that soaked everything in a two-metre radius and showed no remorse",
+                "rolled across the floor collecting loose items until they were carrying four things at once",
+                "invented a water polo variant with only one player and won convincingly",
+                "floated on their back humming while balancing three objects on their chest simultaneously",
+            ],
+            "bear" =>
+            [
+                "lumbered through a play area scattering everything in the most affectionate way possible",
+                "invented a wrestling game that involved mostly sitting on things",
+                "chased a ball with the energy of someone much smaller and caught it every single time",
+                "climbed a tree for absolutely no reason and sat up there for a while, just thinking",
+                "played 'find the snack hidden in the pile of leaves' and found all twelve within a minute",
+                "engaged in a tug-of-war with a rope and it was unclear whether they were actually trying",
+                "splashed through a stream in an extended game of 'follow the current' that ended several miles away",
+            ],
+            "insect" =>
+            [
+                "performed an aerial display so complex it looked choreographed — nobody can prove it wasn't",
+                "built an intricate obstacle course from twigs and then ran it at record speed",
+                "played hide-and-seek so effectively you had to genuinely search for twenty minutes",
+                "constructed the most elaborate web arrangement you've ever seen, solely as art",
+                "chased a beam of light around the ceiling for an hour with undiminished enthusiasm",
+                "played dead so convincingly for a solid minute that you got worried, then they winked",
+                "discovered a spinning top, investigated it thoroughly, and achieved a higher RPM than it started with",
+            ],
+            "ocean_invertebrate" =>
+            [
+                "rearranged the entire tank decor into a configuration that made considerably more sense",
+                "opened and closed a hinged toy box sixteen times to work out how it functioned",
+                "played an eight-armed game of catch that nobody else could quite follow",
+                "camouflaged perfectly and waited for you to notice them. You found them eventually. They were smug.",
+                "launched across the tank in a jet-propulsion race that peaked at an unexpected velocity",
+                "squeezed through a hole that appeared to be two sizes too small and emerged looking pleased",
+                "invented a stacking game with shells that demonstrated a grasp of physics that felt pointed",
+            ],
+            "land_invertebrate" =>
+            [
+                "constructed an elaborate silk maze and then navigated it faster than should be possible",
+                "solved a puzzle box with eight legs working in independent specialised roles",
+                "played the world's most focused game of 'follow the dot' across three surfaces and a ceiling",
+                "built a web across the entire corner of their enclosure in thirty minutes flat",
+                "stalked a toy mouse with such commitment they forgot it wasn't real until it didn't react",
+                "investigated a cardboard tube from every angle until they fully understood its structure",
+                "spent two hours rearranging substrate into a pattern that looked architectural",
+            ],
             _ => ["had a great time"]
         };
 
@@ -707,12 +1004,156 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
 
         string[] hugReactions = species.ToLower() switch
         {
-            "cat" => ["tolerates it with dignity 😸", "leans into it just a little 🐱", "pretends not to enjoy it but their purr says otherwise 😺"],
-            "dog" => ["goes absolutely wild with joy 🐶", "licks your entire face 🐕", "wiggles so hard they nearly fall over 🐾"],
-            "horse" => ["rests their head on your shoulder 🐴", "lets out a soft, warm breath 🐎", "nuzzles you gently in return 🐴"],
-            "bird" => ["puffs up into a happy little ball 🐦", "clicks their beak contentedly 🦜", "buries their head in your hair 🐦"],
-            "dinosaur" => ["makes a small, rumbling happy sound 🦕", "nudges you with their giant snout 🐉", "sits very still and looks extremely pleased 🦖"],
-            "bunny" => ["licks your nose 🐰", "does a tiny binky from happiness 🐇", "flops over dramatically onto your lap 🐰"],
+            "cat" =>
+            [
+                "tolerates it with dignity 😸",
+                "leans into it just a little 🐱",
+                "pretends not to enjoy it but their purr says otherwise 😺",
+                "allows exactly three seconds of hugging, then bites once, then purrs for five minutes 🐱",
+                "goes completely limp in your arms and makes you carry all of their opinions 😺",
+                "lets out one tiny chirp of protest and then relaxes completely 😸",
+                "tucks their head under your chin and begins purring at industrial volume 🐱",
+            ],
+            "dog" =>
+            [
+                "goes absolutely wild with joy 🐶",
+                "licks your entire face 🐕",
+                "wiggles so hard they nearly fall over 🐾",
+                "wraps two paws around your arm and refuses to be the first to let go 🐶",
+                "makes direct eye contact, tail a blur, and leans their whole weight into the hug 🐕",
+                "lets out a long, whimpery groan of pure happiness right next to your ear 🐾",
+                "gives your face one enormous lick from chin to forehead and acts like that was the hug 🐶",
+            ],
+            "horse" =>
+            [
+                "rests their head on your shoulder 🐴",
+                "lets out a soft, warm breath 🐎",
+                "nuzzles you gently in return 🐴",
+                "wraps their neck around you and holds the pose like a professional portrait 🐎",
+                "leans into you with the gentle, inexorable weight of an affectionate mountain 🐴",
+                "blows a long breath through their lips and makes a sound of profound contentment 🐎",
+                "bumps their nose against your cheek three times in a row, which is definitely counting as a hug 🐴",
+            ],
+            "bird" =>
+            [
+                "puffs up into a happy little ball 🐦",
+                "clicks their beak contentedly 🦜",
+                "buries their head in your hair 🐦",
+                "grips your finger with both feet and refuses to let go for a full minute 🦜",
+                "preens your sleeve very seriously as their form of reciprocation 🐦",
+                "makes a sound like a tiny kettle and melts against your chest 🦜",
+                "tucks their beak under their wing while still in your arms, perfectly content 🐦",
+            ],
+            "dinosaur" =>
+            [
+                "produces a deep, resonant rumble that rattles the windows — affectionately 🦕",
+                "nudges you with their snout hard enough to slide you sideways. It is love. 🐉",
+                "sits very still, eyes half-closed, radiating contentment at geological scale 🦖",
+                "wraps their neck around you as close to a hug as their anatomy allows. It counts. 🦕",
+                "lets out a long, slow exhale through their nostrils directly into your face. Maximum intimacy. 🦖",
+                "stamps one enormous foot in place — their version of happy bouncing — and regards you warmly 🐉",
+                "tilts their head and considers you with one enormous eye, then huffs softly. That's a good hug. 🦕",
+            ],
+            "bunny" =>
+            [
+                "licks your nose 🐰",
+                "does a tiny binky from happiness 🐇",
+                "flops over dramatically onto your lap 🐰",
+                "thumps once in mild protest, then melts into the hug anyway 🐇",
+                "vibrates at a frequency that means maximum contentment 🐰",
+                "grooms your hand very thoroughly before permitting further hugging 🐇",
+                "stretches completely flat across your arms and closes their eyes with absolute peace 🐰",
+            ],
+            "fish" =>
+            [
+                "swims frantic happy circles while you press your hand to the glass 🐟",
+                "hovers right in front of you, fins fanning gently, making the most of the moment 🐠",
+                "bumps the glass repeatedly with their nose — kisses, probably 🐡",
+                "flares every fin to full display and holds it for five full seconds 🐟",
+                "performs three tight circles exactly at your hand level, clearly reciprocating 🐠",
+                "rises to the surface and blows a stream of tiny bubbles in your direction 🐡",
+                "presses their whole side against the glass right where your hand is, and holds still 🐟",
+            ],
+            "shark" =>
+            [
+                "glides into the hug zone and holds completely still, which from a shark is meaningful 🦈",
+                "bumps against your hands with surprising gentleness and doesn't move away 🦈",
+                "opens their mouth slightly and closes it — this is a shark smile, accept it 🦈",
+                "rolls half-sideways, which is the shark equivalent of going belly-up for pets 🦈",
+                "circles so close the water pressure shifts noticeably — an embrace, in their way 🦈",
+                "rests their snout against your hands and exhales bubbles slowly 🦈",
+                "pauses mid-circuit, holds eye contact, and hovers perfectly still for ten seconds 🦈",
+            ],
+            "wolf" =>
+            [
+                "allows the hug and emits one soft whine to clarify this doesn't mean anything 🐺",
+                "presses their whole face into the crook of your neck and goes still 🐺",
+                "permits a single cheek-scritch in exchange for the indignity of being hugged 🐺",
+                "leans their full bodyweight against you and pretends it's accidental 🐺",
+                "accepts the hug with solemn dignity and then licks your hand once — deal sealed 🐺",
+                "rests their chin on your shoulder and exhales a long, low breath through their nose 🐺",
+                "makes extremely direct eye contact from within the hug, expressing complex emotions 🐺",
+            ],
+            "lizard" =>
+            [
+                "goes completely still and absorbs the warmth with eyes closed 🦎",
+                "puffs their throat out proudly and accepts this as tribute 🦎",
+                "climbs further up your arm to maximise contact with the warm surface 🦎",
+                "bobs their head twice in acknowledgement, which is significant for a lizard 🦎",
+                "flicks their tongue to taste the air and apparently approves of what they find 🦎",
+                "changes to a subtly warmer colour tone — their version of blushing 🦎",
+                "pushes one small foot against your palm and holds the pressure 🦎",
+            ],
+            "otter" =>
+            [
+                "wraps both arms around one of your fingers and squeezes with surprising strength 🦦",
+                "immediately starts grooming your sleeve as payment for the hug 🦦",
+                "makes the highest-pitched squeak you have ever heard from a non-toy 🦦",
+                "holds your hand with both paws and rocks slightly from side to side 🦦",
+                "buries their face in your sleeve and vibrates rapidly 🦦",
+                "performs one immediate full-body wiggle, then settles into the hug contentedly 🦦",
+                "offers you their best pebble in exchange for continued hugging 🦦",
+            ],
+            "bear" =>
+            [
+                "leans so heavily into the hug that you need to brace your feet 🐻",
+                "makes a low, resonant chuff that you feel as much as hear 🐻",
+                "rests their chin on your head and exhales completely 🐻",
+                "accepts the hug with enormous dignity and places one paw on your shoulder in return 🐻",
+                "nuzzles your cheek so gently it's hard to believe how large they are 🐻",
+                "lets out a single, slow groan of profound relaxation 🐻",
+                "pulls you in slightly closer with both arms — you are being bear-hugged back 🐻",
+            ],
+            "insect" =>
+            [
+                "walks slowly in a tight circle on your palm — their version of a squeeze 🦋",
+                "fans both wings open to their full span and holds the display in your direction 🐛",
+                "vibrates their wings at a frequency that lands somewhere between purring and applause 🦋",
+                "taps their front feet against your hand rapidly, which means something warm 🐛",
+                "glows softly and steadily for twelve seconds before dimming back down 🦋",
+                "presses their antennae gently against your skin and goes still 🐛",
+                "extends one foreleg and places it against your fingertip with great ceremony 🦋",
+            ],
+            "ocean_invertebrate" =>
+            [
+                "wraps two arms around your finger and pulses with unmistakable affection 🐙",
+                "turns a deep, warm amber — their colour for contentment — and holds it 🐙",
+                "jets gently into your hands and makes no move to leave for a while 🐙",
+                "reaches out three arms and makes gentle contact with your palm simultaneously 🐙",
+                "changes to a soft rose pattern and holds it for the entire interaction 🐙",
+                "wraps around your wrist loosely and breathes slowly, which is as relaxed as they get 🐙",
+                "blinks both large eyes very slowly in your direction — the highest marine compliment 🐙",
+            ],
+            "land_invertebrate" =>
+            [
+                "sits very still in your hands and vibrates all eight legs gently 🕷️",
+                "raises their front legs slightly in a posture that reads as grateful 🦂",
+                "lowers their abdomen slowly — a bow, in their tradition 🕷️",
+                "walks once around the perimeter of your palm and settles in the centre 🦂",
+                "produces a single silk thread, attaches it to your thumb, and sits with it 🕷️",
+                "turns to face you directly and holds perfectly still — this is meaningful 🦂",
+                "presses two front legs gently against your wrist for a long, comfortable moment 🕷️",
+            ],
             _ => ["enjoys the affection 🐾"]
         };
 
@@ -1439,10 +1880,27 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
         }
 
 
-        var battleMsg = await FollowupAsync(embed: BuildBattleEmbed(1).Build());
-        await Task.Delay(1500);
+        // Pre-battle tease
+        var preBattleEmbed = new EmbedBuilder()
+            .WithTitle($"⚔️  {cLabel} vs {oLabel}")
+            .WithColor(ColourInfo)
+            .WithDescription("*Two pets step onto the field…*")
+            .AddField($"{cLabel} (Lv.{challengerLevel})", $"Power: **{challengerPower}**", inline: true)
+            .AddField("vs", "⚔️", inline: true)
+            .AddField($"{oLabel} (Lv.{opponentLevel})", $"Power: **{opponentPower}**", inline: true)
+            .AddField("Battle Log", "*Sizing each other up…*", inline: false)
+            .WithFooter($"{Username} challenged {opponent.Username}").WithCurrentTimestamp();
+
+        string? prePic = challengerPic ?? opponentPic;
+        if (prePic is not null) preBattleEmbed.WithThumbnailUrl(prePic);
+
+        var battleMsg = await FollowupAsync(embed: preBattleEmbed.Build());
+        await Task.Delay(1200);
+
+        await battleMsg.ModifyAsync(m => m.Embed = BuildBattleEmbed(1).Build());
+        await Task.Delay(1800);
         await battleMsg.ModifyAsync(m => m.Embed = BuildBattleEmbed(2).Build());
-        await Task.Delay(1500);
+        await Task.Delay(1600);
         await battleMsg.ModifyAsync(m => m.Embed = BuildBattleEmbed(3).Build());
     }
 

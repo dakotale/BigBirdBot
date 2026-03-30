@@ -181,8 +181,24 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
 
         string coinEmoji = result == "heads" ? "🪙" : "⚫";
         decimal netWinCf = payout - (decimal)bet;
-        await FollowupAsync(
-            embed: new EmbedBuilder()
+
+        EmbedBuilder CoinFrame(string display, string label) =>
+            new EmbedBuilder()
+                .WithTitle("🪙  Coin Flip")
+                .WithColor(ColourInfo)
+                .WithDescription($"{display}  *{label}*")
+                .WithFooter(Username, AvatarUrl);
+
+        var msg = await FollowupAsync(embed: CoinFrame("🪙", "Flipping…").Build());
+        await Task.Delay(450);
+        await msg.ModifyAsync(m => m.Embed = CoinFrame("⚫", "Spinning…").Build());
+        await Task.Delay(450);
+        await msg.ModifyAsync(m => m.Embed = CoinFrame("🪙", "Spinning…").Build());
+        await Task.Delay(550);
+
+        await msg.ModifyAsync(m =>
+        {
+            m.Embed = new EmbedBuilder()
                 .WithTitle($"{coinEmoji}  Coin Flip — {char.ToUpper(result[0])}{result[1..]}")
                 .WithColor(won ? ColourWin : ColourLoss)
                 .WithDescription(
@@ -194,8 +210,9 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
                 .AddField("Balance", CreditHelper.Format(newBalance), inline: true)
                 .WithFooter(Username, AvatarUrl)
                 .WithCurrentTimestamp()
-                .Build(),
-            components: won ? OfferDon(netWinCf) : null);
+                .Build();
+            if (won) m.Components = OfferDon(netWinCf);
+        });
     }
 
 
@@ -239,18 +256,36 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
             ? $"You picked **{pickLabel}** — correct! {CreditHelper.FormatDelta(payout - (decimal)bet)}"
             : $"You picked **{pickLabel}** — rolled **{d1}+{d2}={total}**. {CreditHelper.FormatDelta(-(decimal)bet)}";
 
-        await FollowupAsync(
-            embed: new EmbedBuilder()
-                    .WithTitle($"🎲  Dice Roll — {d1} + {d2} = **{total}**{(d1 == d2 ? " (doubles!)" : "")}")
-                    .WithColor(won ? ColourWin : ColourLoss)
-                    .WithDescription(outcomeText)
-                    .AddField("Bet", CreditHelper.Format((decimal)bet), inline: true)
-                    .AddField("Payout", CreditHelper.Format(payout), inline: true)
-                    .AddField("Balance", CreditHelper.Format(newBalance), inline: true)
-                    .WithFooter(Username, AvatarUrl)
-                    .WithCurrentTimestamp()
-                    .Build(),
-                components: won ? OfferDon(payout - (decimal)bet) : null);
+        static string DieFace(int n) => n switch { 1 => "⚀", 2 => "⚁", 3 => "⚂", 4 => "⚃", 5 => "⚄", _ => "⚅" };
+
+        EmbedBuilder DiceFrame(int a, int b, string label) =>
+            new EmbedBuilder()
+                .WithTitle("🎲  Dice Roll")
+                .WithColor(ColourInfo)
+                .WithDescription($"{DieFace(a)}  {DieFace(b)}\n*{label}*")
+                .WithFooter(Username, AvatarUrl);
+
+        var msg = await FollowupAsync(embed: DiceFrame(
+            Random.Shared.Next(1, 7), Random.Shared.Next(1, 7), "Rolling…").Build());
+        await Task.Delay(500);
+        await msg.ModifyAsync(m => m.Embed = DiceFrame(
+            Random.Shared.Next(1, 7), Random.Shared.Next(1, 7), "Rolling…").Build());
+        await Task.Delay(600);
+
+        await msg.ModifyAsync(m =>
+        {
+            m.Embed = new EmbedBuilder()
+                .WithTitle($"🎲  Dice Roll — {d1} + {d2} = **{total}**{(d1 == d2 ? " (doubles!)" : "")}")
+                .WithColor(won ? ColourWin : ColourLoss)
+                .WithDescription($"{DieFace(d1)}  {DieFace(d2)}\n\n{outcomeText}")
+                .AddField("Bet", CreditHelper.Format((decimal)bet), inline: true)
+                .AddField("Payout", CreditHelper.Format(payout), inline: true)
+                .AddField("Balance", CreditHelper.Format(newBalance), inline: true)
+                .WithFooter(Username, AvatarUrl)
+                .WithCurrentTimestamp()
+                .Build();
+            if (won) m.Components = OfferDon(payout - (decimal)bet);
+        });
     }
 
 
@@ -293,8 +328,25 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
             ? $"Bet on **{number}** — {result}"
             : $"Bet on **{betType}** — {result}";
 
-        await FollowupAsync(
-            embed: new EmbedBuilder()
+        var msg = await FollowupAsync(embed: new EmbedBuilder()
+            .WithTitle("🎡  Roulette — Spinning…")
+            .WithColor(ColourInfo)
+            .WithDescription("🔵 *The ball is flying around the wheel…*")
+            .WithFooter(Username, AvatarUrl)
+            .Build());
+
+        await Task.Delay(900);
+        await msg.ModifyAsync(m => m.Embed = new EmbedBuilder()
+            .WithTitle("🎡  Roulette — Slowing…")
+            .WithColor(ColourInfo)
+            .WithDescription("🔵 *The ball is losing speed…*")
+            .WithFooter(Username, AvatarUrl)
+            .Build());
+
+        await Task.Delay(1000);
+        await msg.ModifyAsync(m =>
+        {
+            m.Embed = new EmbedBuilder()
                 .WithTitle($"🎡  Roulette — {spinTitle}")
                 .WithColor(won ? ColourWin : spin == 0 ? ColourPush : ColourLoss)
                 .WithDescription(betDesc)
@@ -303,8 +355,9 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
                 .AddField("Balance", CreditHelper.Format(newBalance), inline: true)
                 .WithFooter(Username, AvatarUrl)
                 .WithCurrentTimestamp()
-                .Build(),
-            components: won ? OfferDon(payout - (decimal)bet) : null);
+                .Build();
+            if (won) m.Components = OfferDon(payout - (decimal)bet);
+        });
     }
 
 
@@ -573,8 +626,23 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
         string outcome = draw ? "🤝 Draw!" : won ? "🎉 You win!" : "😔 Bot wins!";
         Color colour = draw ? ColourPush : won ? ColourWin : ColourLoss;
 
-        await FollowupAsync(
-            embed: new EmbedBuilder()
+        EmbedBuilder RpsFrame(string count) =>
+            new EmbedBuilder()
+                .WithTitle("✊  Rock Paper Scissors")
+                .WithColor(ColourInfo)
+                .WithDescription($"**{count}**")
+                .WithFooter(Username, AvatarUrl);
+
+        var msg = await FollowupAsync(embed: RpsFrame("3️⃣").Build());
+        await Task.Delay(600);
+        await msg.ModifyAsync(m => m.Embed = RpsFrame("2️⃣").Build());
+        await Task.Delay(600);
+        await msg.ModifyAsync(m => m.Embed = RpsFrame("1️⃣").Build());
+        await Task.Delay(600);
+
+        await msg.ModifyAsync(m =>
+        {
+            m.Embed = new EmbedBuilder()
                 .WithTitle($"✊  Rock Paper Scissors — {outcome}")
                 .WithColor(colour)
                 .WithDescription($"You: **{pickEmoji} {pick}** vs Bot: **{botEmoji} {botPick}**\n\n{CreditHelper.FormatDelta(net)}")
@@ -583,8 +651,9 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
                 .AddField("Balance", CreditHelper.Format(newBalance), inline: true)
                 .WithFooter(Username, AvatarUrl)
                 .WithCurrentTimestamp()
-                .Build(),
-            components: won ? OfferDon(payout - (decimal)bet) : null);
+                .Build();
+            if (won) m.Components = OfferDon(payout - (decimal)bet);
+        });
     }
 
 
@@ -632,8 +701,23 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
                 ? $"✅ **Correct!** {card1Display} → {card2Display} {CreditHelper.FormatDelta(net)}"
                 : $"❌ **Wrong!** {card1Display} → {card2Display} {CreditHelper.FormatDelta(net)}";
 
-        await FollowupAsync(
-            embed: new EmbedBuilder()
+        // Phase 1: show first card, second card hidden
+        var msg = await FollowupAsync(embed: new EmbedBuilder()
+            .WithTitle("🃏  High-Low")
+            .WithColor(ColourInfo)
+            .WithDescription(
+                $"**First card:** `{card1Display}`\n" +
+                $"**Second card:** `🂠`\n\n" +
+                $"You guessed **{guess}** — drawing second card…")
+            .WithFooter(Username, AvatarUrl)
+            .Build());
+
+        await Task.Delay(1400);
+
+        // Phase 2: reveal second card and result
+        await msg.ModifyAsync(m =>
+        {
+            m.Embed = new EmbedBuilder()
                 .WithTitle($"🃏  High-Low — {(tie ? "Push" : won ? "You Win!" : "You Lose!")}")
                 .WithColor(tie ? ColourPush : won ? ColourWin : ColourLoss)
                 .WithDescription(
@@ -645,8 +729,9 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
                 .AddField("Balance", CreditHelper.Format(newBalance), inline: true)
                 .WithFooter(Username, AvatarUrl)
                 .WithCurrentTimestamp()
-                .Build(),
-            components: won ? OfferDon(payout - (decimal)bet) : null);
+                .Build();
+            if (won) m.Components = OfferDon(payout - (decimal)bet);
+        });
     }
 
 
