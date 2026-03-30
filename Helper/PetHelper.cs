@@ -353,69 +353,69 @@ public static class PetHelper
         (species.ToLower(), slot) switch
         {
             // Slot 1 — level 5
-            ("cat", 1) => "*rolls over and ignores you completely*",
-            ("dog", 1) => "*sits and gives you the biggest puppy eyes*",
-            ("horse", 1) => "*rears up majestically*",
-            ("bird", 1) => "*whistles your favourite tune*",
-            ("dinosaur", 1) => "*stomps around making tiny roaring noises* 🦕",
-            ("bunny", 1) => "*binkies across the room at full speed* 🐰",
-            ("fish", 1) => "*blows a single perfectly round bubble and blinks at you*",
-            ("shark", 1) => "*circles menacingly then bumps your hand like a dog*",
-            ("wolf", 1) => "*sits and stares at you with intense yellow eyes until you feel judged*",
-            ("lizard", 1) => "*does exactly three push-ups and stares at you for approval*",
-            ("otter", 1) => "*floats on their back holding a pebble like it's the most precious thing*",
-            ("bear", 1) => "*sits up on hind legs and waves a massive paw*",
-            ("insect", 1) => "*glows softly in the dark for a solid five seconds*",
-            ("ocean_invertebrate", 1) => "*extends all eight arms simultaneously and waves at you*",
-            ("land_invertebrate", 1) => "*raises both front legs and freezes, waiting for your reaction*",
+            ("cat", 1) => "*rolls over with enormous confidence, ignores you for ten seconds, then chirps once as if to say 'I did it, you're welcome'* 😺",
+            ("dog", 1) => "*plants themselves directly in front of you, deploys full puppy eyes, adds a tiny whine, and oscillates between sit and almost-sit with maximum emotional manipulation* 🐶",
+            ("horse", 1) => "*rears to full height with theatrical precision, hooves pawing the air, mane flowing — holds it for three full seconds before landing with a perfectly dignified thud* 🐎",
+            ("bird", 1) => "*tilts their head, listens for a moment, then whistles back your favourite tune completely correctly — and then adds their own personal flourish at the end* 🎵",
+            ("dinosaur", 1) => "*thunders in a wide circle, halts with surprising precision, sits — which takes a moment — and stares at you with obvious expectation* 🦕",
+            ("bunny", 1) => "*launches into a binky of such magnificence that they briefly become airborne, land, binky again immediately, and then freeze as if nothing happened* 🐰",
+            ("fish", 1) => "*rises to the surface, blows one perfectly spherical bubble, watches it drift to the top, then looks at you with both eyes simultaneously as if awaiting a score* 🐟",
+            ("shark", 1) => "*circles with increasing speed and menace, builds tension for a full thirty seconds, then comes in close and bumps your hand with their nose like a golden retriever* 🦈",
+            ("wolf", 1) => "*sits with the posture of someone who invented sitting, locks those amber eyes directly onto yours, and communicates a full emotional thesis without blinking once* 🐺",
+            ("lizard", 1) => "*drops to the ground, executes three precise push-ups with a pause between each one, and then looks up with an expression that can only be described as self-satisfied* 🦎",
+            ("otter", 1) => "*rolls onto their back with breathtaking ease, balances a pebble on their chest, and gazes at it with the reverence usually reserved for sacred objects* 🦦",
+            ("bear", 1) => "*rises to full hind-leg height with the unhurried confidence of someone who invented standing up, extends one enormous paw, and waves it twice — royally* 🐻",
+            ("insect", 1) => "*goes very still, vibrates once, and then emits a soft steady glow for five full seconds before dimming back down as though nothing unusual occurred* 🦋",
+            ("ocean_invertebrate", 1) => "*extends all eight arms simultaneously in a perfectly symmetrical radial display, holds it for a count of three, then curls them all back with poise* 🐙",
+            ("land_invertebrate", 1) => "*slowly raises both front legs to full extension, holds the stance with unreadable stillness, and waits for your reaction with a patience you cannot match* 🕷️",
             // Slot 2 — level 20
-            ("cat", 2) => "*knocks your water off the table, maintaining direct eye contact*",
-            ("dog", 2) => "*spins in circles and barks excitedly then collapses*",
-            ("horse", 2) => "*does a perfectly timed dressage step and bows*",
-            ("bird", 2) => "*mimics your voice and says something embarrassing*",
-            ("dinosaur", 2) => "*attempts to roar but it comes out as a squeak* 🐉",
-            ("bunny", 2) => "*stands on hind legs and begs adorably for a treat* 🐇",
-            ("fish", 2) => "*performs a corkscrew spiral and sticks the landing facing you*",
-            ("shark", 2) => "*rises from the water, opens jaws dramatically, closes them gently on a treat*",
-            ("wolf", 2) => "*howls a haunting melody that is somehow perfectly in tune*",
-            ("lizard", 2) => "*changes colour through four different shades in rapid sequence and bows*",
-            ("otter", 2) => "*juggles three pebbles simultaneously on their chest while floating*",
-            ("bear", 2) => "*lumbers in a full circle, sits, and gives you an expectant look*",
-            ("insect", 2) => "*executes a flight display so precise it spells your name in the air*",
-            ("ocean_invertebrate", 2) => "*squeezes through an impossibly small gap, pops out the other side, and bows*",
-            ("land_invertebrate", 2) => "*constructs an elaborate silk hammock, naps in it briefly, dismantles it*",
+            ("cat", 2) => "*selects the item on the highest available surface with great deliberation, maintains absolute direct eye contact, and nudges it off the edge with one precise paw. Sits. Blinks.* 😸",
+            ("dog", 2) => "*spins in accelerating circles, barks twice at peak velocity, and then crashes onto the floor with total commitment — tail still wagging from the ground* 🐶",
+            ("horse", 2) => "*executes a flawless lateral dressage step that would impress at any grand prix, pivots sharply, and folds one leg under for a bow that lands right on cue* 🐎",
+            ("bird", 2) => "*listens carefully, processes for two full seconds, then delivers your exact voice saying something you said once months ago that you'd entirely forgotten about* 🦜",
+            ("dinosaur", 2) => "*rears to full height, draws a massive breath, and produces a sound not unlike a very large pigeon. Stares at you. Tries again. Same result. Stares harder.* 🐉",
+            ("bunny", 2) => "*stands on hind legs, reaches maximum extension, and gazes at you with eyes of such profound and calculated sweetness that refusing them would be physically impossible* 🐇",
+            ("fish", 2) => "*coils into a tight corkscrew, unwinds at speed, and comes out of the spin facing you dead-on at eye level — sticks the landing perfectly and holds it* 🐟",
+            ("shark", 2) => "*rises from the depths with theatrical slowness, breaches the surface, jaw opening with ceremony — and closes gently around the treat with astonishing precision* 🦈",
+            ("wolf", 2) => "*draws breath slowly, tilts their head to the exact right angle, and releases a single held note that fills the entire space and somehow stays exactly on pitch throughout* 🐺",
+            ("lizard", 2) => "*flickers through amber, then teal, then burgundy, then pale gold in rapid sequence, bows their head once at the end like an artist acknowledging a performance* 🦎",
+            ("otter", 2) => "*rolls onto their back in open water, selects three pebbles, and tosses them one at a time — catches each on the way down without looking. Holds the last one up.* 🦦",
+            ("bear", 2) => "*lumbers a full deliberate circuit, settles down with the force of a small avalanche, and looks at you with an expression that says the next move is yours* 🐻",
+            ("insect", 2) => "*takes flight in tight formation with themselves, executes four precise arcs, and traces shapes in the air that take a moment to resolve into something recognisable* 🦋",
+            ("ocean_invertebrate", 2) => "*locates the narrowest gap available, pours their entire body through it with no apparent effort, emerges on the other side, and bows with genuine flourish* 🐙",
+            ("land_invertebrate", 2) => "*anchors eight silk threads in a radial pattern, weaves them into a small hammock in under three minutes, settles into it briefly, then dismantles it cleanly* 🕷️",
             // Slot 3 — level 50
-            ("cat", 3) => "*performs an elegant slow-blink sequence and actually lets you pet them*",
-            ("dog", 3) => "*fetches something you didn't even throw, tail wagging violently*",
-            ("horse", 3) => "*gallops a perfect figure-eight and stops on a dime*",
-            ("bird", 3) => "*recites a full dramatic monologue in your voice*",
-            ("dinosaur", 3) => "*performs an ancient prehistoric victory dance* 🦖",
-            ("bunny", 3) => "*executes a flawless series of binkies and zooms for 30 seconds straight*",
-            ("fish", 3) => "*leaps out of the water, clears a tiny hoop, and splashes back perfectly*",
-            ("shark", 3) => "*performs a full breach — airborne for two full seconds — lands without a splash*",
-            ("wolf", 3) => "*leads an imaginary pack in a coordinated howl that rattles the windows*",
-            ("lizard", 3) => "*detaches tail, lets it wiggle for effect, then regrows it in real time*",
-            ("otter", 3) => "*constructs an elaborate pebble sculpture on their chest without looking*",
-            ("bear", 3) => "*performs a surprisingly elegant waltz on hind legs for a full minute*",
-            ("insect", 3) => "*undergoes a visible metamorphosis shimmer and emerges noticeably shinier*",
-            ("ocean_invertebrate", 3) => "*changes colour, pattern, and texture simultaneously to perfectly mimic your wallpaper*",
-            ("land_invertebrate", 3) => "*moults completely, emerges gleaming, and poses dramatically for five seconds*",
+            ("cat", 3) => "*initiates a slow-blink sequence of such calculated precision that you feel genuinely honoured — then walks toward you, bumps your hand with their head, and actually stays* 😺",
+            ("dog", 3) => "*rushes out of the room, returns at top speed carrying something you absolutely did not throw, drops it at your feet, and vibrates with tail-wagging pride* 🐶",
+            ("horse", 3) => "*launches into a full figure-eight gallop at collection, transitions through every gait in sequence, and stops on the precise mark — not a single extra step* 🐎",
+            ("bird", 3) => "*takes a breath, assumes a posture, and delivers a full thirty-second monologue in your voice including the pauses, the intonation, and one joke you told last week* 🦜",
+            ("dinosaur", 3) => "*executes the full prehistoric victory ceremony: ground-stomp, tail-sweep, sky-bellow, and an unexpectedly dignified bow. The ground genuinely shook.* 🦖",
+            ("bunny", 3) => "*launches into a full binky-and-zoom sequence that covers every available surface in under forty seconds, then collapses into a perfect loaf as if nothing happened* 🐰",
+            ("fish", 3) => "*breaches the surface in a clean arc, passes through the suspended hoop without touching the rim, and re-enters the water in a single quiet splash* 🐟",
+            ("shark", 3) => "*builds speed from the bottom of the tank, hits the surface at full force, clears the water by a full body-length, hangs there for two full seconds, and lands clean* 🦈",
+            ("wolf", 3) => "*throws back their head, produces a long opening note, and somehow the acoustics shift — three other animal voices in the distance join in whether they intended to or not* 🐺",
+            ("lizard", 3) => "*detaches their tail with quiet ceremony, lets it perform a distracting wriggle routine, and then simply grows it back in front of you — start to finish* 🦎",
+            ("otter", 3) => "*lays back in the water, selects seven pebbles from a pile, and assembles them on their chest into a freestanding tower without using their eyes once* 🦦",
+            ("bear", 3) => "*rises to hind legs, and with a composure that defies every expectation, performs a full slow waltz — four measured steps, one turn, repeat — for sixty seconds exactly* 🐻",
+            ("insect", 3) => "*goes very still, shimmers at the wing edges, and then emerges from the shimmer noticeably, undeniably shinier — the metamorphosis was brief but clearly real* 🦋",
+            ("ocean_invertebrate", 3) => "*shifts colour, then pattern, then texture in sequence, cycling through three distinct configurations before settling on a perfect replica of the surface behind them* 🐙",
+            ("land_invertebrate", 3) => "*retreats into stillness, splits their exoskeleton cleanly down the back, steps forward out of it in gleaming new armour, and holds a five-second pose* 🕷️",
             // Slot 4 — level 75
-            ("cat", 4) => "*enters the void, stares at nothing for 10 minutes, then acts normal*",
-            ("dog", 4) => "*learns to open the fridge, brings you a snack, closes it again*",
-            ("horse", 4) => "*performs a full airs-above-the-ground capriole and sticks the landing*",
-            ("bird", 4) => "*sings a five-minute opera in perfect pitch about their daily life*",
-            ("dinosaur", 4) => "*unleashes a roar so powerful it starts a local seismic event* 🌋",
-            ("bunny", 4) => "*vibrates at such extreme happiness frequency they briefly become translucent*",
-            ("fish", 4) => "*phases through the tank glass, laps the room once, and phases back in* 🐋",
-            ("shark", 4) => "*briefly achieves flight, circles overhead, and lands without creating a ripple* 🌊",
-            ("wolf", 4) => "*howls at the moon and the moon howls back. you don't question it*",
-            ("lizard", 4) => "*becomes completely invisible for ten minutes, then reappears wearing a tiny hat*",
-            ("otter", 4) => "*opens a locked box using only pebbles, retrieves a snack, relocks it*",
-            ("bear", 4) => "*hibernates for exactly 30 seconds, wakes up, and acts like nothing happened*",
-            ("insect", 4) => "*briefly achieves full metamorphosis, flutters magnificently, reverts, winks* 🐝",
-            ("ocean_invertebrate", 4) => "*opens a jar from the inside, retrieves a snack, reseals it, and looks smug* 🦑",
-            ("land_invertebrate", 4) => "*builds a full web replica of the Eiffel Tower, waits for your reaction, eats it* 🦂",
+            ("cat", 4) => "*fixes their gaze on a specific point in the middle distance, holds it with complete stillness for ten minutes, then blinks once, stretches, and resumes normal life as though you didn't see anything* 😺",
+            ("dog", 4) => "*trots purposefully to the refrigerator, paws the handle down, retrieves something appropriate, brings it to you in a completely unasked-for act of service, and closes the fridge with their snout* 🐶",
+            ("horse", 4) => "*executes a capriole — full controlled rear, hind legs kicking backward at peak height — and lands with measured precision on exactly the same mark they started from* 🐎",
+            ("bird", 4) => "*clears their throat, takes a breath, and performs a five-minute opera entirely about their own daily life, in perfect pitch, with recognisable callbacks to earlier verses* 🦜",
+            ("dinosaur", 4) => "*draws breath for a full ten seconds, then releases a roar that registers on seismographs, shatters three nearby windows, and briefly silences every other animal for miles. Bows.* 🌋",
+            ("bunny", 4) => "*begins vibrating at a frequency of such joy that their edges blur slightly, goes briefly translucent for two full seconds, then rematerialises perfectly intact and binky-sprints away* 🐰",
+            ("fish", 4) => "*swims directly at the glass, passes through it without disturbing a single molecule, completes one full circuit of the room at head height, returns, and re-enters without a ripple* 🐋",
+            ("shark", 4) => "*descends to the deepest point, accelerates upward at impossible speed, clears the water entirely, circles overhead for one full rotation, and descends back in without disturbing the surface* 🌊",
+            ("wolf", 4) => "*tilts their head back and releases a single sustained note that climbs and climbs — and from somewhere distant, something answers. They nod once. You don't ask further.* 🌕",
+            ("lizard", 4) => "*fades, patches first, then entirely, and remains invisible for a precise ten minutes — you only know they're there by the faint warmth on the carpet — then reappears wearing a tiny, unexplained hat* 🦎",
+            ("otter", 4) => "*retrieves a locked wooden box, examines it for thirty seconds, selects three specific pebbles, applies them in sequence, and opens it. Removes the snack. Relocks the box. Eats the snack.* 🦦",
+            ("bear", 4) => "*sits heavily, takes one long breath, closes both eyes, and enters a state of absolute stillness for exactly thirty seconds — then opens one eye, stands up, and proceeds as though nothing at all happened* 🐻",
+            ("insect", 4) => "*wraps themselves in a shimmer that lasts four full seconds, expands briefly into something magnificent, wing-span at maximum, every colour simultaneously — then collapses back, winks, and buzzes off* 🐝",
+            ("ocean_invertebrate", 4) => "*locates the sealed jar, examines it once from the outside, slips inside through an imperceptible gap, opens it from the interior, removes the snack, replaces the lid, and exits. Looks smug.* 🦑",
+            ("land_invertebrate", 4) => "*spends forty-five minutes constructing a perfect scaled web reproduction of an iconic structure, holds perfectly still while you take it in, then eats the entire thing in thirty seconds* 🦂",
             _ => "*does something impressively cute*"
         };
 
@@ -567,28 +567,28 @@ public static class PetHelper
 
     public static string ExploreDeparture(string species) => species.ToLower() switch
     {
-        "cat" => "🐱 *slips out the door before you can stop them*",
-        "dog" => "🐶 *bolts out the front door, tail spinning like a helicopter*",
-        "horse" => "🐴 *gallops off into the distance without looking back*",
-        "bird" => "🐦 *takes to the skies with a confident chirp*",
-        "dinosaur" => "🦕 *lumbers off into the wilderness, leaving enormous footprints*",
-        "bunny" => "🐰 *hops away at an alarming speed, ears flat*",
-        "fish" => "🐟 *slips out of the tank through a gap you swear wasn't there*",
-        "shark" => "🦈 *fins out of the tank, across the floor, and into the wild with terrifying efficiency*",
-        "wolf" => "🐺 *vanishes into the treeline without a sound, only glowing eyes visible for a moment*",
-        "lizard" => "🦎 *skitters up the wall, across the ceiling, and out the window without touching the door*",
-        "otter" => "🦦 *slides down the bank on their belly and disappears into the water with a cheerful splash*",
-        "bear" => "🐻 *lumbers off at a surprisingly fast pace, sniffing everything on the way*",
-        "insect" => "🐛 *inches determinedly toward the door for two minutes, then abruptly takes flight*",
-        "ocean_invertebrate" => "🐙 *oozes under the door with unsettling ease and is gone before you process what happened*",
-        "land_invertebrate" => "🕷️ *rappels down the wall on a single silk thread and vanishes into the undergrowth*",
+        "cat" => "🐱 *fixes you with one long, evaluating look, then slips through a gap in the door that was definitely not big enough for them, and is simply gone*",
+        "dog" => "🐶 *bolts out the front door at maximum velocity, tail achieving helicopter rotation, leaping the fence without breaking stride, and disappearing over the hill mid-bark*",
+        "horse" => "🐴 *breaks into a canter before they're fully out the gate, transitions to full gallop within three strides, and vanishes over the ridge without so much as a backward glance*",
+        "bird" => "🐦 *launches off the windowsill, catches an updraft with practiced ease, spirals upward until they're a dark speck against the sky, and then tilts toward the horizon*",
+        "dinosaur" => "🦕 *lumbers toward the horizon with absolute purpose, each footstep a minor geological event, until they vanish beyond the treeline*",
+        "bunny" => "🐰 *bolts from a standing start to full sprint in a single blink, ears pinned flat, covering the garden in approximately four bounds before disappearing into the hedge*",
+        "fish" => "🐟 *slips through a gap you're nearly certain wasn't there, navigates three impossible surfaces, and is in open water before you've finished looking for them*",
+        "shark" => "🦈 *cuts through the shallows with a single unhurried fin-sweep, accelerates without apparent effort, and is gone beneath the surface before you can blink*",
+        "wolf" => "🐺 *steps into the shadows at the treeline, and between one heartbeat and the next is simply absent — only two amber points of light lingering for a moment before those, too, disappear*",
+        "lizard" => "🦎 *skitters up the doorframe in three rapid movements, across the ceiling with the casual ease of someone who finds gravity optional, and out the window without once touching the floor*",
+        "otter" => "🦦 *executes a running belly-slide down the bank with enormous commitment, hits the water at perfect angle, and submerges in a single clean splash that dissipates almost immediately*",
+        "bear" => "🐻 *lumbers into motion with deceptive speed, snout already working the air ahead of them, growing smaller with each unhurried-looking stride until the trees close around them entirely*",
+        "insect" => "🐛 *makes slow, purposeful progress toward the door for two full minutes, then abruptly takes flight and is through the gap before you register they've left the ground*",
+        "ocean_invertebrate" => "🐙 *flows under the door like water finding the path of least resistance, every arm accounted for, nothing left behind — gone before you've fully processed what you just watched*",
+        "land_invertebrate" => "🕷️ *anchors a single silk thread, rappels down the exterior wall with controlled precision, and vanishes into the undergrowth as though they were never there at all*",
         _ => "*heads off on an adventure*"
     };
 
     public static string ExploreNarrative(string species, string rewardKey) =>
         species.ToLower() switch
         {
-            "cat" => Random.Shared.Next(7) switch
+            "cat" => Random.Shared.Next(10) switch
             {
                 0 => "🐱 Wandered into three different gardens, judged each one, and came back.",
                 1 => "🐱 Spent most of the time sitting on a stranger's porch being adored.",
@@ -596,9 +596,12 @@ public static class PetHelper
                 3 => "🐱 Strolled through the neighbourhood with the energy of someone who owns all of it.",
                 4 => "🐱 Knocked something off a very high shelf, observed the aftermath, and left.",
                 5 => "🐱 Spent an hour watching a bird through a window, then pretended not to care.",
+                6 => "🐱 Found an extremely comfortable sunny spot, napped in it for most of the adventure, and considers this a success.",
+                7 => "🐱 Infiltrated four separate households, received treats at three of them, and left the fourth a strongly-worded impression.",
+                8 => "🐱 Sat in a cardboard box someone had left out, refused to leave for forty minutes, eventually departed without explanation.",
                 _ => "🐱 Got caught in the rain, found shelter anyway, and acted like it was the plan all along."
             },
-            "dog" => Random.Shared.Next(7) switch
+            "dog" => Random.Shared.Next(10) switch
             {
                 0 => "🐶 Ran through the park, made six new best friends, and investigated every bin.",
                 1 => "🐶 Followed an interesting smell for two miles and ended up at a bakery.",
@@ -606,9 +609,12 @@ public static class PetHelper
                 3 => "🐶 Discovered a puddle of suspicious size and dove in without hesitation.",
                 4 => "🐶 Tracked a squirrel across four gardens, lost it on a fence, and declared a moral victory.",
                 5 => "🐶 Greeted every single person they passed, got pets from most of them.",
+                6 => "🐶 Discovered a second dog on the adventure. They were best friends. They may never meet again. They are fine with this.",
+                7 => "🐶 Found a stick of such remarkable quality that the rest of the adventure became secondary.",
+                8 => "🐶 Rolled in something. Refuses to elaborate. Seems very pleased about it.",
                 _ => "🐶 Found a hill, ran up it, barked at the sky, ran back down. Mission accomplished."
             },
-            "horse" => Random.Shared.Next(7) switch
+            "horse" => Random.Shared.Next(10) switch
             {
                 0 => "🐴 Galloped through open fields and scattered several pigeons.",
                 1 => "🐴 Trotted through a village and was photographed by three tourists.",
@@ -616,9 +622,12 @@ public static class PetHelper
                 3 => "🐴 Cantered along a coastal cliffpath with dramatic flair.",
                 4 => "🐴 Stood magnificently on a hillside while the wind did the rest of the work.",
                 5 => "🐴 Explored a forest trail at full gallop and felt genuinely alive.",
+                6 => "🐴 Found a wide open beach at low tide and ran the entire length of it twice, for no reason beyond the fact that they could.",
+                7 => "🐴 Encountered another horse across a fence, exchanged a long and meaningful look, and moved on with a new sense of perspective.",
+                8 => "🐴 Discovered a puddle they could not in good conscience not splash through, and didn't.",
                 _ => "🐴 Discovered an apple orchard. Stayed there for a while. No regrets."
             },
-            "bird" => Random.Shared.Next(7) switch
+            "bird" => Random.Shared.Next(10) switch
             {
                 0 => "🐦 Soared high above the clouds and saw things you wouldn't believe.",
                 1 => "🐦 Flew to a distant tree and eavesdropped on several conversations.",
@@ -626,19 +635,25 @@ public static class PetHelper
                 3 => "🐦 Dive-bombed a scarecrow on principle and felt much better afterwards.",
                 4 => "🐦 Found the most acoustically perfect canyon in the region and sang into it.",
                 5 => "🐦 Perched on a weather vane and surveyed the whole town like a general.",
+                6 => "🐦 Discovered a window with a very good reflection, gave it a thorough talking-to, and departed satisfied.",
+                7 => "🐦 Flew further than intended, realised it was scenic, kept going, and returned with a story they'll never fully explain.",
+                8 => "🐦 Found an outdoor concert, perched above the speakers, and contributed several unrequested solos.",
                 _ => "🐦 Raced the wind across three counties. The wind lost."
             },
-            "dinosaur" => Random.Shared.Next(7) switch
+            "dinosaur" => Random.Shared.Next(10) switch
             {
-                0 => "🦕 Stomped through the forest and caused a minor local news story.",
-                1 => "🦕 Waded through a river and frightened some ducks.",
-                2 => "🦕 Explored a canyon and left footprints that confused geologists.",
-                3 => "🦕 Emerged from the treeline briefly, making several hikers rethink their life choices.",
-                4 => "🦕 Investigated a mountain. Found it acceptable. Left.",
-                5 => "🦕 Bellowed at a cliff face just to test the echo. Was satisfied with the result.",
-                _ => "🦕 Crossed a swamp, discovered an ancient ruin, and took up a lot of space doing it."
+                0 => "🦕 Stomped through the forest and caused a minor local news story. The headline was respectful.",
+                1 => "🦕 Waded through a river and frightened some ducks — and the fish, and a heron, and three kayakers.",
+                2 => "🦕 Explored a canyon and left footprints so deep they'll perplex geologists for centuries.",
+                3 => "🦕 Emerged from the treeline briefly, causing several hikers to rethink their life choices and career paths.",
+                4 => "🦕 Investigated a mountain. Found it acceptable. Scratched a review into the rockface. Left.",
+                5 => "🦕 Bellowed at a cliff face to test the echo. Was deeply satisfied. Did it four more times.",
+                6 => "🦕 Discovered a prehistoric tar pit, sniffed it with genuine scientific interest, and wisely moved on.",
+                7 => "🦕 Stumbled upon an active archaeological excavation site. The researchers will be talking about this for years.",
+                8 => "🦕 Took an extended swim in a lake and briefly convinced a boater they'd discovered a genuine sea monster.",
+                _ => "🦕 Crossed a swamp, found an ancient ruin, claimed it as territory, and took up a considerable amount of space doing all of it."
             },
-            "bunny" => Random.Shared.Next(7) switch
+            "bunny" => Random.Shared.Next(10) switch
             {
                 0 => "🐰 Dug seventeen tunnels, explored five, and deemed the rest unnecessary.",
                 1 => "🐰 Binkied through a meadow at top speed for reasons unknown.",
@@ -646,9 +661,12 @@ public static class PetHelper
                 3 => "🐰 Thumped at a shadow, decided the shadow deserved it, moved on.",
                 4 => "🐰 Explored an entire hedgerow system with terrifying efficiency.",
                 5 => "🐰 Investigated a dandelion for ten minutes, then ate it, then found a better one.",
+                6 => "🐰 Sat perfectly still in a field for twenty-five minutes and then binkied away at full speed. The sitting was clearly necessary.",
+                7 => "🐰 Located the softest grass in a three-kilometre radius through a process that remains entirely mysterious.",
+                8 => "🐰 Encountered another bunny, they exchanged a long nose-to-nose greeting, and both went their separate ways with new information.",
                 _ => "🐰 Made a complete circuit of the meadow, found nothing threatening, logged it anyway."
             },
-            "fish" => Random.Shared.Next(7) switch
+            "fish" => Random.Shared.Next(10) switch
             {
                 0 => "🐟 Navigated a labyrinth of coral, befriended a crab, and returned with treasure.",
                 1 => "🐟 Slipped through the deepest currents, saw things no fish should see.",
@@ -656,9 +674,12 @@ public static class PetHelper
                 3 => "🐟 Descended to a pressure zone that would crush lesser creatures and felt fine.",
                 4 => "🐟 Rode the Gulf Stream for a bit just to see where it went.",
                 5 => "🐟 Found a thermal vent colony, made some connections, left before it got complicated.",
+                6 => "🐟 Discovered a cavern system so deep and dark that the only light was themselves, and kept going anyway.",
+                7 => "🐟 Joined a shoal briefly, led it for twenty minutes, declined to explain their qualifications, and departed.",
+                8 => "🐟 Found a mirror-calm section of water at dawn and spent a meaningful amount of time considering their reflection.",
                 _ => "🐟 Slipstreamed through a kelp forest at speed and spooked an entire shoal of herrings."
             },
-            "shark" => Random.Shared.Next(7) switch
+            "shark" => Random.Shared.Next(10) switch
             {
                 0 => "🦈 Cleared an entire section of ocean with a single fin breach.",
                 1 => "🦈 Investigated a submersible, decided it was unworthy, and moved on.",
@@ -666,9 +687,12 @@ public static class PetHelper
                 3 => "🦈 Circled a shipping lane three times. The crew never saw them. That was the point.",
                 4 => "🦈 Found the wreck of an old galleon, explored it thoroughly, and left a tooth behind.",
                 5 => "🦈 Dove to a depth where it's completely dark and felt perfectly at home.",
+                6 => "🦈 Spent forty minutes investigating an underwater canyon so deep and still that even the pressure was respectful of them.",
+                7 => "🦈 Encountered a pod of dolphins, maintained a ten-metre detente for thirty minutes, and departed with mutual respect established.",
+                8 => "🦈 Performed a full breach directly alongside a whale shark, sized them up, nodded once in professional acknowledgement, and continued.",
                 _ => "🦈 Emerged briefly near a surf beach, caused a mass exodus from the water, disappeared."
             },
-            "wolf" => Random.Shared.Next(7) switch
+            "wolf" => Random.Shared.Next(10) switch
             {
                 0 => "🐺 Stalked through the forest like a shadow and returned without explaining themselves.",
                 1 => "🐺 Howled at the moon, received a howl back, and decided the errand was complete.",
@@ -676,9 +700,12 @@ public static class PetHelper
                 3 => "🐺 Tracked something through two valleys just to see if they could. They could.",
                 4 => "🐺 Sat at the peak of a ridge in the rain for twenty minutes, communing with something.",
                 5 => "🐺 Moved through the forest without snapping a single twig. Unnecessary, but satisfying.",
+                6 => "🐺 Found the exact centre of a vast old-growth forest, sat down, and spent considerable time deciding whether to stay. Came back. For now.",
+                7 => "🐺 Spent the night at the edge of the wild, watching the boundary between settled land and forest with philosophical attention.",
+                8 => "🐺 Ran flat out for an hour in no particular direction, stopped at a peak, surveyed everything below, and came home without offering context.",
                 _ => "🐺 Found a frozen lake, tested every inch of the edge, and crossed it anyway."
             },
-            "lizard" => Random.Shared.Next(7) switch
+            "lizard" => Random.Shared.Next(10) switch
             {
                 0 => "🦎 Basked on a warm rock for an indeterminate amount of time, then got to business.",
                 1 => "🦎 Climbed every vertical surface in the area just to see if they could.",
@@ -686,9 +713,12 @@ public static class PetHelper
                 3 => "🦎 Found a sun-baked wall and pressed their whole body against it with visible satisfaction.",
                 4 => "🦎 Scurried through a ruined building and claimed it as their territory.",
                 5 => "🦎 Stalked an insect across a garden for eleven minutes and then let it go. Power move.",
+                6 => "🦎 Discovered a greenhouse, tested every pane of glass for temperature, and ranked them by quality in an internal list.",
+                7 => "🦎 Found a basking rock of such specific geometry and solar orientation that they appear to have located the ideal object in the known world.",
+                8 => "🦎 Navigated a complex rooftop system via routes no other creature could use and found something excellent on the far side.",
                 _ => "🦎 Discovered a rock formation that perfectly concentrated heat and spent most of the trip there."
             },
-            "otter" => Random.Shared.Next(7) switch
+            "otter" => Random.Shared.Next(10) switch
             {
                 0 => "🦦 Floated downstream on their back, holding the reward the entire way.",
                 1 => "🦦 Found a new rock, tested it thoroughly, and deemed it acceptable.",
@@ -696,9 +726,12 @@ public static class PetHelper
                 3 => "🦦 Wove through river reeds at high speed and startled a heron twice.",
                 4 => "🦦 Dived to the bottom of a lake, found something interesting, dived back down to check it again.",
                 5 => "🦦 Built a temporary floating raft from sticks, used it once, abandoned it without ceremony.",
+                6 => "🦦 Located a section of river with exactly the right current for effortless floating, and floated it three times back-to-back.",
+                7 => "🦦 Found a beaver dam, examined the construction with genuine professional interest, and made several silent criticisms.",
+                8 => "🦦 Spent an hour in a tidal pool arranging and rearranging rocks, ate something, and concluded the expedition on their own terms.",
                 _ => "🦦 Found a waterfall, swam up it, looked around, swam back down. Said nothing about it."
             },
-            "bear" => Random.Shared.Next(7) switch
+            "bear" => Random.Shared.Next(10) switch
             {
                 0 => "🐻 Investigated every log, overturned three boulders, and smelled a lot of interesting things.",
                 1 => "🐻 Wandered considerably further than intended and had to be coaxed back with snacks.",
@@ -706,9 +739,12 @@ public static class PetHelper
                 3 => "🐻 Climbed a tree that was definitely not rated for their weight. Climbed back down. Fine.",
                 4 => "🐻 Located a river with a strong salmon run and spent the best afternoon of the month there.",
                 5 => "🐻 Found a cave, investigated it extensively, decided against moving in, but thought about it.",
+                6 => "🐻 Sat beside a waterfall for a very long time doing nothing in particular, and returned noticeably more at peace.",
+                7 => "🐻 Overturned a log of truly exceptional size, found it full of interest, and sat down to appreciate it properly.",
+                8 => "🐻 Followed a creek upstream until they found where it came from, decided this was satisfying enough, and turned back.",
                 _ => "🐻 Sat in a berry patch for an undisclosed amount of time. No further questions."
             },
-            "insect" => Random.Shared.Next(7) switch
+            "insect" => Random.Shared.Next(10) switch
             {
                 0 => "🐛 Navigated a complex obstacle course of grass blades and emerged victorious.",
                 1 => "🐛 Flew fourteen hundred feet straight up just to see what was up there.",
@@ -716,9 +752,12 @@ public static class PetHelper
                 3 => "🐛 Discovered an anthill, introduced themselves, departed on good terms.",
                 4 => "🐛 Climbed a sunflower to the very top and surveyed their domain.",
                 5 => "🐛 Navigated three puddles and a compost heap without losing a single antenna.",
+                6 => "🐛 Found a spider web of exquisite construction, studied it for an embarrassingly long time, and resolved to be better.",
+                7 => "🐛 Toured seventeen flowers in methodical sequence and returned with scientific data that only they can interpret.",
+                8 => "🐛 Discovered a patch of bioluminescent moss and spent the best forty minutes of their recent memory simply glowing near it.",
                 _ => "🐛 Located a rotting log of remarkable complexity and spent most of the trip inside it."
             },
-            "ocean_invertebrate" => Random.Shared.Next(7) switch
+            "ocean_invertebrate" => Random.Shared.Next(10) switch
             {
                 0 => "🐙 Squeezed into three places they definitely shouldn't fit and explored all of them.",
                 1 => "🐙 Camouflaged as a rock for forty minutes, then got bored and went exploring.",
@@ -726,9 +765,12 @@ public static class PetHelper
                 3 => "🐙 Descended into a thermal vent field and came back smelling unusual.",
                 4 => "🐙 Disassembled a small crab trap purely out of curiosity, then reassembled it wrong.",
                 5 => "🐙 Pursued eight separate interesting things simultaneously and finished all of them.",
+                6 => "🐙 Found a submarine canyon, rappelled the entire depth using their own arms as anchors, and returned with a strong opinion about it.",
+                7 => "🐙 Located a garden of sea anemones, spent thirty minutes changing colour to match each one, and moved on without comment.",
+                8 => "🐙 Discovered a particularly fine piece of seafloor real estate, decorated it with twelve carefully selected objects, and then abandoned it for something better.",
                 _ => "🐙 Found a shipwreck, entered through eight different access points, and ranked them by quality."
             },
-            "land_invertebrate" => Random.Shared.Next(7) switch
+            "land_invertebrate" => Random.Shared.Next(10) switch
             {
                 0 => "🕷️ Scaled every vertical surface in the area and mapped them all with silk markers.",
                 1 => "🕷️ Vanished into a log pile and emerged three hours later looking very pleased.",
@@ -736,6 +778,9 @@ public static class PetHelper
                 3 => "🕷️ Built a web in three separate locations, stress-tested each one, and kept the best.",
                 4 => "🕷️ Found a dark cellar, catalogued its contents, and approved of the humidity.",
                 5 => "🕷️ Stalked through tall grass for an hour with the energy of someone very much on a mission.",
+                6 => "🕷️ Discovered a crevice of such perfect dimensions and darkness that they sat inside it for a long time simply appreciating the architecture.",
+                7 => "🕷️ Built a web of unprecedented scale and complexity, took a look at it, and then built a completely different one beside it for comparison.",
+                8 => "🕷️ Navigated an entire ecosystem in miniature — leaf litter, moss, soil, bark — and returned having thoroughly catalogued every corner of it.",
                 _ => "🕷️ Rappelled off a cliff face eight times. The first seven were practice."
             },
             _ => "Set off and returned with something interesting."
@@ -985,58 +1030,176 @@ public static class PetHelper
             ("common_bone", "dinosaur") => "Unearthed an ancient fossil fragment!",
             ("common_bone", "dog") => "Found a perfectly aged bone buried in a park!",
             ("common_bone", "cat") => "Dragged home a mysterious bone from somewhere",
+            ("common_bone", "wolf") => "Returned with a bone of impressive provenance and will not explain further",
+            ("common_bone", "bear") => "Excavated a tremendous old bone from beneath a boulder — took some effort",
+            ("common_bone", "lizard") => "Dragged back a sun-bleached bone nearly as long as themselves",
             // Flowers
             ("common_flower", "bunny") => "Nibbled on a fresh wildflower and brought the rest back!",
             ("common_flower", "horse") => "Pranced through a meadow and returned with flowers in their mane!",
+            ("common_flower", "insect") => "Carefully carried back a bloom still fully loaded with pollen",
+            ("common_flower", "otter") => "Found a water lily, tasted it, decided it was a gift, brought it home",
+            ("common_flower", "bird") => "Wove a found flower into their feathers and arrived home looking excellent",
             // Sticks
             ("common_stick", "dog") => "Found the ultimate stick and refuses to let go of it",
             ("common_stick", "bird") => "Carried back a perfect nesting twig!",
+            ("common_stick", "otter") => "Selected a stick of very precise length and carried it all the way home with purpose",
+            ("common_stick", "wolf") => "Returned carrying a branch that is, objectively, more of a small tree",
             // Rocks
             ("common_rock", "dinosaur") => "Found a petrified rock that looks suspiciously old",
+            ("common_rock", "otter") => "Sourced a pebble of extraordinary smoothness that now lives in the special pile",
+            ("common_rock", "lizard") => "Returned with a flat stone of ideal basking geometry",
+            ("common_rock", "ocean_invertebrate") => "Carried home a rock of apparently perfect size, weight, and placement potential",
+            ("common_rock", "land_invertebrate") => "Spent considerable time selecting exactly the right rock from what must have been a very large sample",
             // Coins
             ("uncommon_coin", "bird") => "Spotted a shiny coin from the sky and dove for it!",
             ("uncommon_coin", "cat") => "Batted a coin out of a fountain and brought it home",
+            ("uncommon_coin", "dinosaur") => "Unearthed a coin so old it predates the mint that made it — probably.",
+            ("uncommon_coin", "otter") => "Spotted a glint at the riverbed, dived, retrieved a coin of interesting vintage",
+            ("uncommon_coin", "shark") => "Located a coin on the ocean floor with the precision of something that does this professionally",
+            ("uncommon_coin", "fish") => "Found a coin among the pebbles at the bed of a very clear stream",
             // Berries
             ("uncommon_berry", "bunny") => "Discovered a wild berry patch and ate an alarming quantity",
             ("uncommon_berry", "bird") => "Found a berry-covered bush and had a feast!",
+            ("uncommon_berry", "dinosaur") => "Trampled through an entire berry patch, ate most of it, and returned the rest as tribute.",
+            ("uncommon_berry", "bear") => "Located a wild berry patch and sat in it for a meaningful stretch of time",
+            ("uncommon_berry", "horse") => "Grazed through a section of wild berry hedge and arrived home with a purple-stained nose",
             // Feathers
             ("uncommon_feather", "bird") => "Found a feather from a species they've never encountered!",
             ("uncommon_feather", "cat") => "Stalked and observed a mystery bird, returned with proof",
+            ("uncommon_feather", "dinosaur") => "Returned with a pterodactyl feather. From *where*, exactly, is unclear and perhaps best not examined.",
+            ("uncommon_feather", "wolf") => "Found a large, striking feather and carried it home with unexpected gentleness",
+            ("uncommon_feather", "lizard") => "Retrieved a bright feather from somewhere very high up — no further information available",
             // Gems
             ("rare_gem", "dinosaur") => "Dug up a prehistoric gemstone embedded in ancient rock!",
             ("rare_gem", "bird") => "Spotted a glittering gem from high altitude and retrieved it!",
+            ("rare_gem", "otter") => "Dove to the riverbed and emerged with something that was definitely not just a pebble",
+            ("rare_gem", "cat") => "Located a glittering gem through methods that suggest better eyesight than previously disclosed",
+            ("rare_gem", "shark") => "Retrieved a gemstone from a crevice at significant depth without apparent difficulty",
+            ("rare_gem", "ocean_invertebrate") => "Found a gemstone on the seafloor and brought it back arranged with three complementary rocks",
+            // Maps
+            ("rare_map", "dinosaur") => "Dug up a territorial map scratched into ancient stone. The territory marked is enormous.",
+            ("rare_map", "wolf") => "Unearthed a hand-drawn map, studied it at length, and returned appearing to know things",
+            ("rare_map", "cat") => "Found a rolled map, batted it around for a bit, and brought home the piece that interested them",
+            ("rare_map", "fish") => "Recovered a waterlogged map from a shipwreck that somehow remained entirely legible",
+            ("rare_map", "shark") => "Found an old nautical chart on the seafloor — accurate by their own assessment, though not by any human one",
             // Crowns
             ("rare_crown", "horse") => "Somehow returned wearing a tiny crown — regal as always",
             ("rare_crown", "cat") => "Found a crown, tried it on, decided it was beneath them, brought it back anyway",
+            ("rare_crown", "dinosaur") => "Returned with a tiny crown balanced on their snout. Refused to explain. Refused to remove it.",
+            ("rare_crown", "bear") => "Arrived home wearing a small crown at an angle that communicated genuine ownership",
+            ("rare_crown", "wolf") => "Returned wearing a circlet of twisted wire and bark that somehow looked intentional",
             // Treasure
             ("epic_treasure", "dinosaur") => "Uncovered a chest buried since prehistoric times!",
             ("epic_treasure", "dog") => "Followed their nose to an entire buried treasure chest!",
+            ("epic_treasure", "shark") => "Brought up a sealed chest from the bottom of a shipwreck they apparently knew the location of",
+            ("epic_treasure", "otter") => "Assembled a small personal treasure from riverbed finds, then found an actual chest, and brought both",
+            ("epic_treasure", "ocean_invertebrate") => "Recovered a chest from a wreck and arrived home with it tucked under three arms",
             // Artifacts
             ("epic_artifact", "dinosaur") => "Found a fossilised artefact predating recorded history!",
             ("epic_artifact", "bird") => "Spotted an ancient artefact from above and retrieved it!",
+            ("epic_artifact", "lizard") => "Emerged from under an old ruin carrying something the archaeologists will want to know about",
+            ("epic_artifact", "cat") => "Knocked an ancient artefact out of a display case somewhere and brought it home as a gift",
+            ("epic_artifact", "wolf") => "Dug up something ancient from a hillside that has absolutely no business being there",
+            ("epic_artifact", "ocean_invertebrate") => "Retrieved an artefact of unknown origin from an unmarked section of seafloor",
             // Legendary star
             ("legendary_star", "bunny") => "Binky'd so high they accidentally caught a falling star!",
             ("legendary_star", "horse") => "Galloped so fast they outran the night and caught a star!",
+            ("legendary_star", "dinosaur") => "Roared at the sky with such force that a star fell. Returned extremely pleased with themselves.",
+            ("legendary_star", "bird") => "Flew high enough to catch a falling star on the way down — arrived home glowing faintly",
+            ("legendary_star", "wolf") => "Howled at the right frequency and something fell from the sky toward them — they caught it",
+            ("legendary_star", "cat") => "Batted a falling star out of the air as it passed — seemed to find this ordinary",
+            ("legendary_star", "shark") => "Breached at precisely the right moment and the star landed in their path — they took it",
+            ("legendary_star", "otter") => "Was floating on their back at exactly the right time and place, and simply caught it",
             _ => genericDescription
         };
 
     private static string[] BattleMoves(string species) => species.ToLower() switch
     {
-        "cat" => ["Paw Swipe", "Hiss Blast", "Furball Throw", "Scratch Flurry", "Disappearing Act"],
-        "dog" => ["Bark Shock", "Pounce", "Zoomie Tackle", "Fetch Frenzy", "Puppy Eyes (confuses opponent)"],
-        "horse" => ["Hoof Stomp", "Gallop Charge", "Mane Whip", "Rear Kick", "Whinny Shockwave"],
-        "bird" => ["Wing Gust", "Talon Strike", "Sonic Chirp", "Dive Bomb", "Feather Flurry"],
-        "dinosaur" => ["Stomp Quake", "Tail Slam", "Prehistoric Roar", "Chomp", "Meteor Crash"],
-        "bunny" => ["Binky Blitz", "Thump Wave", "Ear Slap", "Speed Dash", "Adorable Stare (stuns)"],
-        "fish" => ["Bubble Burst", "Fin Slash", "Current Surge", "Ink Cloud", "Depth Charge"],
-        "shark" => ["Jaw Snap", "Death Roll", "Breach Slam", "Pressure Wave", "Feeding Frenzy"],
-        "wolf" => ["Pack Howl", "Lunge Bite", "Shadow Pounce", "Feral Snarl", "Moonlit Frenzy"],
-        "lizard" => ["Tail Whip", "Tongue Lash", "Scale Spike", "Venom Spit", "Camouflage Strike"],
-        "otter" => ["Rock Throw", "Belly Flop", "Slippery Dodge", "River Rush", "Pebble Barrage"],
-        "bear" => ["Bear Hug", "Swipe Claw", "Ground Pound", "Roar Blast", "Hibernate Charge"],
-        "insect" => ["Sting Rush", "Wing Slash", "Swarm Call", "Venom Jab", "Metamorphosis Surge"],
-        "ocean_invertebrate" => ["Ink Blast", "Tentacle Wrap", "Jet Propulsion", "Camouflage Strike", "Kraken's Grasp"],
-        "land_invertebrate" => ["Venom Strike", "Web Snare", "Pincer Crush", "Carapace Guard", "Scorpion Sting"],
+        "cat" =>
+        [
+            "Paw Swipe", "Hiss Blast", "Furball Throw", "Scratch Flurry", "Disappearing Act",
+            "Midnight Zoomies", "Knock It Off (sends opponent's items flying)", "Void Stare",
+            "Chaos Pounce", "Smug Dodge"
+        ],
+        "dog" =>
+        [
+            "Bark Shock", "Pounce", "Zoomie Tackle", "Fetch Frenzy", "Puppy Eyes (confuses opponent)",
+            "Slobber Barrage", "Sock Steal", "Spin-Out Collision", "Good Boy Aura (buffs self)",
+            "Tennis Ball Volley"
+        ],
+        "horse" =>
+        [
+            "Hoof Stomp", "Gallop Charge", "Mane Whip", "Rear Kick", "Whinny Shockwave",
+            "Dressage Flourish (distracts opponent)", "Full Gallop Rampage", "Fence Jump (evades)",
+            "Thunder Canter", "Stallion's Roar"
+        ],
+        "bird" =>
+        [
+            "Wing Gust", "Talon Strike", "Sonic Chirp", "Dive Bomb", "Feather Flurry",
+            "Thermal Ascent (gains height advantage)", "Aerial Mockery (debuffs opponent confidence)",
+            "Beak Peck Rapid Fire", "Flock Signal (calls for backup)", "Shriek of the Heavens"
+        ],
+        "dinosaur" => ["Stomp Quake", "Tail Slam", "Prehistoric Roar", "Chomp", "Meteor Crash", "Fossil Barrage", "Extinction Event", "Thunder Rex", "Saurian Fury", "Bone Crush"],
+        "bunny" =>
+        [
+            "Binky Blitz", "Thump Wave", "Ear Slap", "Speed Dash", "Adorable Stare (stuns)",
+            "Clover Blitz", "Tunnel Escape (evades)", "Flop (confuses opponent into concern)",
+            "Rapid Rear Kick", "Nose Twitch (unsettles opponent)"
+        ],
+        "fish" =>
+        [
+            "Bubble Burst", "Fin Slash", "Current Surge", "Ink Cloud", "Depth Charge",
+            "Pressure Wave", "Spiral Rush", "Blind Splash", "Electric Shock (for certain breeds)",
+            "School Formation Slam"
+        ],
+        "shark" =>
+        [
+            "Jaw Snap", "Death Roll", "Breach Slam", "Pressure Wave", "Feeding Frenzy",
+            "Torpedo Rush", "Depth Charge", "Fin Blade Sweep", "Apex Predator Aura (intimidates)",
+            "Circling Terror (stalls opponent)"
+        ],
+        "wolf" =>
+        [
+            "Pack Howl", "Lunge Bite", "Shadow Pounce", "Feral Snarl", "Moonlit Frenzy",
+            "Phantom Stalk (opponent loses track)", "Throat Bite", "Winter's Sprint",
+            "Pack Tactics (combo move)", "Dire Warning (reduces opponent's power)"
+        ],
+        "lizard" =>
+        [
+            "Tail Whip", "Tongue Lash", "Scale Spike", "Venom Spit", "Camouflage Strike",
+            "Frill Flare (startles opponent)", "Rock Dash", "Dewlap Intimidation",
+            "Shed Tail Distraction", "Solar Beam (charged from basking)"
+        ],
+        "otter" =>
+        [
+            "Rock Throw", "Belly Flop", "Slippery Dodge", "River Rush", "Pebble Barrage",
+            "Spinning Splash Attack", "Current Redirect", "Tail Slap",
+            "Raft Launch", "Cheerful Chaos (confuses opponent with unpredictability)"
+        ],
+        "bear" =>
+        [
+            "Bear Hug", "Swipe Claw", "Ground Pound", "Roar Blast", "Hibernate Charge",
+            "Boulder Toss", "Salmon Slam", "Honey Trap (slows opponent)", "Mountain Lunge",
+            "Apex Presence (opponent hesitates)"
+        ],
+        "insect" =>
+        [
+            "Sting Rush", "Wing Slash", "Swarm Call", "Venom Jab", "Metamorphosis Surge",
+            "Pheromone Cloud (disorients opponent)", "Carapace Deflect", "Mandible Lock",
+            "Bioluminescent Flash (blinds briefly)", "Rapid Molt (sheds damage)"
+        ],
+        "ocean_invertebrate" =>
+        [
+            "Ink Blast", "Tentacle Wrap", "Jet Propulsion", "Camouflage Strike", "Kraken's Grasp",
+            "Colour Confusion (disorients opponent)", "Eight-Arm Slam", "Pressure Jet",
+            "Mimic Form (copies opponent's last move)", "Deep Sea Surge"
+        ],
+        "land_invertebrate" =>
+        [
+            "Venom Strike", "Web Snare", "Pincer Crush", "Carapace Guard", "Scorpion Sting",
+            "Silk Bind", "Leg Vibration (unsettles opponent)", "Exoskeleton Slam",
+            "Ambush from Above", "Venomous Presence (passive damage)"
+        ],
         _ => ["Tackle", "Scratch", "Growl"]
     };
 }

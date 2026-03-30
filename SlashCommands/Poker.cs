@@ -404,31 +404,62 @@ public class GameComponentHandlers : InteractionModuleBase<SocketInteractionCont
             isBot:  p["UserID"].ToString() == CreditHelper.PokerBotId
         )).ToList();
 
-        // Pre-flop
+        // ── Step 1: Shuffle ────────────────────────────────────────────────────
         var gameMsg = await ModifyOriginalResponseAsync(m =>
         {
-            m.Embed      = Games.BuildGameEmbed("🃏  Dealing cards…", community, 0, playerList, bet, null).Build();
+            m.Embed      = Games.BuildGameEmbed("🂠  Shuffling the deck…", community, 0, playerList, bet, null).Build();
             m.Components = new ComponentBuilder().Build();
         });
 
-        await Task.Delay(1500);
+        await Task.Delay(900);
 
-        // Flop
+        // ── Step 2: Deal ───────────────────────────────────────────────────────
+        await gameMsg.ModifyAsync(m =>
+            m.Embed = Games.BuildGameEmbed("🃏  Dealing cards…", community, 0, playerList, bet, null).Build());
+
+        await Task.Delay(1400);
+
+        // ── Step 3: Flop — one card at a time ─────────────────────────────────
+        await gameMsg.ModifyAsync(m =>
+            m.Embed = Games.BuildGameEmbed("🌊  Flop  *(1 / 3)*", community, 1, playerList, bet, null).Build());
+
+        await Task.Delay(750);
+
+        await gameMsg.ModifyAsync(m =>
+            m.Embed = Games.BuildGameEmbed("🌊  Flop  *(2 / 3)*", community, 2, playerList, bet, null).Build());
+
+        await Task.Delay(750);
+
         await gameMsg.ModifyAsync(m =>
             m.Embed = Games.BuildGameEmbed("🌊  Flop", community, 3, playerList, bet, null).Build());
-        await Task.Delay(2000);
 
-        // Turn
+        await Task.Delay(1800);
+
+        // ── Step 4: Turn (4th card) ────────────────────────────────────────────
         await gameMsg.ModifyAsync(m =>
-            m.Embed = Games.BuildGameEmbed("🌊  Turn", community, 4, playerList, bet, null).Build());
+            m.Embed = Games.BuildGameEmbed("🎯  Turn", community, 4, playerList, bet, null).Build());
+
         await Task.Delay(2000);
 
-        // River
+        // ── Step 5: River (5th card) ───────────────────────────────────────────
         await gameMsg.ModifyAsync(m =>
-            m.Embed = Games.BuildGameEmbed("🌊  River", community, 5, playerList, bet, null).Build());
+            m.Embed = Games.BuildGameEmbed("💧  River", community, 5, playerList, bet, null).Build());
+
         await Task.Delay(2000);
 
-        // Showdown
+        // ── Step 6: Showdown tease ─────────────────────────────────────────────
+        await gameMsg.ModifyAsync(m =>
+            m.Embed = Games.BuildGameEmbed("⚡  Showdown!", community, 5, playerList, bet, null).Build());
+
+        await Task.Delay(1100);
+
+        // ── Step 7: Calculating hands ──────────────────────────────────────────
+        await gameMsg.ModifyAsync(m =>
+            m.Embed = Games.BuildGameEmbed("🧮  Calculating hands…", community, 5, playerList, bet, null).Build());
+
+        await Task.Delay(1000);
+
+        // ── Step 8: Showdown ───────────────────────────────────────────────────
         var results = playerList.Select(p =>
         {
             var seven = p.hand.Concat(community).ToList();
