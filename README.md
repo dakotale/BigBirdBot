@@ -402,7 +402,7 @@ These commands require elevated permissions.
 
 | Component | Technology |
 |---|---|
-| Language | C# (.NET 8) |
+| Language | C# (.NET 10) |
 | Discord library | [Discord.Net](https://github.com/discord-net/Discord.Net) (Interaction Framework) |
 | Music | [Lavalink4NET](https://github.com/angelobreuer/Lavalink4NET) |
 | Database | SQL Server (stored procedures via `SqlClient`) |
