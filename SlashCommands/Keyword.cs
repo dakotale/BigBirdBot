@@ -12,8 +12,9 @@ namespace DiscordBot.SlashCommands;
 /// Keyword management — /keyword [subcommand]
 /// Reduces 11 top-level commands to 1 group, freeing 10 command slots.
 ///
-/// /keyword add | delete | rename | copy | info | list
-/// /keyword url    delete
+/// /keyword add | delete | rename | info | list
+/// /keyword alias      add | delete | list
+/// /keyword url        delete
 /// /keyword schedule   add | remove | list | requeue
 /// </summary>
 [Group("keyword", "Keyword management commands.")]
@@ -123,52 +124,120 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
     }
 
 
-    [SlashCommand("copy", "Copy all entries from one keyword into another.")]
-    [EnabledInDm(false)]
-    [RequireUserPermission(ChannelPermission.ManageMessages)]
-    public async Task HandleCopyAsync(
-        [MinLength(1), MaxLength(50),
-         Summary("source", "Keyword to copy entries from")] string source,
-        [MinLength(1), MaxLength(50),
-         Summary("destination", "Keyword to copy entries into")] string destination)
+    // ══════════════════════════════════════════════════════════════════════════
+    // /keyword alias [subcommand]
+    // ══════════════════════════════════════════════════════════════════════════
+
+    [Group("alias", "Manage keyword aliases.")]
+    public class AliasCommands : InteractionModuleBase<SocketInteractionContext>
     {
-        await DeferAsync(ephemeral: true);
+        private readonly EmbedHelper     _embed = new();
+        private readonly StoredProcedure _sp    = new();
 
-        source = source.Trim().ToLowerInvariant();
-        destination = destination.Trim().ToLowerInvariant();
+        private string Username => Context.User.Username;
 
-        try
+
+        [SlashCommand("add", "Create a trigger word that serves entries from an existing keyword.")]
+        [EnabledInDm(false)]
+        [RequireUserPermission(ChannelPermission.ManageMessages)]
+        public async Task HandleAddAsync(
+            [MinLength(1), MaxLength(50),
+             Summary("alias", "The new trigger word")] string alias,
+            [MinLength(1), MaxLength(50),
+             Summary("keyword", "Keyword whose entries will be served")] string keyword)
         {
-            var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetChatKeywordAll",
-                [new SqlParameter("@Keyword", source)]);
+            await DeferAsync(ephemeral: true);
+
+            alias   = alias.Trim().ToLowerInvariant();
+            keyword = keyword.Trim().ToLowerInvariant();
+
+            try
+            {
+                var dt = _sp.Select(Constants.Constants.discordBotConnStr, "AddChatKeywordAlias",
+                [
+                    new SqlParameter("@Alias",     alias),
+                    new SqlParameter("@Keyword",   keyword),
+                    new SqlParameter("@ServerID",  (long)Context.Guild.Id),
+                    new SqlParameter("@CreatedBy", Username)
+                ]);
+
+                if (dt.Rows.Count > 0 && dt.Rows[0]["Result"].ToString() == "exists")
+                {
+                    await FollowupAsync(embed: _embed.BuildErrorEmbed(
+                        "Alias", $"**{alias}** is already an alias in this server.", Username).Build(),
+                        ephemeral: true);
+                    return;
+                }
+
+                await FollowupAsync(embed: _embed.BuildMessageEmbed(
+                    "Alias Added",
+                    $"**{alias}** → **{keyword}**: typing `{alias}` in chat will now trigger **{keyword}** entries.",
+                    "", Username, Color.Blue).Build(), ephemeral: true);
+            }
+            catch (Exception ex)
+            {
+                await FollowupAsync(embed: _embed.BuildErrorEmbed(
+                    "Alias Error", ex.Message, Username).Build(), ephemeral: true);
+            }
+        }
+
+
+        [SlashCommand("delete", "Remove a keyword alias.")]
+        [EnabledInDm(false)]
+        [RequireUserPermission(ChannelPermission.ManageMessages)]
+        public async Task HandleDeleteAsync(
+            [MinLength(1), MaxLength(50),
+             Summary("alias", "The alias to remove")] string alias)
+        {
+            await DeferAsync(ephemeral: true);
+
+            alias = alias.Trim().ToLowerInvariant();
+
+            _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "DeleteChatKeywordAlias",
+            [
+                new SqlParameter("@Alias",    alias),
+                new SqlParameter("@ServerID", (long)Context.Guild.Id)
+            ]);
+
+            await FollowupAsync(embed: _embed.BuildMessageEmbed(
+                "Alias Removed",
+                $"Alias **{alias}** has been removed.",
+                "", Username, Color.Blue).Build(), ephemeral: true);
+        }
+
+
+        [SlashCommand("list", "List all aliases pointing to a keyword.")]
+        [EnabledInDm(false)]
+        [RequireUserPermission(ChannelPermission.ManageMessages)]
+        public async Task HandleListAsync(
+            [MinLength(1), MaxLength(50),
+             Summary("keyword", "Keyword to list aliases for")] string keyword)
+        {
+            await DeferAsync(ephemeral: true);
+
+            keyword = keyword.Trim().ToLowerInvariant();
+
+            var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetChatKeywordAliases",
+            [
+                new SqlParameter("@Keyword",  keyword),
+                new SqlParameter("@ServerID", (long)Context.Guild.Id)
+            ]);
 
             if (dt.Rows.Count == 0)
             {
-                await FollowupAsync(embed: _embed.BuildErrorEmbed(
-                    "Copy Keyword", $"No entries found under **{source}**.", Username).Build(),
-                    ephemeral: true);
+                await FollowupAsync(embed: _embed.BuildMessageEmbed(
+                    "Keyword Aliases",
+                    $"No aliases found for **{keyword}**.",
+                    "", Username, Color.Blue).Build(), ephemeral: true);
                 return;
             }
 
-            foreach (DataRow row in dt.Rows)
-            {
-                _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "AddChatKeyword",
-                [
-                    new SqlParameter("@FilePath",  row["FilePath"].ToString()),
-                    new SqlParameter("@TableName", destination),
-                    new SqlParameter("@UserID",    Context.User.Id.ToString())
-                ]);
-            }
+            string list = string.Join(", ", dt.AsEnumerable().Select(r => $"`{r["Alias"]}`"));
 
             await FollowupAsync(embed: _embed.BuildMessageEmbed(
-                "Keyword Copied",
-                $"Copied **{dt.Rows.Count}** entries from **{source}** → **{destination}**.",
+                $"Aliases — {keyword}",
+                $"**{dt.Rows.Count}** alias(es): {list}",
                 "", Username, Color.Blue).Build(), ephemeral: true);
-        }
-        catch (Exception ex)
-        {
-            await FollowupAsync(embed: _embed.BuildErrorEmbed(
-                "Copy Error", ex.Message, Username).Build(), ephemeral: true);
         }
     }
 
