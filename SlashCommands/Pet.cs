@@ -1704,6 +1704,10 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
             opponentName, opponentSpecies, opponentPower,
             draw);
 
+        // Emoji labels — stripped from title if picture is set
+        string cLabel = challengerPic is null ? $"{challengerEmoji} {challengerName}" : challengerName;
+        string oLabel = opponentPic is null ? $"{opponentEmoji} {opponentName}" : opponentName;
+
         EmbedBuilder BuildBattleEmbed(int roundsShown)
         {
             // Use picture if available — winner's pic on final frame, challenger's pic during battle
@@ -1711,10 +1715,6 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
                 ? (challengerPic ?? opponentPic)
                 : (challengerWon ? challengerPic : opponentPic)
                   ?? (challengerWon ? opponentPic : challengerPic);
-
-            // Emoji labels — stripped from title if picture is set
-            string cLabel = challengerPic is null ? $"{challengerEmoji} {challengerName}" : challengerName;
-            string oLabel = opponentPic is null ? $"{opponentEmoji} {opponentName}" : opponentName;
 
             var eb = new EmbedBuilder()
                 .WithTitle(roundsShown < 3
