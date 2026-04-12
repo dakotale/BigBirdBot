@@ -255,10 +255,8 @@ public sealed class InteractionHandlerService
         try
         {
             var context = new SocketInteractionContext(_client, interaction);
-            var result = await _handler.ExecuteCommandAsync(context, _services);
 
-            if (result.IsSuccess &&
-                interaction.Type is InteractionType.ApplicationCommand &&
+            if (interaction.Type is InteractionType.ApplicationCommand &&
                 context.Interaction is SocketSlashCommand cmd)
             {
                 var guildOrChannel = context.Guild is not null
@@ -271,6 +269,8 @@ public sealed class InteractionHandlerService
                     Constants.Constants.discordBotConnStr,
                     guildOrChannel);
             }
+
+            var result = await _handler.ExecuteCommandAsync(context, _services);
 
             if (!result.IsSuccess)
                 await SendErrorAsync(interaction, result);
