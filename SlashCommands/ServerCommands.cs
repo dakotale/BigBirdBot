@@ -113,17 +113,18 @@ public class ServerCommands : InteractionModuleBase<SocketInteractionContext>
         {
             var guild = Context.Guild;
 
-            if (!guild.Roles.Any(r => r.Name.Contains("birthday", StringComparison.OrdinalIgnoreCase)))
+            var birthdayRole = guild.Roles.FirstOrDefault(r => r.Name.Contains("birthday", StringComparison.OrdinalIgnoreCase));
+            if (birthdayRole == null)
             {
-                await guild.CreateRoleAsync("birthday", null, Color.Purple, false, true);
-                await FollowupAsync(embed: new EmbedBuilder()
-                    .WithTitle("Birthday")
-                    .WithColor(Color.Gold)
-                    .WithDescription(
-                        "A **birthday** role was created. " +
-                        "Please have an administrator assign it before running this command again.")
-                    .Build(), ephemeral: true);
-                return;
+                birthdayRole = await guild.CreateRoleAsync("birthday", null, Color.Purple, false, true);
+            }
+
+            await guild.DownloadUsersAsync();
+            var nonBotMembers = guild.Users.Where(u => !u.IsBot).ToList();
+            var membersToAdd = nonBotMembers.Where(u => !u.Roles.Any(r => r.Id == birthdayRole.Id)).ToList();
+            foreach (var member in membersToAdd)
+            {
+                await member.AddRoleAsync(birthdayRole);
             }
 
             var birthday = new DateTime(DateTime.Now.Year, monthNumber, dayNumber);
