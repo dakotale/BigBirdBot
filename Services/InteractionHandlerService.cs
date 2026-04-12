@@ -259,15 +259,19 @@ public sealed class InteractionHandlerService
             if (interaction.Type is InteractionType.ApplicationCommand &&
                 context.Interaction is SocketSlashCommand cmd)
             {
-                var guildOrChannel = context.Guild is not null
-                    ? context.Guild.Id.ToString()
-                    : context.Channel.Id.ToString();
+                try
+                {
+                    var guildOrChannel = context.Guild is not null
+                        ? context.Guild.Id.ToString()
+                        : context.Channel.Id.ToString();
 
-                new Audit().InsertAudit(
-                    GetFullCommandName(cmd),
-                    context.User.Id.ToString(),
-                    Constants.Constants.discordBotConnStr,
-                    guildOrChannel);
+                    new Audit().InsertAudit(
+                        GetFullCommandName(cmd),
+                        context.User.Id.ToString(),
+                        Constants.Constants.discordBotConnStr,
+                        guildOrChannel);
+                }
+                catch { /* audit failure must not affect command execution */ }
             }
 
             var result = await _handler.ExecuteCommandAsync(context, _services);
@@ -289,7 +293,7 @@ public sealed class InteractionHandlerService
     private static string GetFullCommandName(SocketSlashCommand cmd)
     {
         var parts = new System.Text.StringBuilder(cmd.CommandName);
-        var option = cmd.Data.Options.FirstOrDefault();
+        var option = cmd.Data.Options?.FirstOrDefault();
         while (option is { Type: ApplicationCommandOptionType.SubCommandGroup or ApplicationCommandOptionType.SubCommand })
         {
             parts.Append(' ');
