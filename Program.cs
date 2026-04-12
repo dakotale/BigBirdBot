@@ -247,6 +247,7 @@ internal sealed class BotHost(
             new SqlParameter("@UserID",   user.Id.ToString()),
             new SqlParameter("@ServerID", guild.Id.ToString())
         ]);
+        new Audit().InsertUserLeftAudit(user.Id.ToString(), guild.Id.ToString(), Constants.discordBotConnStr);
         return Task.CompletedTask;
     }
 
@@ -254,11 +255,14 @@ internal sealed class BotHost(
     {
         if (user.IsBot || user.IsWebhook) return Task.CompletedTask;
         AddUserToDatabase(user, user.Guild.Id);
+        new Audit().InsertUserJoinedAudit(user.Id.ToString(), user.Guild.Id.ToString(), Constants.discordBotConnStr);
         return Task.CompletedTask;
     }
 
     private async Task OnJoinedGuildAsync(SocketGuild guild)
     {
+        new Audit().InsertGuildJoinedAudit(guild.Id.ToString(), guild.Name, Constants.discordBotConnStr);
+
         var existingIds = _sp
             .Select(Constants.discordBotConnStr, "GetServers", [])
             .AsEnumerable()
@@ -337,6 +341,11 @@ internal sealed class BotHost(
             await ((IGuildUser)guildUser).AddRoleAsync(role);
 
         string action = hasRole ? "removed" : "added";
+        new Audit().InsertButtonAudit(
+            $"{pronounSelected} {action}",
+            component.User.Id.ToString(),
+            component.GuildId!.Value.ToString(),
+            Constants.discordBotConnStr);
         await component.RespondAsync(
             embed: _embed.BuildMessageEmbed(
                 "Pronoun Selection",
@@ -466,6 +475,8 @@ internal sealed class BotHost(
                     _sp.UpdateCreate(Constants.discordBotConnStr, "DeleteScrambleGame",
                         [new SqlParameter("@ChannelID", msgChannel.Id.ToString())]);
 
+                    new Audit().InsertGameTriggerAudit("scramble", userId, serverId, Constants.discordBotConnStr);
+
                     await msg.Channel.SendMessageAsync(embed: new EmbedBuilder()
                         .WithTitle("🎉  Correct!")
                         .WithColor(Color.Green)
@@ -498,6 +509,8 @@ internal sealed class BotHost(
 
                 _sp.UpdateCreate(Constants.discordBotConnStr, "ClaimPetPuzzle",
                     [new SqlParameter("@PuzzleID", puzzleId)]);
+
+                new Audit().InsertGameTriggerAudit("petpuzzle", userId, serverId, Constants.discordBotConnStr);
 
                 // Always award credits for solving the puzzle.
                 _creditEco.AddCredits(userId, serverId, CreditHelper.PuzzleSolveAmount, "puzzle");
@@ -595,6 +608,9 @@ internal sealed class BotHost(
 
                 bool won = message.Equals(answer, StringComparison.OrdinalIgnoreCase);
                 bool gameOver = won || guesses.Count >= 6;
+
+                if (won)
+                    new Audit().InsertGameTriggerAudit("wordle", userId, serverId, Constants.discordBotConnStr);
 
                 string newGuesses = string.Join(",", guesses);
 
@@ -826,13 +842,27 @@ internal sealed class BotHost(
 
             if (!string.IsNullOrEmpty(fileName))
             {
+                new Audit().InsertReactionAudit(
+                    reaction.Emote.Name,
+                    download.Id.ToString(),
+                    reaction.UserId.ToString(),
+                    cachedChannel.Id.ToString(),
+                    Constants.discordBotConnStr);
                 await TryMarkNsfwAsync(fileName, cachedChannel, reaction);
                 return;
             }
         }
 
         if (IsTriviaEmoji(reaction.Emote.Name))
+        {
+            new Audit().InsertReactionAudit(
+                reaction.Emote.Name,
+                download.Id.ToString(),
+                reaction.UserId.ToString(),
+                cachedChannel.Id.ToString(),
+                Constants.discordBotConnStr);
             await HandleTriviaReactionAsync(cachedMsg, cachedChannel, reaction, download);
+        }
     }
 
     private static bool IsTriviaEmoji(string name) =>
