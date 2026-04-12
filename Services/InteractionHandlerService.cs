@@ -271,7 +271,12 @@ public sealed class InteractionHandlerService
                         Constants.Constants.discordBotConnStr,
                         guildOrChannel);
                 }
-                catch { /* audit failure must not affect command execution */ }
+                catch (Exception auditEx)
+                {
+                    var logging = _services.GetService<LoggingService>();
+                    if (logging is not null)
+                        _ = logging.DebugAsync($"[Audit] Insert failed for '{GetFullCommandName(cmd)}': {auditEx.Message}");
+                }
             }
 
             var result = await _handler.ExecuteCommandAsync(context, _services);
