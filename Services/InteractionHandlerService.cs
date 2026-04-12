@@ -264,7 +264,7 @@ public sealed class InteractionHandlerService
                     : context.Channel.Id.ToString();
 
                 new Audit().InsertAudit(
-                    cmd.CommandName,
+                    GetFullCommandName(cmd),
                     context.User.Id.ToString(),
                     Constants.Constants.discordBotConnStr,
                     guildOrChannel);
@@ -284,6 +284,19 @@ public sealed class InteractionHandlerService
                     .ContinueWith(t => t.Result.DeleteAsync());
             }
         }
+    }
+
+    private static string GetFullCommandName(SocketSlashCommand cmd)
+    {
+        var parts = new System.Text.StringBuilder(cmd.CommandName);
+        var option = cmd.Data.Options.FirstOrDefault();
+        while (option is { Type: ApplicationCommandOptionType.SubCommandGroup or ApplicationCommandOptionType.SubCommand })
+        {
+            parts.Append(' ');
+            parts.Append(option.Name);
+            option = option.Options?.FirstOrDefault();
+        }
+        return parts.ToString();
     }
 
     private async Task HandleInteractionExecutedAsync(
