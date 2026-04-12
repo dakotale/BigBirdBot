@@ -113,7 +113,7 @@ public class ServerCommands : InteractionModuleBase<SocketInteractionContext>
         {
             var guild = Context.Guild;
 
-            var birthdayRole = guild.Roles.FirstOrDefault(r => r.Name.Contains("birthday", StringComparison.OrdinalIgnoreCase));
+            IRole birthdayRole = guild.Roles.FirstOrDefault(r => r.Name.Contains("birthday", StringComparison.OrdinalIgnoreCase));
             if (birthdayRole == null)
             {
                 birthdayRole = await guild.CreateRoleAsync("birthday", null, Color.Purple, false, true);
