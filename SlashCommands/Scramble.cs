@@ -41,7 +41,7 @@ public partial class Games
 
 
     [SlashCommand("scramble", "Unscramble the word before time runs out!")]
-    [EnabledInDm(false)]
+    [EnabledInDm(true)]
     public async Task HandleScrambleAsync(
         [Choice("Easy",   "easy"),
          Choice("Medium", "medium"),

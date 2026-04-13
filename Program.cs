@@ -355,10 +355,100 @@ internal sealed class BotHost(
     }
 
 
+    private async Task HandleDmGameResponseAsync(SocketMessage msg, SocketDMChannel dmChannel)
+    {
+        string message   = msg.Content.Trim().ToLowerInvariant();
+        string userId    = msg.Author.Id.ToString();
+        string channelId = dmChannel.Id.ToString();
+
+        // Scramble
+        var scramble = _sp.Select(Constants.discordBotConnStr, "GetScrambleByChannel",
+            [new SqlParameter("@ChannelID", channelId)]);
+
+        if (scramble.Rows.Count > 0)
+        {
+            bool expired = DateTime.TryParse(scramble.Rows[0]["ExpiresAt"].ToString(), out var expiresAt)
+                           && DateTime.UtcNow > expiresAt;
+
+            if (!expired)
+            {
+                string correctAnswer = scramble.Rows[0]["Answer"].ToString()!;
+
+                if (string.Equals(message, correctAnswer, StringComparison.OrdinalIgnoreCase))
+                {
+                    _sp.UpdateCreate(Constants.discordBotConnStr, "DeleteScrambleGame",
+                        [new SqlParameter("@ChannelID", channelId)]);
+
+                    await msg.Channel.SendMessageAsync(embed: new EmbedBuilder()
+                        .WithTitle("🎉  Correct!")
+                        .WithColor(Color.Green)
+                        .WithDescription(
+                            $"{msg.Author.Mention} solved it! The word was **{correctAnswer}**.")
+                        .WithFooter($"Solved by {msg.Author.Username}")
+                        .WithCurrentTimestamp()
+                        .Build());
+                }
+
+                return;
+            }
+        }
+
+        // Wordle
+        if (message.Length == 5 && message.All(char.IsLetter))
+        {
+            var wordle = _sp.Select(Constants.discordBotConnStr, "GetWordleByChannel",
+                [new SqlParameter("@ChannelID", channelId)]);
+
+            if (wordle.Rows.Count > 0)
+            {
+                string answer       = wordle.Rows[0]["Answer"].ToString()!;
+                string messageIdStr = wordle.Rows[0]["MessageID"].ToString()!;
+                string guessesRaw   = wordle.Rows[0]["Guesses"].ToString()!;
+
+                var guesses = string.IsNullOrEmpty(guessesRaw)
+                    ? new List<string>()
+                    : guessesRaw.Split(',').ToList();
+
+                guesses.Add(message);
+
+                bool won      = message.Equals(answer, StringComparison.OrdinalIgnoreCase);
+                bool gameOver = won || guesses.Count >= 6;
+
+                string newGuesses = string.Join(",", guesses);
+
+                if (gameOver)
+                    _sp.UpdateCreate(Constants.discordBotConnStr, "DeleteWordleGame",
+                        [new SqlParameter("@ChannelID", channelId)]);
+                else
+                    _sp.UpdateCreate(Constants.discordBotConnStr, "UpdateWordleGame",
+                    [
+                        new SqlParameter("@ChannelID", channelId),
+                        new SqlParameter("@Guesses",   newGuesses)
+                    ]);
+
+                if (ulong.TryParse(messageIdStr, out ulong messageId) &&
+                    await msg.Channel.GetMessageAsync(messageId) is IUserMessage gameMsg)
+                {
+                    await gameMsg.ModifyAsync(m =>
+                        m.Embed = DiscordBot.SlashCommands.Games
+                            .BuildWordleEmbed(answer, guesses, gameOver).Build());
+                }
+            }
+        }
+    }
+
+
     private async Task OnMessageReceivedAsync(SocketMessage msg)
     {
-        if (msg is not { Author.IsBot: false, Author.IsWebhook: false, Channel: SocketGuildChannel msgChannel })
+        if (msg.Author.IsBot || msg.Author.IsWebhook) return;
+
+        if (msg.Channel is SocketDMChannel dmChannel)
+        {
+            await HandleDmGameResponseAsync(msg, dmChannel);
             return;
+        }
+
+        if (msg.Channel is not SocketGuildChannel msgChannel) return;
 
         string message = msg.Content.Trim().ToLowerInvariant();
         string serverId = msgChannel.Guild.Id.ToString();
