@@ -259,6 +259,8 @@ public sealed class InteractionHandlerService
             if (interaction.Type is InteractionType.ApplicationCommand &&
                 context.Interaction is SocketSlashCommand cmd)
             {
+                var logging = _services.GetService<LoggingService>();
+                string fullName = GetFullCommandName(cmd);
                 try
                 {
                     var guildOrChannel = context.Guild is not null
@@ -266,16 +268,18 @@ public sealed class InteractionHandlerService
                         : context.Channel.Id.ToString();
 
                     new Audit().InsertAudit(
-                        GetFullCommandName(cmd),
+                        fullName,
                         context.User.Id.ToString(),
                         Constants.Constants.discordBotConnStr,
                         guildOrChannel);
+
+                    if (logging is not null)
+                        _ = logging.InfoAsync($"[Audit] OK — '{fullName}' by {context.User.Id}");
                 }
                 catch (Exception auditEx)
                 {
-                    var logging = _services.GetService<LoggingService>();
                     if (logging is not null)
-                        _ = logging.DebugAsync($"[Audit] Insert failed for '{GetFullCommandName(cmd)}': {auditEx.Message}");
+                        _ = logging.InfoAsync($"[Audit] FAILED — '{fullName}' by {context.User.Id}: {auditEx.GetType().Name}: {auditEx.Message}");
                 }
             }
 
