@@ -160,7 +160,7 @@ public partial class Games
 
 
     [SlashCommand("wordle", "Guess the 5-letter word in 6 attempts!")]
-    [EnabledInDm(true)]
+    [EnabledInDm(false)]
     public async Task HandleWordleAsync()
     {
         await DeferAsync();
