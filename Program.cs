@@ -261,23 +261,26 @@ internal sealed class BotHost(
 
     private async Task OnJoinedGuildAsync(SocketGuild guild)
     {
-        new Audit().InsertGuildJoinedAudit(guild.Id.ToString(), guild.Name, Constants.discordBotConnStr);
-
-        var existingIds = _sp
-            .Select(Constants.discordBotConnStr, "GetServers", [])
-            .AsEnumerable()
-            .Select(r => r["ServerUID"].ToString())
-            .ToHashSet();
-
-        if (!existingIds.Contains(guild.Id.ToString()))
+        await Task.Run(() =>
         {
-            _sp.UpdateCreate(Constants.discordBotConnStr, "AddServer",
-            [
-                new SqlParameter("@ServerUID",        (long)guild.Id),
-                new SqlParameter("@ServerName",       guild.Name),
-                new SqlParameter("@DefaultChannelID", (long)guild.DefaultChannel.Id)
-            ]);
-        }
+            new Audit().InsertGuildJoinedAudit(guild.Id.ToString(), guild.Name, Constants.discordBotConnStr);
+
+            var existingIds = _sp
+                .Select(Constants.discordBotConnStr, "GetServers", [])
+                .AsEnumerable()
+                .Select(r => r["ServerUID"].ToString())
+                .ToHashSet();
+
+            if (!existingIds.Contains(guild.Id.ToString()))
+            {
+                _sp.UpdateCreate(Constants.discordBotConnStr, "AddServer",
+                [
+                    new SqlParameter("@ServerUID",        (long)guild.Id),
+                    new SqlParameter("@ServerName",       guild.Name),
+                    new SqlParameter("@DefaultChannelID", (long)guild.DefaultChannel.Id)
+                ]);
+            }
+        });
 
         await guild.DownloadUsersAsync();
 
@@ -289,8 +292,11 @@ internal sealed class BotHost(
             return;
         }
 
-        foreach (var user in guild.Users.Where(u => !u.IsBot && !u.IsWebhook))
-            AddUserToDatabase(user, guild.Id);
+        await Task.Run(() =>
+        {
+            foreach (var user in guild.Users.Where(u => !u.IsBot && !u.IsWebhook))
+                AddUserToDatabase(user, guild.Id);
+        });
 
         await logger.InfoAsync($"{guild.Users.Count} users added for {guild.Name}");
     }
