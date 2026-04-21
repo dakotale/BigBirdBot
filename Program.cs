@@ -1456,12 +1456,27 @@ internal sealed class BotHost(
                     }
                     else
                     {
-                        await user.SendFileAsync(filePath, $"**{tableName} - {timestamp}**");
+                        var fileEmbed = new EmbedBuilder()
+                            .WithTitle(tableName)
+                            .WithImageUrl("attachment://" + Path.GetFileName(filePath))
+                            .WithColor(Color.Blue)
+                            .WithFooter(timestamp)
+                            .Build();
+                        await user.SendFileAsync(filePath, embed: fileEmbed);
                     }
                 }
 
                 else if (await IsLinkWorkingAsync(filePath))
-                    await user.SendMessageAsync($"**{tableName} - {timestamp}**\n**URL:** {filePath}");
+                {
+                    var urlEmbed = new EmbedBuilder()
+                        .WithTitle(tableName)
+                        .WithUrl(filePath)
+                        .WithImageUrl(filePath)
+                        .WithColor(Color.Blue)
+                        .WithFooter(timestamp)
+                        .Build();
+                    await user.SendMessageAsync(embed: urlEmbed);
+                }
                 else
                 {
                     _sp.UpdateCreate(Constants.discordBotConnStr, "DeleteChatKeywordURL",
@@ -1469,8 +1484,13 @@ internal sealed class BotHost(
                         new SqlParameter("@FilePath", filePath),
                         new SqlParameter("@Keyword",  "")
                     ]);
-                    await user.SendMessageAsync(
-                        $"**{tableName} - {timestamp}**\n**URL:** {filePath} — dead link removed.");
+                    var deadEmbed = new EmbedBuilder()
+                        .WithTitle(tableName)
+                        .WithColor(Color.Red)
+                        .WithDescription($"~~{filePath}~~ — dead link removed.")
+                        .WithFooter(timestamp)
+                        .Build();
+                    await user.SendMessageAsync(embed: deadEmbed);
                 }
             }
             catch (HttpException ex)
