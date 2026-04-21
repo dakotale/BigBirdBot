@@ -227,6 +227,7 @@ internal sealed class BotHost(
     private async Task OnLogMessageAsync(LogMessage msg)
     {
         if (msg.Exception is null || msg.Message.Length == 0) return;
+        if (msg.Exception is Discord.WebSocket.GatewayReconnectException) return;
 
         var channel = client.GetGuild(LogGuildId)?.GetTextChannel(LogChannelId);
         if (channel is null) return;
@@ -1441,10 +1442,18 @@ internal sealed class BotHost(
 
                 if (filePath.StartsWith(@"C:\"))
                 {
-                    if (File.Exists(filePath))
-                        await user.SendFileAsync(filePath, $"**{tableName} - {timestamp}**");
-                    else
+                    if (!File.Exists(filePath))
+                    {
                         _sp.Select(Constants.discordBotConnStr, "UpdateUsersScheduledKeywordRequeue", [new SqlParameter("@UserID", userId)]);
+                    }
+                    else if (new FileInfo(filePath).Length > 8 * 1024 * 1024)
+                    {
+                        await NotifyOwnerAsync($"[Keywords] Skipped {filePath} for user {userId} — file exceeds 8 MB Discord limit.");
+                    }
+                    else
+                    {
+                        await user.SendFileAsync(filePath, $"**{tableName} - {timestamp}**");
+                    }
                 }
 
                 else if (await IsLinkWorkingAsync(filePath))
