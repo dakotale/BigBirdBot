@@ -1468,14 +1468,22 @@ internal sealed class BotHost(
 
                 else if (await IsLinkWorkingAsync(filePath))
                 {
-                    var urlEmbed = new EmbedBuilder()
-                        .WithTitle(tableName)
-                        .WithUrl(filePath)
-                        .WithImageUrl(filePath)
-                        .WithColor(Color.Blue)
-                        .WithFooter(timestamp)
-                        .Build();
-                    await user.SendMessageAsync(embed: urlEmbed);
+                    if (IsDirectImageUrl(filePath))
+                    {
+                        var urlEmbed = new EmbedBuilder()
+                            .WithTitle(tableName)
+                            .WithUrl(filePath)
+                            .WithImageUrl(filePath)
+                            .WithColor(Color.Blue)
+                            .WithFooter(timestamp)
+                            .Build();
+                        await user.SendMessageAsync(embed: urlEmbed);
+                    }
+                    else
+                    {
+                        // Let Discord natively unfurl social/video links (bsky, YouTube, etc.)
+                        await user.SendMessageAsync($"**{tableName}** — {timestamp}\n{filePath}");
+                    }
                 }
                 else
                 {
@@ -1650,6 +1658,13 @@ internal sealed class BotHost(
         return fullPath;
     }
 
+
+    private static bool IsDirectImageUrl(string url)
+    {
+        var path = url.Split('?')[0].ToLowerInvariant();
+        return path.EndsWith(".jpg") || path.EndsWith(".jpeg") || path.EndsWith(".png")
+            || path.EndsWith(".gif") || path.EndsWith(".webp");
+    }
 
     private async Task<bool> IsLinkWorkingAsync(string url)
     {
