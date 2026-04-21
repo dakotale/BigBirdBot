@@ -920,24 +920,39 @@ internal sealed class BotHost(
     }
 
 
-    private async Task OnReactionAddedAsync(
+    private Task OnReactionAddedAsync(
         Cacheable<IUserMessage, ulong> cachedMsg,
         Cacheable<IMessageChannel, ulong> cachedChannel,
         SocketReaction reaction)
     {
-        var download = await cachedMsg.GetOrDownloadAsync();
-        if (download is null) return;
-        if (client.GetUser(reaction.UserId)?.IsBot == true) return;
-
-        var imageUrl = download.Embeds.FirstOrDefault(e => e.Image.HasValue)?.Image?.Url;
-
-        if (reaction.Emote.Name == "❌" && download.Author.IsBot && download.Reactions.Count < 2)
+        _ = Task.Run(async () =>
         {
-            string? fileName = imageUrl is not null
-                ? Path.GetFileName(new Uri(imageUrl).LocalPath)
-                : null;
+            var download = await cachedMsg.GetOrDownloadAsync();
+            if (download is null) return;
+            if (client.GetUser(reaction.UserId)?.IsBot == true) return;
 
-            if (!string.IsNullOrEmpty(fileName))
+            var imageUrl = download.Embeds.FirstOrDefault(e => e.Image.HasValue)?.Image?.Url;
+
+            if (reaction.Emote.Name == "❌" && download.Author.IsBot && download.Reactions.Count < 2)
+            {
+                string? fileName = imageUrl is not null
+                    ? Path.GetFileName(new Uri(imageUrl).LocalPath)
+                    : null;
+
+                if (!string.IsNullOrEmpty(fileName))
+                {
+                    new Audit().InsertReactionAudit(
+                        reaction.Emote.Name,
+                        download.Id.ToString(),
+                        reaction.UserId.ToString(),
+                        cachedChannel.Id.ToString(),
+                        Constants.discordBotConnStr);
+                    await TryMarkNsfwAsync(fileName, cachedChannel, reaction);
+                    return;
+                }
+            }
+
+            if (IsTriviaEmoji(reaction.Emote.Name))
             {
                 new Audit().InsertReactionAudit(
                     reaction.Emote.Name,
@@ -945,21 +960,10 @@ internal sealed class BotHost(
                     reaction.UserId.ToString(),
                     cachedChannel.Id.ToString(),
                     Constants.discordBotConnStr);
-                await TryMarkNsfwAsync(fileName, cachedChannel, reaction);
-                return;
+                await HandleTriviaReactionAsync(cachedMsg, cachedChannel, reaction, download);
             }
-        }
-
-        if (IsTriviaEmoji(reaction.Emote.Name))
-        {
-            new Audit().InsertReactionAudit(
-                reaction.Emote.Name,
-                download.Id.ToString(),
-                reaction.UserId.ToString(),
-                cachedChannel.Id.ToString(),
-                Constants.discordBotConnStr);
-            await HandleTriviaReactionAsync(cachedMsg, cachedChannel, reaction, download);
-        }
+        });
+        return Task.CompletedTask;
     }
 
     private static bool IsTriviaEmoji(string name) =>
