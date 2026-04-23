@@ -16,8 +16,7 @@ namespace DiscordBot.Helper
             DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "GetServerByID", [new SqlParameter("@ServerUID", (long)serverId)]);
             var serverInfo = ServerInfo.PopulateByDataTable(dt);
 
-            if (serverInfo != null) return serverInfo;
-            else return null;
+            return serverInfo;
         }
 
         public class ServerInfo

@@ -90,6 +90,19 @@ public static class CreditHelper
     }
 
 
+    private static int WeightedIndex(int[] weights)
+    {
+        int total = weights.Sum();
+        int roll = Random.Shared.Next(total);
+        int cum = 0;
+        for (int i = 0; i < weights.Length; i++)
+        {
+            cum += weights[i];
+            if (roll < cum) return i;
+        }
+        return weights.Length - 1;
+    }
+
     /// <summary>Random symbols for the spinning animation frames (not weighted — pure visual).</summary>
     public static readonly string[] SlotSpinSymbols = ["💎", "7️⃣", "🍀", "⭐", "🔔", "🍇", "🍊", "🍋", "🍒"];
 
@@ -109,20 +122,8 @@ public static class CreditHelper
         ("🍒", "Cherry",    16,   1.0),  // any cherry = small win
     ];
 
-    public static string SpinReel()
-    {
-        int totalWeight = SlotSymbols.Sum(s => s.weight);
-        int roll = Random.Shared.Next(totalWeight);
-        int cumulative = 0;
-
-        foreach (var (symbol, _, weight, _) in SlotSymbols)
-        {
-            cumulative += weight;
-            if (roll < cumulative) return symbol;
-        }
-
-        return SlotSymbols[^1].symbol;
-    }
+    public static string SpinReel() =>
+        SlotSymbols[WeightedIndex(SlotSymbols.Select(s => s.weight).ToArray())].symbol;
 
     public static (decimal payout, string result) CalculateSlotPayout(
         string r1, string r2, string r3, decimal bet)
@@ -205,18 +206,8 @@ public static class CreditHelper
         ("Miracle Run",  "✨", 2,  50.0),
     ];
 
-    public static int RunRace()
-    {
-        int total = Horses.Sum(h => h.weight);
-        int roll = Random.Shared.Next(total);
-        int cum = 0;
-        for (int i = 0; i < Horses.Length; i++)
-        {
-            cum += Horses[i].weight;
-            if (roll < cum) return i;
-        }
-        return Horses.Length - 1;
-    }
+    public static int RunRace() =>
+        WeightedIndex(Horses.Select(h => h.weight).ToArray());
 
     /// <summary>Returns a finishing-order array with the winner in position 0.</summary>
     public static int[] BuildRaceResult(int winnerIndex)
@@ -378,22 +369,9 @@ public static class CreditHelper
 
     public static (string name, string emoji, decimal credits, string flavour) CastLine()
     {
-        int total = FishTable.Sum(f => f.weight);
-        int roll = Random.Shared.Next(total);
-        int cum = 0;
-
-        foreach (var (name, emoji, min, max, weight, flavour) in FishTable)
-        {
-            cum += weight;
-            if (roll < cum)
-            {
-                decimal credits = max > 0 ? Math.Floor(min + (decimal)Random.Shared.NextDouble() * (max - min + 1m)) : 0m;
-                return (name, emoji, credits, flavour);
-            }
-        }
-
-        var last = FishTable[^1];
-        return (last.name, last.emoji, (decimal)last.max, last.flavour);
+        var (name, emoji, min, max, _, flavour) = FishTable[WeightedIndex(FishTable.Select(f => f.weight).ToArray())];
+        decimal credits = max > 0 ? Math.Floor(min + (decimal)Random.Shared.NextDouble() * (max - min + 1m)) : 0m;
+        return (name, emoji, credits, flavour);
     }
 
 
@@ -416,37 +394,16 @@ public static class CreditHelper
         ("100×",   100.0,    2, "🚀"),
     ];
 
-    public static int SpinWheel()
-    {
-        int total = WheelSegments.Sum(s => s.weight);
-        int roll = Random.Shared.Next(total);
-        int cum = 0;
-        for (int i = 0; i < WheelSegments.Length; i++)
-        {
-            cum += WheelSegments[i].weight;
-            if (roll < cum) return i;
-        }
-        return WheelSegments.Length - 1;
-    }
+    public static int SpinWheel() =>
+        WeightedIndex(WheelSegments.Select(s => s.weight).ToArray());
 
     /// <summary>
     /// Chaos Card variant — randomizes each segment's weight before spinning.
     /// Any outcome is possible at any probability, including extreme jackpots or
     /// repeated BANKRUPTs. Weights are re-rolled per-segment from 1–30.
     /// </summary>
-    public static int SpinWheelChaos()
-    {
-        var chaosWeights = WheelSegments.Select(_ => Random.Shared.Next(1, 31)).ToArray();
-        int total = chaosWeights.Sum();
-        int roll = Random.Shared.Next(total);
-        int cum = 0;
-        for (int i = 0; i < WheelSegments.Length; i++)
-        {
-            cum += chaosWeights[i];
-            if (roll < cum) return i;
-        }
-        return WheelSegments.Length - 1;
-    }
+    public static int SpinWheelChaos() =>
+        WeightedIndex(WheelSegments.Select(_ => Random.Shared.Next(1, 31)).ToArray());
 
     /// <summary>
     /// Renders the Big Wheel as a horizontal wheel-of-fortune display.
@@ -592,15 +549,8 @@ public static class CreditHelper
 
     public static (decimal multiplier, string label) RollInvestment()
     {
-        int total = InvestOutcomes.Sum(o => o.weight);
-        int roll = Random.Shared.Next(total);
-        int cum = 0;
-        foreach (var (mult, weight, label) in InvestOutcomes)
-        {
-            cum += weight;
-            if (roll < cum) return (mult, label);
-        }
-        return (1.0m, "Break even");
+        var o = InvestOutcomes[WeightedIndex(InvestOutcomes.Select(o => o.weight).ToArray())];
+        return (o.multiplier, o.label);
     }
 
 

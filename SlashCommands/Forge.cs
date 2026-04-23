@@ -26,9 +26,9 @@ public class Forge : InteractionModuleBase<SocketInteractionContext>
     private string UserId => Context.User.Id.ToString();
     private string ServerId => Context.Guild?.Id.ToString() ?? "DM";
 
-    private static readonly Color ColourForge = new(255, 140, 0);
-    private static readonly Color ColourSuccess = new(87, 242, 135);
-    private static readonly Color ColourRed = new(237, 66, 69);
+    private static readonly Color ColourForge = EmbedColors.Orange;
+    private static readonly Color ColourSuccess = EmbedColors.Green;
+    private static readonly Color ColourRed = EmbedColors.Red;
 
     // ── Tier definitions ──────────────────────────────────────────────────────
     // Cost is a pure sink — no payout, no RNG. Higher tiers unlock longer

@@ -26,11 +26,11 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
     private string UserId => Context.User.Id.ToString();
     private string ServerId => Context.Guild?.Id.ToString() ?? "DM";
 
-    private static readonly Color ColourPet = new(255, 179, 71);
-    private static readonly Color ColourSuccess = new(87, 242, 135);
-    private static readonly Color ColourError = new(237, 66, 69);
-    private static readonly Color ColourInfo = new(88, 101, 242);
-    private static readonly Color ColourVeteran = new(255, 215, 0);
+    private static readonly Color ColourPet = EmbedColors.Peach;
+    private static readonly Color ColourSuccess = EmbedColors.Green;
+    private static readonly Color ColourError = EmbedColors.Red;
+    private static readonly Color ColourInfo = EmbedColors.Blue;
+    private static readonly Color ColourVeteran = EmbedColors.Gold;
 
     // Per-user battle cooldown (5 minutes)
     private static readonly ConcurrentDictionary<string, DateTime> _battleCooldowns = new();
@@ -108,7 +108,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
 
 
     internal const int PetsPerPage = 5;
-    internal static readonly Color PetAccentColor = new(255, 179, 71);
+    internal static readonly Color PetAccentColor = EmbedColors.Peach;
 
     [SlashCommand("list", "List all your pets.")]
     [EnabledInDm(false)]
@@ -2140,8 +2140,8 @@ public class PetComponentHandlers : InteractionModuleBase<SocketInteractionConte
     private string Username  => Context.User.Username;
     private string AvatarUrl => Context.User.GetAvatarUrl();
 
-    private static readonly Color ColourInfo    = new(88, 101, 242);
-    private static readonly Color ColourSuccess = new(87, 242, 135);
+    private static readonly Color ColourInfo    = EmbedColors.Blue;
+    private static readonly Color ColourSuccess = EmbedColors.Green;
 
     // ── release:confirm ────────────────────────────────────────────────────────
 

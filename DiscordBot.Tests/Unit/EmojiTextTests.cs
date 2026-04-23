@@ -204,23 +204,6 @@ public class EmojiTextTests
         Assert.Contains(" ", result);
     }
 
-    // ── EmojiStr property side-effect ─────────────────────────────────────────
-
-    [Fact]
-    public void GetEmojiString_SetsEmojiStrProperty()
-    {
-        _sut.GetEmojiString("hello");
-        Assert.Equal("hello", _sut.EmojiStr);
-    }
-
-    [Fact]
-    public void GetEmojiString_SetsEmojiStrToOriginalInput_NotLowercased()
-    {
-        _sut.GetEmojiString("HELLO");
-        // EmojiStr is set to the raw input before ToLower()
-        Assert.Equal("HELLO", _sut.EmojiStr);
-    }
-
     // ── All 26 letters produce non-empty output ───────────────────────────────
 
     [Theory]

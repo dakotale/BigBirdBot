@@ -31,10 +31,10 @@ public partial class Games
     private string ServerId => Context.Guild?.Id.ToString() ?? "DM";
     private string ChannelId => Context.Channel.Id.ToString();
 
-    internal static readonly Color ColourWin = new(87, 242, 135);
-    internal static readonly Color ColourLoss = new(237, 66, 69);
-    internal static readonly Color ColourGold = new(255, 215, 0);
-    internal static readonly Color ColourInfo = new(88, 101, 242);
+    internal static readonly Color ColourWin  = EmbedColors.Green;
+    internal static readonly Color ColourLoss  = EmbedColors.Red;
+    internal static readonly Color ColourGold  = EmbedColors.Gold;
+    internal static readonly Color ColourInfo  = EmbedColors.Blue;
 
     internal const int MaxHumans = 4;
 

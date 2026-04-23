@@ -25,10 +25,10 @@ public class Breeding : InteractionModuleBase<SocketInteractionContext>
     private string UserId => Context.User.Id.ToString();
     private string ServerId => Context.Guild?.Id.ToString() ?? "DM";
 
-    private static readonly Color ColourSuccess = new(87, 242, 135);
-    private static readonly Color ColourWarn = new(255, 165, 0);
-    private static readonly Color ColourRed = new(237, 66, 69);
-    private static readonly Color ColourGold = new(255, 215, 0);
+    private static readonly Color ColourSuccess = EmbedColors.Green;
+    private static readonly Color ColourWarn = EmbedColors.Amber;
+    private static readonly Color ColourRed = EmbedColors.Red;
+    private static readonly Color ColourGold = EmbedColors.Gold;
 
     private const int MinBreedLevel = 10;   // both pets must be at least this level
     private const int MaxEggs = 3;    // max unhatched eggs at once
