@@ -72,6 +72,7 @@ namespace DiscordBot.Constants
         public static string spotifyClientId => Get(nameof(spotifyClientId), "9d3327c7e115414386b546393c6e935d");
 
         public static string spotifyClientSecret => Get(nameof(spotifyClientSecret), "e5c19c145b0e4ba68b8b76f3a5acf1b2");
+        public static string anthropicApiKey => Get(nameof(anthropicApiKey));
     }
 }
 

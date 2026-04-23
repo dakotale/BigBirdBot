@@ -73,21 +73,21 @@ public sealed class InteractionHandlerService
     /// </summary>
     private async Task SyncCommandsAsync(LoggingService logging)
     {
-        var existing = (await _client.GetGlobalApplicationCommandsAsync())
-            .Where(c => c.Type == ApplicationCommandType.Slash)
-            .ToList();
+        var allExisting = (await _client.GetGlobalApplicationCommandsAsync()).ToList();
+        var existingSlash = allExisting.Where(c => c.Type == ApplicationCommandType.Slash).ToList();
 
         var desired = _handler.SlashCommands;
+        int desiredTotal = desired.Count + _handler.ContextCommands.Count;
 
-        if (!CommandsDiffer(existing, desired))
+        if (allExisting.Count == desiredTotal && !CommandsDiffer(existingSlash, desired))
         {
             await logging.DebugAsync(
-                $"[InteractionHandler] {existing.Count} command(s) up to date — skipping registration.");
+                $"[InteractionHandler] {allExisting.Count} command(s) up to date — skipping registration.");
             return;
         }
 
         await logging.DebugAsync(
-            $"[InteractionHandler] Command mismatch detected — registering {desired.Count} command(s) in background.");
+            $"[InteractionHandler] Command mismatch detected — registering {desiredTotal} command(s) in background.");
 
         _ = Task.Run(async () =>
         {

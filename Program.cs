@@ -252,12 +252,29 @@ internal sealed class BotHost(
         return Task.CompletedTask;
     }
 
-    private Task OnUserJoinedAsync(SocketGuildUser user)
+    private async Task OnUserJoinedAsync(SocketGuildUser user)
     {
-        if (user.IsBot || user.IsWebhook) return Task.CompletedTask;
+        if (user.IsBot || user.IsWebhook) return;
         AddUserToDatabase(user, user.Guild.Id);
         new Audit().InsertUserJoinedAudit(user.Id.ToString(), user.Guild.Id.ToString(), Constants.discordBotConnStr);
-        return Task.CompletedTask;
+        await AssignAutoRoleAsync(user);
+    }
+
+    private async Task AssignAutoRoleAsync(SocketGuildUser user)
+    {
+        var dt = _sp.Select(Constants.discordBotConnStr, "GetGuildAutoRole",
+        [
+            new SqlParameter("@GuildId", (long)user.Guild.Id)
+        ]);
+
+        if (dt.Rows.Count == 0) return;
+
+        ulong roleId = (ulong)(long)dt.Rows[0]["RoleId"];
+        var role = user.Guild.GetRole(roleId);
+        if (role is null) return;
+
+        try { await user.AddRoleAsync(role); }
+        catch { /* role may have been deleted or bot lacks permission */ }
     }
 
     private async Task OnJoinedGuildAsync(SocketGuild guild)
