@@ -11,8 +11,11 @@
 
   <ItemGroup>
     <Compile Remove="SQL\Database\Import Schema Logs\**" />
+    <Compile Remove="DiscordBot.Tests\**" />
     <EmbeddedResource Remove="SQL\Database\Import Schema Logs\**" />
+    <EmbeddedResource Remove="DiscordBot.Tests\**" />
     <None Remove="SQL\Database\Import Schema Logs\**" />
+    <None Remove="DiscordBot.Tests\**" />
   </ItemGroup>
 
   <ItemGroup>
