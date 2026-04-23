@@ -41,10 +41,10 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
     private const string EmojiError = "❌";
     private const string EmojiSuccess = "✅";
 
-    private static readonly Color ColourDefault = new(88, 101, 242);
-    private static readonly Color ColourSuccess = new(87, 242, 135);
-    private static readonly Color ColourError = new(237, 66, 69);
-    private static readonly Color ColourWarning = new(254, 231, 92);
+    private static readonly Color ColourDefault = EmbedColors.Blue;
+    private static readonly Color ColourSuccess = EmbedColors.Green;
+    private static readonly Color ColourError = EmbedColors.Red;
+    private static readonly Color ColourWarning = EmbedColors.Yellow;
 
     private const string BtnPause = "audio:pause";
     private const string BtnResume = "audio:resume";

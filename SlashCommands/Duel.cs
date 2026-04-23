@@ -1,4 +1,4 @@
-using Discord;
+﻿using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 using DiscordBot.Constants;
@@ -23,9 +23,9 @@ public class Duel : InteractionModuleBase<SocketInteractionContext>
     private string UserId    => Context.User.Id.ToString();
     private string ServerId  => Context.Guild?.Id.ToString() ?? "DM";
 
-    private static readonly Color ColourRed   = new(237, 66,  69);
-    private static readonly Color ColourGreen = new(87,  242, 135);
-    private static readonly Color ColourGrey  = new(128, 128, 128);
+    private static readonly Color ColourRed   = EmbedColors.Red;
+    private static readonly Color ColourGreen = EmbedColors.Green;
+    private static readonly Color ColourGrey  = EmbedColors.Grey;
 
     private record DuelChallenge(string ChallengerId, string ChallengerName, string ServerId, DateTime Expiry, string Theme);
     private static readonly ConcurrentDictionary<string, DuelChallenge> _pending = new();

@@ -12,13 +12,12 @@ namespace DiscordBot.Helper
             Guild_Ids = GuildIds;
         }
 
-        public override async Task<PreconditionResult> CheckRequirementsAsync(IInteractionContext context, ICommandInfo commandInfo, IServiceProvider services)
+        public override Task<PreconditionResult> CheckRequirementsAsync(IInteractionContext context, ICommandInfo commandInfo, IServiceProvider services)
         {
             IGuildUser? guildUser = context.User as IGuildUser;
             if (guildUser == null || !Guild_Ids.Contains(guildUser.Guild.Id))
-                return PreconditionResult.FromError("This command cannot be executed outside of another guild.");
-            else
-                return PreconditionResult.FromSuccess();
+                return Task.FromResult(PreconditionResult.FromError("This command cannot be executed outside of another guild."));
+            return Task.FromResult(PreconditionResult.FromSuccess());
         }
     }
 }

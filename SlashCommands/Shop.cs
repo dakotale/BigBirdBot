@@ -30,11 +30,11 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
     private string UserId => Context.User.Id.ToString();
     private string ServerId => Context.Guild?.Id.ToString() ?? "DM";
 
-    private static readonly Color ColourShop = new(255, 179, 71);
-    private static readonly Color ColourSuccess = new(87, 242, 135);
-    private static readonly Color ColourError = new(237, 66, 69);
-    private static readonly Color ColourInfo = new(88, 101, 242);
-    private static readonly Color ColourGold = new(255, 215, 0);
+    private static readonly Color ColourShop = EmbedColors.Peach;
+    private static readonly Color ColourSuccess = EmbedColors.Green;
+    private static readonly Color ColourError = EmbedColors.Red;
+    private static readonly Color ColourInfo = EmbedColors.Blue;
+    private static readonly Color ColourGold = EmbedColors.Gold;
 
     // ── /shop browse ──────────────────────────────────────────────────────────
 

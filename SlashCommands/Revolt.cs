@@ -28,9 +28,9 @@ public class Revolt : InteractionModuleBase<SocketInteractionContext>
     private string Username => Context.User.Username;
     private string AvatarUrl => Context.User.GetAvatarUrl();
 
-    private static readonly Color ColourRed = new(237, 66, 69);
-    private static readonly Color ColourGold = new(255, 215, 0);
-    private static readonly Color ColourGrey = new(128, 128, 128);
+    private static readonly Color ColourRed = EmbedColors.Red;
+    private static readonly Color ColourGold = EmbedColors.Gold;
+    private static readonly Color ColourGrey = EmbedColors.Grey;
 
     // ── In-memory revolt state ────────────────────────────────────────────────
     // Key: "serverId:targetUserId"

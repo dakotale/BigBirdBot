@@ -12,13 +12,12 @@ namespace DiscordBot.Helper
             this.User_Ids = User_Ids;
         }
 
-        public override async Task<PreconditionResult> CheckRequirementsAsync(IInteractionContext context, ICommandInfo commandInfo, IServiceProvider services)
+        public override Task<PreconditionResult> CheckRequirementsAsync(IInteractionContext context, ICommandInfo commandInfo, IServiceProvider services)
         {
             IGuildUser? guildUser = context.User as IGuildUser;
             if (guildUser == null || !User_Ids.Contains(guildUser.Id))
-                return PreconditionResult.FromError("This command cannot be executed by this user.");
-            else
-                return PreconditionResult.FromSuccess();
+                return Task.FromResult(PreconditionResult.FromError("This command cannot be executed by this user."));
+            return Task.FromResult(PreconditionResult.FromSuccess());
         }
     }
 }

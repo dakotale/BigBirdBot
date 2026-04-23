@@ -22,10 +22,10 @@ public class Challenges : InteractionModuleBase<SocketInteractionContext>
     private string UserId => Context.User.Id.ToString();
     private string ServerId => Context.Guild?.Id.ToString() ?? "DM";
 
-    private static readonly Color ColourGold = new(255, 215, 0);
-    private static readonly Color ColourGreen = new(87, 242, 135);
-    private static readonly Color ColourBlue = new(88, 101, 242);
-    private static readonly Color ColourPurple = new(155, 89, 182);
+    private static readonly Color ColourGold = EmbedColors.Gold;
+    private static readonly Color ColourGreen = EmbedColors.Green;
+    private static readonly Color ColourBlue = EmbedColors.Blue;
+    private static readonly Color ColourPurple = EmbedColors.Purple;
 
     // ── /challenges ───────────────────────────────────────────────────────────
 

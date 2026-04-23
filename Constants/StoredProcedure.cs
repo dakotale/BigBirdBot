@@ -1,4 +1,4 @@
-﻿using System.Data;
+using System.Data;
 using System.Data.SqlClient;
 
 namespace DiscordBot.Constants
@@ -20,18 +20,14 @@ namespace DiscordBot.Constants
                 CommandType = CommandType.StoredProcedure
             };
 
-            if (parameters != null)
-            {
-                foreach (var param in parameters)
-                    cmd.Parameters.Add(param);
-            }
+            if (parameters?.Count > 0)
+                cmd.Parameters.AddRange(parameters.ToArray());
 
             using SqlDataAdapter da = new SqlDataAdapter(cmd);
             da.Fill(dt);
 
             return dt;
         }
-
 
         public void UpdateCreate(string connStr, string spName, List<SqlParameter> parameters)
         {
@@ -41,17 +37,12 @@ namespace DiscordBot.Constants
                 CommandType = CommandType.StoredProcedure
             };
 
-            if (parameters != null)
-            {
-                foreach (var param in parameters)
-                    cmd.Parameters.Add(param);
-            }
+            if (parameters?.Count > 0)
+                cmd.Parameters.AddRange(parameters.ToArray());
 
             conn.Open();
             cmd.ExecuteNonQuery();
             cmd.Parameters.Clear();
         }
-
     }
 }
-

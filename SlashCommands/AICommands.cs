@@ -1,4 +1,4 @@
-using Discord;
+﻿using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 using DiscordBot.Constants;
@@ -238,8 +238,8 @@ public class AICommands : InteractionModuleBase<SocketInteractionContext>
     // =========================================================================
 
     private const string BtnRerollPrefix = "spotify:reroll:";
-    private static readonly Color ColourSpotify = new(30, 215, 96);
-    private static readonly Color ColourError   = new(237, 66, 69);
+    private static readonly Color ColourSpotify = EmbedColors.Spotify;
+    private static readonly Color ColourError   = EmbedColors.Red;
 
     [SlashCommand("mood", "Get a random Spotify track that matches your mood.")]
     public async Task MoodAsync(
