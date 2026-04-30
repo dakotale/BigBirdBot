@@ -111,13 +111,24 @@ public class AICommands : InteractionModuleBase<SocketInteractionContext>
                 new SqlParameter("@ChatMessage", aiText)
             ]);
 
-            string header = personality == "None"
-                ? $"**Message:** {message}\n\n**Response:** "
-                : $"**Personality:** {personality}\n**Message:** {message}\n\n**Response:** ";
-            string discordOutput = header + aiText;
-            discordOutput = discordOutput.Length > 2000 ? discordOutput[..2000] : discordOutput;
+            string title = personality == "None" ? "Chat" : personality;
+            string description = $"**Message:** {message}\n\n**Response:** {aiText}";
 
-            await FollowupAsync(discordOutput);
+            const int embedLimit = 4096;
+            const int messageLimit = 2000;
+
+            await FollowupAsync(embed: _embed.BuildMessageEmbed(
+                title,
+                description.Length <= embedLimit ? description : description[..embedLimit],
+                "", Username, Color.Blue).Build());
+
+            string overflow = description.Length > embedLimit ? description[embedLimit..] : "";
+            while (overflow.Length > 0)
+            {
+                string chunk = overflow[..Math.Min(messageLimit, overflow.Length)];
+                await FollowupAsync(chunk);
+                overflow = overflow[chunk.Length..];
+            }
         }
         catch (Exception ex)
         {
