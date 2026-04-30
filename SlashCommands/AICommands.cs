@@ -43,13 +43,16 @@ public class AICommands : InteractionModuleBase<SocketInteractionContext>
         [Summary("message", "Your message to the bot"), MinLength(1), MaxLength(1000)] string message,
         [Summary("new-conversation", "Start fresh, clearing previous history"), Choice("Yes", "Yes"), Choice("No", "No")] string startNew,
         [Summary("personality", "Choose a persona for the bot"),
-         Choice("None",                  "None"),
-         Choice("Transfirmation",         "Transfirmation"),
-         Choice("Sett",                  "Sett"),
-         Choice("T. M. Opera O",         "T. M. Opera O"),
-         Choice("Meisho Doto",           "Meisho Doto"),
-         Choice("Vi",                    "Vi"),
-         Choice("Cottagecore Witch",     "Cottagecore Witch")] string personality)
+         Choice("None",                                          "None"),
+         Choice("Bisexual Support Guide — bi-affirming guide",   "Bisexual Support Guide"),
+         Choice("Cottagecore Witch — cozy, whimsical, nature-y", "Cottagecore Witch"),
+         Choice("Gay Support Guide — gay & lesbian-affirming guide", "Gay Support Guide"),
+         Choice("Meisho Doto — Umamusume: Pretty Derby",         "Meisho Doto"),
+         Choice("Queer Support Guide — queer-affirming guide",    "Queer Support Guide"),
+         Choice("Sett — League of Legends",                      "Sett"),
+         Choice("T. M. Opera O — Umamusume: Pretty Derby",       "T. M. Opera O"),
+         Choice("Transfirmation — trans-affirming support guide", "Transfirmation"),
+         Choice("Vi — League of Legends / Arcane",               "Vi")] string personality)
     {
         await DeferAsync();
 
