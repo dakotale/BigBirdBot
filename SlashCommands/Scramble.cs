@@ -3,7 +3,7 @@ using Discord.Interactions;
 using Discord.WebSocket;
 using DiscordBot.Constants;
 using DiscordBot.Helper;
-using System.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 
 namespace DiscordBot.SlashCommands;
 
@@ -41,7 +41,7 @@ public partial class Games
 
 
     [SlashCommand("scramble", "Unscramble the word before time runs out!")]
-    [EnabledInDm(true)]
+    [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
     public async Task HandleScrambleAsync(
         [Choice("Easy",   "easy"),
          Choice("Medium", "medium"),

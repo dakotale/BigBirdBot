@@ -4,7 +4,7 @@ using Discord.WebSocket;
 using DiscordBot.Constants;
 using DiscordBot.Helper;
 using System.Data;
-using System.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 
 namespace DiscordBot.SlashCommands;
 
@@ -29,7 +29,7 @@ public class ServerCommands : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("avatar", "Display your avatar or another member's in full resolution.")]
-    [EnabledInDm(true)]
+    [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
     public async Task HandleAvatarAsync(SocketGuildUser? user = null)
     {
         await DeferAsync();
@@ -46,7 +46,7 @@ public class ServerCommands : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("userinfo", "Show information about yourself or another member.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleUserInfoAsync(SocketGuildUser? user = null)
     {
         await DeferAsync();
@@ -76,7 +76,7 @@ public class ServerCommands : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("serverinfo", "Show information about this server.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleServerInfoAsync()
     {
         await DeferAsync();
@@ -101,7 +101,7 @@ public class ServerCommands : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("addbirthday", "Add a member's birthday so the bot can celebrate it.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleBirthdayAsync(
         SocketGuildUser user,
         [MinValue(1), MaxValue(12)] int monthNumber,
@@ -151,7 +151,7 @@ public class ServerCommands : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("setrolecolor", "Set the colour of your role by hex code.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleColorAsync(
         [MinLength(1), MaxLength(10)] string hexCode,
         SocketGuildUser? userName = null)
@@ -196,7 +196,7 @@ public class ServerCommands : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("polldnd", "Reaction poll for D&D weekly scheduling (next 7 days).")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandlePollDndAsync(SocketGuildUser user)
     {
         await DeferAsync();
@@ -221,7 +221,7 @@ public class ServerCommands : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("reportbug", "Found a bug with the bot? Report it here.")]
-    [EnabledInDm(true)]
+    [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
     public async Task HandleBugReportAsync(
         [MinLength(1), MaxLength(2000)] string bugFound)
     {
@@ -247,7 +247,7 @@ public class ServerCommands : InteractionModuleBase<SocketInteractionContext>
     /// Pulls from the same stored procedures used by individual commands.
     /// </summary>
     [SlashCommand("profile", "View your full profile — credits, active pet, and stats.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleProfileAsync(SocketGuildUser? user = null)
     {
         await DeferAsync();

@@ -5,7 +5,7 @@ using DiscordBot.Constants;
 using DiscordBot.Helper;
 using System.Collections.Concurrent;
 using System.Data;
-using System.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 
 namespace DiscordBot.SlashCommands
 {
@@ -30,7 +30,7 @@ namespace DiscordBot.SlashCommands
         // ── Context Menu ──────────────────────────────────────────────────────────
 
         [MessageCommand("Save Quote")]
-        [EnabledInDm(false)]
+        [CommandContextType(InteractionContextType.Guild)]
         public async Task HandleSaveQuoteAsync(IMessage message)
         {
             await DeferAsync(ephemeral: true);
@@ -141,7 +141,7 @@ namespace DiscordBot.SlashCommands
         // ── Slash Commands ────────────────────────────────────────────────────────
 
         [Group("quote", "Browse and manage saved quotes.")]
-        [EnabledInDm(false)]
+        [CommandContextType(InteractionContextType.Guild)]
         public class QuoteSubCommands : InteractionModuleBase<SocketInteractionContext>
         {
             private readonly EmbedHelper _embed = new();

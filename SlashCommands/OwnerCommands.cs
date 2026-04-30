@@ -1,5 +1,5 @@
 ﻿using System.Data;
-using System.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 using Discord;
 using Discord.Interactions;
 using Discord.Net.Extensions.Interactions;
@@ -14,7 +14,7 @@ namespace DiscordBot.SlashCommands
     public class OwnerCommands : InteractionModuleBase<SocketInteractionContext>
     {
         [SlashCommand("announcement", "Broadcast a message to all servers.")]
-        [EnabledInDm(false)]
+        [CommandContextType(InteractionContextType.Guild)]
         [Discord.Interactions.RequireOwner]
         public async Task HandleAnnouncement([MinValue(1), MaxLength(4000)] string message, Attachment attachment = null)
         {
@@ -71,7 +71,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("schedulelist", "Get list of all users scheduled times.")]
-        [EnabledInDm(false)]
+        [CommandContextType(InteractionContextType.Guild)]
         [Discord.Interactions.RequireOwner]
         public async Task HandleServerList()
         {
@@ -90,7 +90,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("connplayers", "List of all connected players in voice channels.")]
-        [EnabledInDm(true)]
+        [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
         [Discord.Interactions.RequireOwner]
         public async Task HandlePlayersConnected()
         {
@@ -122,7 +122,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("populateallusers", "Populate users into the DB.")]
-        [EnabledInDm(false)]
+        [CommandContextType(InteractionContextType.Guild)]
         [Discord.Interactions.RequireOwner]
         public async Task HandlePopulateAllUserCommand()
         {
@@ -168,7 +168,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("delmultiimage", "Deletes a multi-keyword image with a given path")]
-        [EnabledInDm(false)]
+        [CommandContextType(InteractionContextType.Guild)]
         [RequireOwner]
         public async Task HandleThirstImageDelete([MinLength(1)] string fileName, [MinLength(1)] string chatName)
         {

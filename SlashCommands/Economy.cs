@@ -4,7 +4,7 @@ using Discord.WebSocket;
 using DiscordBot.Constants;
 using DiscordBot.Helper;
 using System.Data;
-using System.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 
 namespace DiscordBot.SlashCommands;
 
@@ -30,7 +30,7 @@ public class Economy : InteractionModuleBase<SocketInteractionContext>
     // ── /balance ──────────────────────────────────────────────────────────────
 
     [SlashCommand("balance", "Check your credit balance.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleBalanceAsync(IUser? user = null)
     {
         await DeferAsync();
@@ -81,7 +81,7 @@ public class Economy : InteractionModuleBase<SocketInteractionContext>
     // ── /daily ────────────────────────────────────────────────────────────────
 
     [SlashCommand("daily", "Claim your daily credits!")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleDailyAsync()
     {
         await DeferAsync();
@@ -236,7 +236,7 @@ public class Economy : InteractionModuleBase<SocketInteractionContext>
     // ── /work ─────────────────────────────────────────────────────────────────
 
     [SlashCommand("work", "Do some work to earn credits!")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleWorkAsync()
     {
         await DeferAsync();
@@ -294,7 +294,7 @@ public class Economy : InteractionModuleBase<SocketInteractionContext>
     }
 
     [SlashCommand("transfer", "Send credits to another user.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleTransferAsync(
         SocketGuildUser recipient,
         [MinValue(1)] long amount)
@@ -360,7 +360,7 @@ public class Economy : InteractionModuleBase<SocketInteractionContext>
     // ── /donate ───────────────────────────────────────────────────────────────
 
     [SlashCommand("donate", "Spread your credits equally among all server members who have a balance.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleDonateAsync(
         [Summary("amount", "How many credits to donate in total.")]
         [MinValue(1)] long amount)
@@ -434,7 +434,7 @@ public class Economy : InteractionModuleBase<SocketInteractionContext>
     // ── /creditleaderboard ────────────────────────────────────────────────────
 
     [SlashCommand("creditleaderboard", "Show the richest users in this server.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleLeaderboardAsync()
     {
         await DeferAsync();
@@ -471,7 +471,7 @@ public class Economy : InteractionModuleBase<SocketInteractionContext>
     // ── /prestige ─────────────────────────────────────────────────────────────
 
     [SlashCommand("prestige", "View your prestige rank and progress.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandlePrestigeAsync(IUser? user = null)
     {
         await DeferAsync();

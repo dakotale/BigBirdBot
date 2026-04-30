@@ -1,5 +1,5 @@
 ﻿using System.Data;
-using System.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 using System.Text;
 using Discord;
 using Discord.Commands;
@@ -61,6 +61,7 @@ static void ConfigureServices(IServiceCollection services) =>
         })
         .AddHttpClient()
         .AddSingleton<ISpotifyService, SpotifyService>()
+        .AddSingleton<IAIChatService, AIChatService>()
         .AddLogging(x => x.ClearProviders().SetMinimumLevel(LogLevel.Trace));
 
 

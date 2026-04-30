@@ -4,7 +4,7 @@ using Discord.WebSocket;
 using DiscordBot.Constants;
 using DiscordBot.Helper;
 using System.Collections.Concurrent;
-using System.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 
 namespace DiscordBot.SlashCommands;
 
@@ -82,7 +82,7 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("slots", "Spin the slot machine!")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleSlotsAsync([MinValue(10)] long bet)
     {
         await DeferAsync();
@@ -158,7 +158,7 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("coinflip", "Flip a coin and bet on the outcome!")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleCoinflipAsync(
         [Choice("Heads", "heads"),
          Choice("Tails", "tails")]
@@ -217,7 +217,7 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("dice", "Roll two dice and bet on the total!")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleDiceAsync(
         [Choice("Over 7",    "over"),
          Choice("Under 7",   "under"),
@@ -290,7 +290,7 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("roulette", "Spin the roulette wheel!")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleRouletteAsync(
         [Choice("Red",    "red"),
          Choice("Black",  "black"),
@@ -362,7 +362,7 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("scratchcard", "Buy and scratch a card for instant prizes!")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleScratchCardAsync()
     {
         await DeferAsync();
@@ -466,7 +466,7 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("horses", "Bet on a horse race!")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleHorsesAsync(
     [Choice("Thunderbolt (favourite, 2×)",  "0"),
      Choice("Silver Wind (2.5×)",           "1"),
@@ -585,7 +585,7 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("rps", "Play Rock Paper Scissors against the bot with a credit bet!")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleRpsAsync(
         [Choice("🪨 Rock",     "rock"),
          Choice("📄 Paper",    "paper"),
@@ -658,7 +658,7 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("highlow", "Draw a card — guess if the next one is higher or lower!")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleHighLowAsync(
         [Choice("Higher", "higher"),
          Choice("Lower",  "lower")]
@@ -736,7 +736,7 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("jackpot", "View jackpot pools or contribute to the entry jackpot.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleJackpotAsync([MinValue(10)] long? amount = null)
     {
         await DeferAsync();
@@ -817,7 +817,7 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
     }
 
     [SlashCommand("gamblestats", "View your gambling statistics.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleGambleStatsAsync(IUser? user = null)
     {
         await DeferAsync();
@@ -899,7 +899,7 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("fish", "Cast your line and see what you catch!")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleFishAsync()
     {
         await DeferAsync();
@@ -1121,7 +1121,7 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("bigwheel", "Spin the Big Wheel and multiply your bet!")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleBigWheelAsync(string betStr)
     {
         await DeferAsync();
@@ -1255,7 +1255,7 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("invest", "Lock away credits for 24 hours — collect your return when they mature.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleInvestAsync([MinValue(100)] long amount = 0)
     {
         await DeferAsync();
@@ -1724,7 +1724,7 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
     }
 
     [SlashCommand("lucky", "Toggle lucky mode for this server (owner only).")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleLuckyAsync()
     {
         await DeferAsync(ephemeral: true);

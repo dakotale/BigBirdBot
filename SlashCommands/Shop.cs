@@ -4,7 +4,7 @@ using Discord.WebSocket;
 using DiscordBot.Constants;
 using DiscordBot.Helper;
 using System.Data;
-using System.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 using System.Text;
 
 namespace DiscordBot.SlashCommands;
@@ -39,7 +39,7 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
     // ── /shop browse ──────────────────────────────────────────────────────────
 
     [SlashCommand("browse", "Browse shop items by category.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleBrowseAsync(
         [Choice("All",              "all")]
         [Choice("Pet Consumables",  "PetConsumable")]
@@ -115,7 +115,7 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
     // ── /shop buy ─────────────────────────────────────────────────────────────
 
     [SlashCommand("buy", "Purchase an item from the shop.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleBuyAsync(
         [Summary("item", "The item you want to buy.")]
         [Autocomplete(typeof(ShopBuyAutocompleteHandler))]
@@ -172,7 +172,7 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
     // ── /shop inventory ───────────────────────────────────────────────────────
 
     [SlashCommand("inventory", "Show your owned items and active effects.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleInventoryAsync()
     {
         await DeferAsync();
@@ -251,7 +251,7 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
     // ── /shop use ─────────────────────────────────────────────────────────────
 
     [SlashCommand("use", "Use an item from your inventory.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleUseAsync(
         [Summary("item", "The item you want to use.")]
         [Autocomplete(typeof(ShopUseAutocompleteHandler))]

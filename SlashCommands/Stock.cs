@@ -2,7 +2,7 @@
 using Discord.Interactions;
 using DiscordBot.Constants;
 using DiscordBot.Helper;
-using System.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 using System.Text;
 
 namespace DiscordBot.SlashCommands;
@@ -31,7 +31,7 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
     // ── /stock market ─────────────────────────────────────────────────────────
 
     [SlashCommand("market", "View all stocks and current prices.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleMarketAsync()
     {
         await DeferAsync();
@@ -78,7 +78,7 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
     // ── /stock info ───────────────────────────────────────────────────────────
 
     [SlashCommand("info", "Detailed info and price history for a stock.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleInfoAsync(
         [MinLength(1), MaxLength(8)] string ticker)
     {
@@ -143,7 +143,7 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
     // ── /stock buy ────────────────────────────────────────────────────────────
 
     [SlashCommand("buy", "Buy shares in a company.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleBuyAsync(
         [MinLength(1), MaxLength(8)] string ticker,
         [MinValue(1), MaxValue(10000)] int shares)
@@ -218,7 +218,7 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
     // ── /stock sell ───────────────────────────────────────────────────────────
 
     [SlashCommand("sell", "Sell shares you own.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleSellAsync(
     [MinLength(1), MaxLength(8)] string ticker,
     [MinValue(1), MaxValue(10000000000)] int shares = 1,
@@ -299,7 +299,7 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
     // ── /stock portfolio ──────────────────────────────────────────────────────
 
     [SlashCommand("portfolio", "View your stock holdings and unrealized P&L.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandlePortfolioAsync(IUser? user = null)
     {
         await DeferAsync();
@@ -399,7 +399,7 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
     // ── /stock history ────────────────────────────────────────────────────────
 
     [SlashCommand("history", "View your recent stock transactions.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleHistoryAsync()
     {
         await DeferAsync();

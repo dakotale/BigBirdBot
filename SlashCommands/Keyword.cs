@@ -1,5 +1,5 @@
 ﻿using System.Data;
-using System.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
@@ -27,7 +27,7 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("add", "Add a keyword that maps to one or more bot actions.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     [RequireUserPermission(ChannelPermission.ManageMessages)]
     public async Task HandleAddAsync(
         [MinLength(1), MaxLength(50)] string keyword)
@@ -65,7 +65,7 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("delete", "Permanently remove a keyword and all its mappings.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     [RequireUserPermission(ChannelPermission.ManageMessages)]
     public async Task HandleDeleteAsync(
         [MinLength(1), MaxLength(50)] string keyword)
@@ -85,7 +85,7 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("rename", "Rename an existing keyword and its directory.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     [RequireUserPermission(ChannelPermission.ManageMessages)]
     public async Task HandleRenameAsync(
         [MinLength(1), MaxLength(50)] string oldName,
@@ -138,7 +138,7 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
 
 
         [SlashCommand("add", "Create a trigger word that serves entries from an existing keyword.")]
-        [EnabledInDm(false)]
+        [CommandContextType(InteractionContextType.Guild)]
         [RequireUserPermission(ChannelPermission.ManageMessages)]
         public async Task HandleAddAsync(
             [MinLength(1), MaxLength(50),
@@ -183,7 +183,7 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
 
 
         [SlashCommand("delete", "Remove a keyword alias.")]
-        [EnabledInDm(false)]
+        [CommandContextType(InteractionContextType.Guild)]
         [RequireUserPermission(ChannelPermission.ManageMessages)]
         public async Task HandleDeleteAsync(
             [MinLength(1), MaxLength(50),
@@ -207,7 +207,7 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
 
 
         [SlashCommand("list", "List all aliases pointing to a keyword.")]
-        [EnabledInDm(false)]
+        [CommandContextType(InteractionContextType.Guild)]
         [RequireUserPermission(ChannelPermission.ManageMessages)]
         public async Task HandleListAsync(
             [MinLength(1), MaxLength(50),
@@ -243,7 +243,7 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("info", "Show stats and recent entries for a keyword.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     [RequireUserPermission(ChannelPermission.ManageMessages)]
     public async Task HandleInfoAsync(
         [MinLength(1), MaxLength(50)] string keyword)
@@ -291,7 +291,7 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("list", "List all keywords registered in this server.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     [RequireUserPermission(ChannelPermission.ManageMessages)]
     public async Task HandleListAsync()
     {
@@ -349,7 +349,7 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
         /// The same file is copied into every keyword's directory and registered in the DB for each.
         /// </summary>
         [SlashCommand("add", "Attach up to 10 files to one or more keywords at once.")]
-        [EnabledInDm(false)]
+        [CommandContextType(InteractionContextType.Guild)]
         public async Task HandleBulkAddAsync(
             [Summary("keywords", "Comma-separated keyword names, e.g. cat,dog,bird")] string keywords,
             IAttachment  file1,
@@ -488,7 +488,7 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
 
 
         [SlashCommand("delete", "Remove a specific URL from a keyword table.")]
-        [EnabledInDm(false)]
+        [CommandContextType(InteractionContextType.Guild)]
         [RequireUserPermission(ChannelPermission.ManageMessages)]
         public async Task HandleDeleteAsync(
             [MinLength(1)] string url,
@@ -526,7 +526,7 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
 
 
         [SlashCommand("add", "Schedule a recurring keyword delivery for a user.")]
-        [EnabledInDm(false)]
+        [CommandContextType(InteractionContextType.Guild)]
         [RequireUserPermission(ChannelPermission.ManageMessages)]
         public async Task HandleAddAsync(
             SocketGuildUser user,
@@ -572,7 +572,7 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
 
 
         [SlashCommand("remove", "Remove a scheduled keyword delivery for a user.")]
-        [EnabledInDm(false)]
+        [CommandContextType(InteractionContextType.Guild)]
         [RequireUserPermission(ChannelPermission.ManageMessages)]
         public async Task HandleRemoveAsync(
             SocketGuildUser user,
@@ -594,7 +594,7 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
 
 
         [SlashCommand("list", "List the scheduled keyword deliveries for a user.")]
-        [EnabledInDm(false)]
+        [CommandContextType(InteractionContextType.Guild)]
         [RequireUserPermission(ChannelPermission.ManageMessages)]
         public async Task HandleListAsync(SocketGuildUser user)
         {
@@ -632,7 +632,7 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
 
 
         [SlashCommand("requeue", "Requeue a user's scheduled keyword event after a delivery failure.")]
-        [EnabledInDm(false)]
+        [CommandContextType(InteractionContextType.Guild)]
         [RequireOwner]
         public async Task HandleRequeueAsync(SocketGuildUser user)
         {

@@ -3,7 +3,7 @@ using Discord.Interactions;
 using Discord.WebSocket;
 using DiscordBot.Constants;
 using DiscordBot.Helper;
-using System.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 
 namespace DiscordBot.SlashCommands;
 
@@ -39,7 +39,7 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
     // ── Command ───────────────────────────────────────────────────────────────
 
     [SlashCommand("blackjack", "Play a hand of blackjack against the dealer!")]
-    [EnabledInDm(true)]
+    [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
     public async Task HandleBlackjackAsync([MinValue(0)] long bet = 0)
     {
         await DeferAsync();

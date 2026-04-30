@@ -4,7 +4,7 @@ using Discord.WebSocket;
 using DiscordBot.Constants;
 using DiscordBot.Helper;
 using System.Data;
-using System.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 
 namespace DiscordBot.SlashCommands;
 
@@ -41,7 +41,7 @@ public partial class Games
     // ── /poker ────────────────────────────────────────────────────────────────
 
     [SlashCommand("poker", "Start a Texas Hold'em table! Up to 4 players vs the bot.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandlePokerAsync([MinValue(50)] long bet)
     {
         await DeferAsync();

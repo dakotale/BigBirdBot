@@ -5,7 +5,7 @@ using DiscordBot.Constants;
 using DiscordBot.Helper;
 using DiscordBot.Misc;
 using System.Data;
-using System.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 using System.Text;
 
 namespace DiscordBot.SlashCommands;
@@ -30,7 +30,7 @@ public class UtilityCommands : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("random", "Randomise a number between 1 and the value you provide.")]
-    [EnabledInDm(true)]
+    [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
     public async Task GenerateRandomNumberAsync(
         [MinValue(1), MaxValue(int.MaxValue)] int number)
     {
@@ -44,7 +44,7 @@ public class UtilityCommands : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("etext", "Convert your message into regional-indicator emojis.")]
-    [EnabledInDm(true)]
+    [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
     public async Task HandleEmojiTextAsync(
         [MinLength(1), MaxLength(1000)] string message)
     {
@@ -54,7 +54,7 @@ public class UtilityCommands : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("poll", "Create a reaction poll with up to 10 choices.")]
-    [EnabledInDm(true)]
+    [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
     public async Task HandlePollAsync(
         [MinLength(1), MaxLength(2000)] string statement,
         [MinLength(1)] string pollAnswer1,
@@ -91,7 +91,7 @@ public class UtilityCommands : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("8ball", "Ask the magic 8-ball a yes/no question.")]
-    [EnabledInDm(true)]
+    [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
     public async Task HandleEightBallAsync(
         [MinLength(1), MaxLength(500)] string question)
     {
@@ -126,7 +126,7 @@ public class UtilityCommands : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("choose", "Let the bot pick from your comma-separated options.")]
-    [EnabledInDm(true)]
+    [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
     public async Task HandleChooseAsync(
         [MinLength(3), MaxLength(1000),
          Summary("options", "Comma-separated list, e.g. Pizza, Sushi, Tacos")]
@@ -159,7 +159,7 @@ public class UtilityCommands : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("remind", "Set a DM reminder for yourself at a specific date/time.")]
-    [EnabledInDm(true)]
+    [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
     public async Task HandleRemindAsync(
         [MinLength(1), MaxLength(500)] string reminder,
         [Summary("when", "Date and time, e.g. '03/25/2026 3:30 PM' or '2026-03-25 15:30'")] string when,
@@ -217,7 +217,7 @@ public class UtilityCommands : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("daysince", "Calculate how many days since or until a date.")]
-    [EnabledInDm(true)]
+    [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
     public async Task HandleDaySinceAsync(
         [Summary("date", "Date in MM/DD/YYYY format")] string date)
     {
@@ -249,7 +249,7 @@ public class UtilityCommands : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("colorpreview", "Preview what a hex colour looks like before applying it.")]
-    [EnabledInDm(true)]
+    [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
     public async Task HandleColorPreviewAsync(
         [MinLength(1), MaxLength(10)] string hexCode)
     {
@@ -284,7 +284,7 @@ public class UtilityCommands : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("dnddice", "Roll any number of any-sided dice with an optional modifier.")]
-    [EnabledInDm(true)]
+    [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
     public async Task HandleDndDiceAsync(
         [MinValue(1)] int numberOfDice,
         [MinValue(2)] int sidesOnDice,
@@ -315,7 +315,7 @@ public class UtilityCommands : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("fixembed", "Let the bot fix embeds for Twitter, Reddit, Tiktok, and Bsky links.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleEmbeds()
     {
         await DeferAsync(ephemeral: true);

@@ -2,7 +2,7 @@
 using Discord.Interactions;
 using DiscordBot.Constants;
 using DiscordBot.Helper;
-using System.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 using System.Text;
 
 namespace DiscordBot.SlashCommands;
@@ -44,7 +44,7 @@ public class Forge : InteractionModuleBase<SocketInteractionContext>
     // ── /forge title ──────────────────────────────────────────────────────────
 
     [SlashCommand("title", "Forge a custom title for your active pet.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleForgeTitleAsync(
         [Choice("Common (5M)",      "1"),
          Choice("Rare (25M)",       "2"),
@@ -63,7 +63,7 @@ public class Forge : InteractionModuleBase<SocketInteractionContext>
     // ── /forge aura ───────────────────────────────────────────────────────────
 
     [SlashCommand("aura", "Forge a custom aura label for your active pet.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleForgeAuraAsync(
         [Choice("Common (5M)",      "1"),
          Choice("Rare (25M)",       "2"),
@@ -82,7 +82,7 @@ public class Forge : InteractionModuleBase<SocketInteractionContext>
     // ── /forge list ───────────────────────────────────────────────────────────
 
     [SlashCommand("list", "View all forged cosmetics on your active pet.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleForgeListAsync()
     {
         await DeferAsync();
@@ -150,7 +150,7 @@ public class Forge : InteractionModuleBase<SocketInteractionContext>
     // ── /forge tiers ─────────────────────────────────────────────────────────
 
     [SlashCommand("tiers", "View forge tier costs and limits.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleForgeTiersAsync()
     {
         await DeferAsync();

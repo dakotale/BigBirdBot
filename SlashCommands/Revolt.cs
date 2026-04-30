@@ -5,7 +5,7 @@ using DiscordBot.Constants;
 using DiscordBot.Helper;
 using System.Collections.Concurrent;
 using System.Data;
-using System.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 using System.Text;
 
 namespace DiscordBot.SlashCommands;
@@ -52,7 +52,7 @@ public class Revolt : InteractionModuleBase<SocketInteractionContext>
     // ── /revolt ───────────────────────────────────────────────────────────────
 
     [SlashCommand("revolt", "Rise up against a wealthy user — 3 paupers must agree within 5 minutes.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleRevoltAsync(IUser target)
     {
         await DeferAsync();

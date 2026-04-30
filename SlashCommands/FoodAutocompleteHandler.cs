@@ -2,7 +2,7 @@
 using Discord.Interactions;
 using DiscordBot.Constants;
 using DiscordBot.Helper;
-using System.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 
 namespace DiscordBot.SlashCommands;
 

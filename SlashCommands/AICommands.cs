@@ -5,29 +5,28 @@ using DiscordBot.Constants;
 using DiscordBot.Helper;
 using DiscordBot.Models;
 using DiscordBot.Services;
-using Microsoft.Extensions.AI;
-using OpenAI;
 using System.Data;
-using System.Data.SqlClient;
-using System.Text;
+using Microsoft.Data.SqlClient;
 
 namespace DiscordBot.SlashCommands;
 
 /// <summary>
 /// Commands backed by external AI/media APIs:
-///   /chat              — multi-turn conversation via OpenAI
+///   /chat              — multi-turn conversation via Claude
 ///   /detectaibyattachment — Sightengine AI image detection
 ///   /mood              — Spotify mood-based track recommendation
 /// </summary>
 public class AICommands : InteractionModuleBase<SocketInteractionContext>
 {
     private readonly ISpotifyService _spotifyService;
+    private readonly IAIChatService _aiChatService;
     private readonly EmbedHelper _embed = new();
     private readonly StoredProcedure _sp = new();
 
-    public AICommands(ISpotifyService spotifyService)
+    public AICommands(ISpotifyService spotifyService, IAIChatService aiChatService)
     {
         _spotifyService = spotifyService;
+        _aiChatService = aiChatService;
     }
 
     private string Username => Context.User.Username;
@@ -39,31 +38,22 @@ public class AICommands : InteractionModuleBase<SocketInteractionContext>
     // =========================================================================
 
     [SlashCommand("chat", "Have a conversation with the bot using a chosen personality.")]
-    [EnabledInDm(true)]
+    [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
     public async Task HandleChatAsync(
-        [MinLength(1), MaxLength(1000)] string message,
-        [Choice("Yes", "Yes"), Choice("No", "No")] string startNew,
-        [Choice("None", "None"),
-        Choice("eSports Gamer Lesbian", "eSports Gamer Lesbian"),
-         Choice("Sett",                 "Sett"),
-         Choice("T. M. Opera O",        "T. M. Opera O"),
-         Choice("Meisho Doto",          "Meisho Doto")] string personality)
+        [Summary("message", "Your message to the bot"), MinLength(1), MaxLength(1000)] string message,
+        [Summary("new-conversation", "Start fresh, clearing previous history"), Choice("Yes", "Yes"), Choice("No", "No")] string startNew,
+        [Summary("personality", "Choose a persona for the bot"),
+         Choice("None",                  "None"),
+         Choice("Transfirmation",         "Transfirmation"),
+         Choice("Sett",                  "Sett"),
+         Choice("T. M. Opera O",         "T. M. Opera O"),
+         Choice("Meisho Doto",           "Meisho Doto"),
+         Choice("Vi",                    "Vi"),
+         Choice("Cottagecore Witch",     "Cottagecore Witch")] string personality)
     {
         await DeferAsync();
 
-        string persona = personality switch
-        {
-            "eSports Gamer Lesbian" =>
-                "You are a giga lesbian e-sports gamer who plays League of Legends, Valorant, Counter-Strike — everything. " +
-                "You are the best and everyone else is trash. Don't be afraid to trash talk but provide no slurs.",
-            "Sett" =>
-                "You are Sett from League of Legends. Speak in their mannerisms but remain positive, helpful, and loving.",
-            "T. M. Opera O" =>
-                "You are T. M. Opera O from Umamusume: Pretty Derby. Speak in their mannerisms but remain positive, helpful, and loving.",
-            "Meisho Doto" =>
-                "You are Meisho Doto from Umamusume: Pretty Derby. Speak in their mannerisms but remain positive, helpful, and loving.",
-            _ => "You are a friendly and helpful assistant."
-        };
+        string persona = PersonaHelper.ResolvePersona(personality);
 
         string userId    = Context.User.Id.ToString();
         string serverUid = Context.Guild?.Id.ToString() ?? "";
@@ -92,33 +82,10 @@ public class AICommands : InteractionModuleBase<SocketInteractionContext>
                     new SqlParameter("@ChannelID", channelId)
                 ]);
 
-            IChatClient chatClient = new OpenAIClient(Constants.Constants.openAiToken)
-                .GetChatClient(Constants.Constants.openAiModel)
-                .AsIChatClient();
+            var historyPairs = history.Rows.Cast<DataRow>()
+                .Select(dr => (Role: dr["ChatRole"].ToString()!, Text: dr["ChatMessage"].ToString()!));
 
-            var messages = new List<ChatMessage> { new(ChatRole.System, persona) };
-
-            foreach (DataRow dr in history.Rows)
-            {
-                string role = dr["ChatRole"].ToString()!;
-                string text = dr["ChatMessage"].ToString()!;
-
-                messages.Add(role switch
-                {
-                    var r when r == ChatRole.Assistant.ToString() => new(ChatRole.Assistant, text),
-                    var r when r == ChatRole.Tool.ToString()      => new(ChatRole.Tool, text),
-                    var r when r == ChatRole.System.ToString()    => new(ChatRole.System, text),
-                    _ => new(ChatRole.User, text)
-                });
-            }
-
-            messages.Add(new ChatMessage(ChatRole.User, message));
-
-            var sb = new StringBuilder($"**Message:** {message}\n\n**Response:** ");
-            await foreach (var chunk in chatClient.GetStreamingResponseAsync(messages))
-                sb.Append(chunk.Text);
-
-            string response = sb.Length > 2000 ? sb.ToString()[..2000] : sb.ToString();
+            string aiText = await _aiChatService.GetResponseAsync(persona, historyPairs, message);
 
             SqlParameter[] baseParams =
             [
@@ -130,18 +97,24 @@ public class AICommands : InteractionModuleBase<SocketInteractionContext>
             _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "AddBotAIMessage",
             [
                 .. baseParams,
-                new SqlParameter("@ChatRole",    ChatRole.User.ToString()),
+                new SqlParameter("@ChatRole",    "user"),
                 new SqlParameter("@ChatMessage", message)
             ]);
 
             _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "AddBotAIMessage",
             [
                 .. baseParams,
-                new SqlParameter("@ChatRole",    ChatRole.Assistant.ToString()),
-                new SqlParameter("@ChatMessage", response)
+                new SqlParameter("@ChatRole",    "assistant"),
+                new SqlParameter("@ChatMessage", aiText)
             ]);
 
-            await FollowupAsync(response);
+            string header = personality == "None"
+                ? $"**Message:** {message}\n\n**Response:** "
+                : $"**Personality:** {personality}\n**Message:** {message}\n\n**Response:** ";
+            string discordOutput = header + aiText;
+            discordOutput = discordOutput.Length > 2000 ? discordOutput[..2000] : discordOutput;
+
+            await FollowupAsync(discordOutput);
         }
         catch (Exception ex)
         {
@@ -155,7 +128,7 @@ public class AICommands : InteractionModuleBase<SocketInteractionContext>
     // =========================================================================
 
     [SlashCommand("detectaibyattachment", "Upload an image to check the probability it was AI-generated.")]
-    [EnabledInDm(true)]
+    [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
     public async Task HandleAiByAttachmentAsync(Attachment attachment)
     {
         await DeferAsync();

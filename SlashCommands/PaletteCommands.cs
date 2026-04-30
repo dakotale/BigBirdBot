@@ -26,7 +26,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("palette", "Generate a color palette using AI.")]
-        [EnabledInDm(false)]
+        [CommandContextType(InteractionContextType.Guild)]
         public async Task HandlePaletteAsync(
             [Summary("prompt", "Describe the mood, theme, or style for the palette.")] string prompt)
         {

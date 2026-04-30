@@ -1,5 +1,5 @@
 using System.Data;
-using System.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 using DiscordBot.Constants;
 
 namespace DiscordBot.Tests.Integration;
@@ -83,7 +83,7 @@ public class StoredProcedureTests : IClassFixture<DatabaseFixture>
     {
         Skip.If(!_db.IsAvailable, _db.UnavailableReason);
 
-        var parameters = new List<System.Data.SqlClient.SqlParameter>
+        var parameters = new List<SqlParameter>
         {
             new("@UserID",   "0000000000000000"),   // impossible Discord snowflake
             new("@ServerID", "0000000000000000"),

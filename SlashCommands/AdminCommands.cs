@@ -4,7 +4,7 @@ using Discord.WebSocket;
 using DiscordBot.Constants;
 using DiscordBot.Helper;
 using System.Data;
-using System.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 
 namespace DiscordBot.SlashCommands
 {
@@ -16,7 +16,7 @@ namespace DiscordBot.SlashCommands
         private string Username => Context.User.Username;
 
         [SlashCommand("pronoun", "Post a pronoun selection menu for members.")]
-        [EnabledInDm(false)]
+        [CommandContextType(InteractionContextType.Guild)]
         [RequireUserPermission(ChannelPermission.ManageMessages)]
         public async Task HandlePronounAsync()
         {
@@ -37,7 +37,7 @@ namespace DiscordBot.SlashCommands
         }
 
         [SlashCommand("editbotnickname", "Change the bot's nickname in this server.")]
-        [EnabledInDm(false)]
+        [CommandContextType(InteractionContextType.Guild)]
         [RequireUserPermission(ChannelPermission.ManageRoles)]
         public async Task HandleBotNicknameAsync(
             [MinLength(1), MaxLength(32)] string nickName)
@@ -56,7 +56,7 @@ namespace DiscordBot.SlashCommands
         /// older messages are skipped and the skipped count is reported.
         /// </summary>
         [SlashCommand("purge", "Bulk-delete up to 100 messages from this channel.")]
-        [EnabledInDm(false)]
+        [CommandContextType(InteractionContextType.Guild)]
         [RequireUserPermission(ChannelPermission.ManageMessages)]
         [RequireBotPermission(ChannelPermission.ManageMessages)]
         public async Task HandlePurgeAsync(
@@ -97,7 +97,7 @@ namespace DiscordBot.SlashCommands
         /// Defaults to disabled — must be explicitly enabled by an admin.
         /// </summary>
         [SlashCommand("announcements", "Toggle timed bot announcements (word puzzles, jackpot results) for this server.")]
-        [EnabledInDm(false)]
+        [CommandContextType(InteractionContextType.Guild)]
         [RequireUserPermission(GuildPermission.ManageGuild)]
         public async Task HandleAnnouncementsAsync()
         {

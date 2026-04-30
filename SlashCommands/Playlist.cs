@@ -10,7 +10,7 @@ using Lavalink4NET.Players.Queued;
 using Lavalink4NET.Rest.Entities.Tracks;
 using Microsoft.Extensions.Options;
 using System.Data;
-using System.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 using System.Text;
 
 namespace DiscordBot.SlashCommands;
@@ -47,7 +47,7 @@ public sealed class Playlist(IAudioService audioService)
     // =========================================================================
 
     [SlashCommand("save", "Save the current queue as a named playlist.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task SaveAsync(
         [MinLength(1), MaxLength(64),
          Summary("name", "A name for this playlist, e.g. \"Chill Vibes\"")] string name)
@@ -155,7 +155,7 @@ public sealed class Playlist(IAudioService audioService)
     // =========================================================================
 
     [SlashCommand("load", "Load a saved playlist into the current queue.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task LoadAsync(
         [MinLength(1), MaxLength(64),
          Summary("name", "Name of the playlist to load")] string name)
@@ -264,7 +264,7 @@ public sealed class Playlist(IAudioService audioService)
     // =========================================================================
 
     [SlashCommand("list", "Show all your saved playlists.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task ListAsync()
     {
         await DeferAsync(ephemeral: true);
@@ -317,7 +317,7 @@ public sealed class Playlist(IAudioService audioService)
     // =========================================================================
 
     [SlashCommand("delete", "Delete one of your saved playlists.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task DeleteAsync(
         [MinLength(1), MaxLength(64),
          Summary("name", "Name of the playlist to delete")] string name)

@@ -3,7 +3,7 @@ using Discord.Interactions;
 using DiscordBot.Constants;
 using DiscordBot.Helper;
 using System.Data;
-using System.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 using System.Text;
 
 namespace DiscordBot.SlashCommands;
@@ -36,7 +36,7 @@ public class Breeding : InteractionModuleBase<SocketInteractionContext>
     // ── /breed ────────────────────────────────────────────────────────────────
 
     [SlashCommand("breed", "Breed two of your pets to produce an egg!")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleBreedAsync(
         [Summary("pet1_id", "PetID of the first parent.")] int pet1Id,
         [Summary("pet2_id", "PetID of the second parent.")] int pet2Id)
@@ -186,7 +186,7 @@ public class Breeding : InteractionModuleBase<SocketInteractionContext>
     // ── /eggs ─────────────────────────────────────────────────────────────────
 
     [SlashCommand("eggs", "View your pending eggs and hatch timers.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleEggsAsync()
     {
         await DeferAsync();
@@ -244,7 +244,7 @@ public class Breeding : InteractionModuleBase<SocketInteractionContext>
     // ── /hatchegg ─────────────────────────────────────────────────────────────
 
     [SlashCommand("hatchegg", "Hatch a ready egg into a new pet!")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleHatchEggAsync(
         [Summary("egg_id", "The egg ID to hatch (from /eggs).")] int eggId,
         [Summary("name", "Name your new pet.")][MinLength(1), MaxLength(32)] string name)

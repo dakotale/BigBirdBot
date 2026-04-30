@@ -2,7 +2,7 @@
 using Discord.Interactions;
 using DiscordBot.Constants;
 using DiscordBot.Helper;
-using System.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 using System.Text;
 
 namespace DiscordBot.SlashCommands;
@@ -30,7 +30,7 @@ public class Challenges : InteractionModuleBase<SocketInteractionContext>
     // ── /challenges ───────────────────────────────────────────────────────────
 
     [SlashCommand("challenges", "View your daily challenges and claim your bonus.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleChallengesAsync()
     {
         await DeferAsync();
@@ -144,7 +144,7 @@ public class Challenges : InteractionModuleBase<SocketInteractionContext>
     // ── /stats ────────────────────────────────────────────────────────────────
 
     [SlashCommand("stats", "View your gambling and fishing stats.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleStatsAsync(IUser? user = null)
     {
         await DeferAsync();

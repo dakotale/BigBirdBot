@@ -4,7 +4,7 @@ using DiscordBot.Constants;
 using DiscordBot.Helper;
 using DiscordBot.Json;
 using System.Data;
-using System.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 using System.Web;
 
 namespace DiscordBot.SlashCommands;
@@ -12,7 +12,7 @@ namespace DiscordBot.SlashCommands;
 public partial class Games
 {
     [SlashCommand("trivia", "Trivia Bot")]
-    [EnabledInDm(true)]
+    [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
     public async Task HandleTrivia()
     {
         await DeferAsync();

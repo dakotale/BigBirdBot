@@ -3,12 +3,12 @@ using Discord.Interactions;
 using Discord.WebSocket;
 using DiscordBot.Constants;
 using DiscordBot.Helper;
-using System.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 
 namespace DiscordBot.SlashCommands
 {
     [Group("autorole", "Configure the role automatically assigned to new members.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     [RequireUserPermission(GuildPermission.ManageRoles)]
     public class AutoRoleCommands : InteractionModuleBase<SocketInteractionContext>
     {

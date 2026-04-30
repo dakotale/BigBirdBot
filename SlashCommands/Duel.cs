@@ -522,7 +522,7 @@ public class Duel : InteractionModuleBase<SocketInteractionContext>
     // ── /duel ──────────────────────────────────────────────────────────────────
 
     [SlashCommand("duel", "Challenge another player to a 1v1 for a cut of their credits!")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleDuelAsync(
         [Summary("user", "The player you want to challenge")] IUser target,
         [Summary("theme", "Pick your battle theme"),

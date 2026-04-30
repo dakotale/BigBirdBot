@@ -5,7 +5,7 @@ using DiscordBot.Constants;
 using DiscordBot.Helper;
 using System.Collections.Concurrent;
 using System.Data;
-using System.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 
 namespace DiscordBot.SlashCommands;
 
@@ -38,7 +38,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("adopt", "Adopt a new pet and give it a name!")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleAdoptAsync(
         [Choice("Bear",         "bear"),
          Choice("Bird",         "bird"),
@@ -111,7 +111,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
     internal static readonly Color PetAccentColor = EmbedColors.Peach;
 
     [SlashCommand("list", "List all your pets.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandlePetsAsync()
     {
         await DeferAsync();
@@ -133,7 +133,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("card", "Show your active pet's full stat card.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandlePetCardAsync()
     {
         await DeferAsync();
@@ -178,7 +178,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("feed", "Feed your active pet.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleFeedAsync(
         [Autocomplete(typeof(FoodAutocompleteHandler))][MinLength(1), MaxLength(64)] string food = "Kibble")
     {
@@ -273,7 +273,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("pat", "Pet your active pet to boost their happiness!")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandlePetPetAsync()
     {
         await DeferAsync();
@@ -489,7 +489,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("groom", "Groom your active pet to boost their hygiene!")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleGroomAsync()
     {
         await DeferAsync();
@@ -578,7 +578,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("play", "Play with your active pet!")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandlePlayWithAsync()
     {
         await DeferAsync();
@@ -810,7 +810,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("sleep", "Put your pet to sleep to restore their energy.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandlePetSleepAsync()
     {
         await DeferAsync();
@@ -873,7 +873,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("hug", "Give your pet a warm hug! Small happiness boost, no XP.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandlePetHugAsync()
     {
         await DeferAsync();
@@ -1093,7 +1093,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("journal", "View the recent activity log for your active pet.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandlePetJournalAsync()
     {
         await DeferAsync();
@@ -1149,7 +1149,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("trick", "Make your pet perform a trick!")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleTrickAsync(
         [Choice("Trick 1 (Lv.5)",  "1"),
          Choice("Trick 2 (Lv.20)", "2"),
@@ -1184,7 +1184,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("accessory", "Equip an accessory to your active pet. (Unlocks at level 10)")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleAccessoryAsync(
         [Choice("Slot 1 — Hat",           "slot1"),
          Choice("Slot 2 — Collar/Outfit", "slot2")]
@@ -1224,7 +1224,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("setactive", "Switch which pet is currently active.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleSetActiveAsync([MinValue(1)] int petId)
     {
         await DeferAsync();
@@ -1258,7 +1258,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("rename", "Rename your active pet.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleRenameAsync([MinLength(1), MaxLength(32)] string newName)
     {
         await DeferAsync();
@@ -1286,7 +1286,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("release", "Release one of your pets. This cannot be undone!")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleReleaseAsync([MinValue(1)] int petId)
     {
         await DeferAsync();
@@ -1324,7 +1324,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("leaderboard", "Show the top pets in this server by level.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleLeaderboardAsync()
     {
         await DeferAsync();
@@ -1369,7 +1369,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("foodlist", "Show all available food items for your pet.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleFoodListAsync()
     {
         await DeferAsync();
@@ -1390,7 +1390,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("explore", "Send your pet on an adventure! Come back later to collect the reward.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleExploreAsync()
     {
         await DeferAsync();
@@ -1548,7 +1548,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("battle", "Challenge another user's active pet to a battle!")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandlePetBattleAsync(IUser opponent)
     {
         await DeferAsync();
@@ -1776,7 +1776,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("picture", "Upload a photo of your active pet — it will appear in all their embeds.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandlePetPictureAsync(
         IAttachment? picture = null)
     {
@@ -1857,7 +1857,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
     }
 
     [SlashCommand("pictureclear", "Remove the photo from your active pet.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandlePetPictureClearAsync()
     {
         await DeferAsync();
@@ -1886,7 +1886,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("bio", "Set a custom bio for your active pet (up to 1000 characters). Leave blank to clear it.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandlePetBioAsync(
         [MaxLength(1000)] string bio = "")
     {
@@ -1929,7 +1929,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
 
 
     [SlashCommand("breedlist", "Show all available breeds for a species.")]
-    [EnabledInDm(false)]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleBreedListAsync(
         [Choice("Bear",         "bear"),
          Choice("Bird",         "bird"),
