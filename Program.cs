@@ -1106,6 +1106,35 @@ internal sealed class BotHost(
                     catch { /* DMs disabled or user not found */ }
                 }
 
+                // ── Journal reminders (every tick = every minute) ────────────
+                var dueJournals = _sp.Select(Constants.discordBotConnStr, "GetDueJournalReminders", []);
+                foreach (DataRow journalRow in dueJournals.Rows)
+                {
+                    try
+                    {
+                        ulong userId = ulong.Parse(journalRow["UserID"].ToString()!);
+                        var journalUser = await client.GetUserAsync(userId)
+                                       ?? await client.Rest.GetUserAsync(userId);
+                        if (journalUser is null) continue;
+
+                        string prompt = DiscordBot.Helper.JournalHelper.GetRandomPrompt();
+
+                        var dm = await journalUser.CreateDMChannelAsync();
+                        await dm.SendMessageAsync(embed: new EmbedBuilder()
+                            .WithTitle("📓  Time to Journal!")
+                            .WithColor(new Color(0x7B68EE))
+                            .WithDescription(
+                                "Your daily journaling reminder is here!\n\n" +
+                                $"**Today's prompt:**\n> *{prompt}*\n\n" +
+                                "Take a few minutes to write your thoughts. " +
+                                "When you're done, use `/journal done` to log your entry and build your streak!")
+                            .WithFooter("Use /journal done when you finish • Use /journal unsubscribe to stop reminders")
+                            .WithCurrentTimestamp()
+                            .Build());
+                    }
+                    catch { /* DMs disabled or user not found */ }
+                }
+
             if (_schedulerTick % 30 == 0)
             {
                 var decayed = _sp.Select(Constants.discordBotConnStr, "DecayPetStats", []);
