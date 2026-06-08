@@ -1499,7 +1499,21 @@ internal sealed class BotHost(
                     }
                     else if (new FileInfo(filePath).Length > 8 * 1024 * 1024)
                     {
-                        await NotifyOwnerAsync($"[Keywords] Skipped {filePath} for user {userId} — file exceeds 8 MB Discord limit.");
+                        using var compressed = TryCompressImageUnder8Mb(filePath);
+                        if (compressed is null)
+                        {
+                            await NotifyOwnerAsync($"[Keywords] Skipped {filePath} for user {userId} — file exceeds 8 MB Discord limit and could not be compressed.");
+                        }
+                        else
+                        {
+                            var fileEmbed = new EmbedBuilder()
+                                .WithTitle(tableName)
+                                .WithImageUrl("attachment://" + Path.GetFileName(filePath))
+                                .WithColor(Color.Blue)
+                                .WithFooter(timestamp)
+                                .Build();
+                            await user.SendFileAsync(compressed, Path.GetFileName(filePath), embed: fileEmbed);
+                        }
                     }
                     else
                     {
@@ -1705,6 +1719,54 @@ internal sealed class BotHost(
         return fullPath;
     }
 
+
+    private static MemoryStream? TryCompressImageUnder8Mb(string filePath)
+    {
+        var ext = Path.GetExtension(filePath).ToLowerInvariant();
+        if (ext is not (".jpg" or ".jpeg" or ".png" or ".webp"))
+            return null;
+
+        const long limit = 8 * 1024 * 1024;
+        var format = ext is ".png" ? SkiaSharp.SKEncodedImageFormat.Png : SkiaSharp.SKEncodedImageFormat.Jpeg;
+
+        using var original = SkiaSharp.SKBitmap.Decode(filePath);
+        if (original is null) return null;
+
+        int width = original.Width;
+        int height = original.Height;
+        int quality = 85;
+
+        while (true)
+        {
+            using var bitmap = original.Resize(new SkiaSharp.SKImageInfo(width, height), SkiaSharp.SKSamplingOptions.Default);
+            if (bitmap is null) return null;
+
+            using var image = SkiaSharp.SKImage.FromBitmap(bitmap);
+            using var encoded = image.Encode(format, quality);
+
+            if (encoded.Size <= limit)
+            {
+                var ms = new MemoryStream();
+                encoded.SaveTo(ms);
+                ms.Position = 0;
+                return ms;
+            }
+
+            // Try reducing quality first (JPEG only), then scale down dimensions
+            if (format == SkiaSharp.SKEncodedImageFormat.Jpeg && quality > 40)
+            {
+                quality -= 15;
+            }
+            else
+            {
+                width = (int)(width * 0.75);
+                height = (int)(height * 0.75);
+                quality = 85;
+                if (width < 100 || height < 100)
+                    return null;
+            }
+        }
+    }
 
     private static bool IsDirectImageUrl(string url)
     {
