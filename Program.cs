@@ -1,4 +1,5 @@
-﻿using System.Data;
+﻿using System.Collections.Concurrent;
+using System.Data;
 using Microsoft.Data.SqlClient;
 using System.Text;
 using Discord;
@@ -78,6 +79,12 @@ internal sealed class BotHost(
     private System.Timers.Timer? _stockDayResetTimer;
     private int _schedulerTick = 0;
     private Task? _schedulerTask;
+
+    // Tracks messages we're waiting on Discord's own link crawler to embed,
+    // keyed by message ID, so the /fixembed fallback only fires when Discord's
+    // native embed genuinely failed to produce media.
+    private readonly ConcurrentDictionary<ulong, TaskCompletionSource<bool>> _pendingEmbedWatches = new();
+    private static readonly TimeSpan NativeEmbedWaitTimeout = TimeSpan.FromSeconds(5);
 
     // ── Per-channel puzzle hint state ──────────────────────────────────────────
     // Shared between the scheduler (creation), T+30/T+50 reveal tasks, and
@@ -195,6 +202,7 @@ internal sealed class BotHost(
         client.UserLeft += OnUserLeftAsync;
         client.ButtonExecuted += OnButtonExecutedAsync;
         client.MessageReceived += OnMessageReceivedAsync;
+        client.MessageUpdated += OnMessageUpdatedAsync;
         client.ReactionAdded += OnReactionAddedAsync;
         client.UserVoiceStateUpdated += OnUserVoiceStateUpdatedAsync;
     }
@@ -502,8 +510,11 @@ internal sealed class BotHost(
             var embedSettings = _sp.Select(Constants.discordBotConnStr, "GetEmbedBroken",
                 [new SqlParameter("@ServerUID", long.Parse(serverId))]);
 
-            if (bool.TryParse(embedSettings.Rows[0]["FixEmbed"]?.ToString(), out bool fix) && fix)
+            if (bool.TryParse(embedSettings.Rows[0]["FixEmbed"]?.ToString(), out bool fix) && fix
+                && !await DiscordEmbedSucceededAsync(msg.Id))
+            {
                 await msg.Channel.SendMessageAsync(cleanup.CleanURLEmbed(message));
+            }
 
             return;
         }
@@ -760,6 +771,38 @@ internal sealed class BotHost(
 
         if (actions.Rows.Count > 0)
             _ = Task.Run(() => SendChatActionsAsync(msg, msgChannel, actions));
+    }
+
+    /// Waits briefly to see whether Discord's own link crawler attaches a rich
+    /// embed (image/video) to <paramref name="messageId"/> on its own. Returns
+    /// true if it did, so callers can skip posting a redundant fixed-link message.
+    private async Task<bool> DiscordEmbedSucceededAsync(ulong messageId)
+    {
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!_pendingEmbedWatches.TryAdd(messageId, tcs))
+            return false;
+
+        try
+        {
+            var winner = await Task.WhenAny(tcs.Task, Task.Delay(NativeEmbedWaitTimeout));
+            return winner == tcs.Task && await tcs.Task;
+        }
+        finally
+        {
+            _pendingEmbedWatches.TryRemove(messageId, out _);
+        }
+    }
+
+    private Task OnMessageUpdatedAsync(
+        Cacheable<IMessage, ulong> before, SocketMessage after, ISocketMessageChannel channel)
+    {
+        if (_pendingEmbedWatches.TryGetValue(after.Id, out var tcs) &&
+            after.Embeds.Any(e => e.Image is not null || e.Video is not null))
+        {
+            tcs.TrySetResult(true);
+        }
+
+        return Task.CompletedTask;
     }
 
     private async Task HandlePrefixCommandAsync(
@@ -1133,6 +1176,47 @@ internal sealed class BotHost(
                             .Build());
                     }
                     catch { /* DMs disabled or user not found */ }
+                }
+
+                // ── Birthdays (every tick = every minute) ────────────────────
+                var todaysBirthdays = _sp.Select(Constants.discordBotConnStr, "GetTodaysBirthdays", []);
+                foreach (DataRow birthdayRow in todaysBirthdays.Rows)
+                {
+                    try
+                    {
+                        string mention = birthdayRow["BirthdayUser"].ToString()!;
+                        ulong guildId = ulong.Parse(birthdayRow["BirthdayGuild"].ToString()!);
+                        string? overrideChannelId = birthdayRow.Table.Columns.Contains("BirthdayChannel")
+                            ? birthdayRow["BirthdayChannel"] as string
+                            : null;
+
+                        var birthdayGuild = client.GetGuild(guildId);
+                        if (birthdayGuild is null) continue;
+
+                        ITextChannel? channel = null;
+
+                        if (!string.IsNullOrWhiteSpace(overrideChannelId) && ulong.TryParse(overrideChannelId, out ulong overrideId))
+                            channel = birthdayGuild.GetTextChannel(overrideId);
+
+                        if (channel is null)
+                        {
+                            var serverDetails = ServerHelper.GetServerInfo(guildId);
+                            if (serverDetails is null || !serverDetails.AnnouncementsEnabled) continue;
+                            if (string.IsNullOrWhiteSpace(serverDetails.DefaultChannelID)) continue;
+
+                            channel = birthdayGuild.GetTextChannel(ulong.Parse(serverDetails.DefaultChannelID));
+                        }
+
+                        if (channel is null) continue;
+
+                        await channel.SendMessageAsync(embed: new EmbedBuilder()
+                            .WithTitle("🎂  Happy Birthday!")
+                            .WithColor(new Color(255, 105, 180))
+                            .WithDescription($"Everyone wish {mention} a very happy birthday! 🎉🎈")
+                            .WithCurrentTimestamp()
+                            .Build());
+                    }
+                    catch { /* guild/channel may no longer exist */ }
                 }
 
             if (_schedulerTick % 30 == 0)

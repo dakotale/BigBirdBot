@@ -105,7 +105,9 @@ public class ServerCommands : InteractionModuleBase<SocketInteractionContext>
     public async Task HandleBirthdayAsync(
         SocketGuildUser user,
         [MinValue(1), MaxValue(12)] int monthNumber,
-        [MinValue(1), MaxValue(31)] int dayNumber)
+        [MinValue(1), MaxValue(31)] int dayNumber,
+        [Summary(description: "Channel to post the birthday message in. Defaults to the server's default channel.")]
+        SocketTextChannel? channel = null)
     {
         await DeferAsync(ephemeral: true);
 
@@ -131,14 +133,19 @@ public class ServerCommands : InteractionModuleBase<SocketInteractionContext>
 
             _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "AddBirthday",
             [
-                new SqlParameter("@BirthdayDate",  birthday),
-                new SqlParameter("@BirthdayUser",  user.Mention),
-                new SqlParameter("@BirthdayGuild", guild.Id.ToString())
+                new SqlParameter("@BirthdayDate",    birthday),
+                new SqlParameter("@BirthdayUser",    user.Mention),
+                new SqlParameter("@BirthdayGuild",   guild.Id.ToString()),
+                new SqlParameter("@BirthdayChannel", (object?)channel?.Id.ToString() ?? DBNull.Value)
             ]);
+
+            string channelNote = channel is not null
+                ? $" Announcements will post in {channel.Mention}."
+                : " Announcements will post in the server's default channel.";
 
             await FollowupAsync(embed: _embed.BuildMessageEmbed(
                 "Birthday Added",
-                $"**{user.DisplayName}'s** birthday ({monthNumber}/{dayNumber}) was added.",
+                $"**{user.DisplayName}'s** birthday ({monthNumber}/{dayNumber}) was added.{channelNote}",
                 "", Username, Color.Blue).Build(), ephemeral: true);
         }
         catch (Exception ex)
