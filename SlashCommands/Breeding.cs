@@ -35,6 +35,11 @@ public class Breeding : InteractionModuleBase<SocketInteractionContext>
 
     // ── /breed ────────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Validates both parent pets (same species, level 10+, not hibernating, egg cap not
+    /// reached), then creates an egg with stats averaged from both parents (±10% variance)
+    /// and a 24h hatch timer.
+    /// </summary>
     [SlashCommand("breed", "Breed two of your pets to produce an egg!")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleBreedAsync(
@@ -168,23 +173,21 @@ public class Breeding : InteractionModuleBase<SocketInteractionContext>
         statLines.AppendLine($"🛁 Hygiene:   **{baseHygiene}**");
         statLines.AppendLine($"⭐ Head-start XP: **{baseXp:N0}** (Lv {PetHelper.LevelFromXp(baseXp)})");
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"🥚  An Egg Appears!")
-            .WithColor(ColourGold)
-            .WithDescription(
-                $"**{p1Name}** and **{p2Name}** have produced an egg!\n\n" +
-                $"🐾 Species: **{species1}** — Breed: **{breed}**\n" +
-                $"🥚 Egg ID: **#{eggId}**\n\n" +
-                $"The egg will hatch <t:{hatchTs}:R> (<t:{hatchTs}:f>).\n" +
-                $"Use `/hatchegg {eggId}` when it's ready!")
-            .AddField("Inherited Stats", statLines.ToString(), inline: false)
-            .WithFooter($"{Username} • Check /eggs for all pending eggs", AvatarUrl)
-            .WithCurrentTimestamp()
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            "🥚  An Egg Appears!",
+            $"**{p1Name}** and **{p2Name}** have produced an egg!\n\n" +
+            $"🐾 Species: **{species1}** — Breed: **{breed}**\n" +
+            $"🥚 Egg ID: **#{eggId}**\n\n" +
+            $"The egg will hatch <t:{hatchTs}:R> (<t:{hatchTs}:f>).\n" +
+            $"Use `/hatchegg {eggId}` when it's ready!",
+            ColourGold, footer: $"{Username} • Check /eggs for all pending eggs", footerIconUrl: AvatarUrl,
+            fields: [("Inherited Stats", statLines.ToString(), false)])
             .Build());
     }
 
     // ── /eggs ─────────────────────────────────────────────────────────────────
 
+    /// <summary>Lists every pending egg with its hatch countdown (or "ready to hatch" once the timer elapses).</summary>
     [SlashCommand("eggs", "View your pending eggs and hatch timers.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleEggsAsync()
@@ -199,13 +202,9 @@ public class Breeding : InteractionModuleBase<SocketInteractionContext>
 
         if (dt.Rows.Count == 0)
         {
-            await FollowupAsync(embed: new EmbedBuilder()
-                .WithTitle("🥚  No Pending Eggs")
-                .WithColor(ColourWarn)
-                .WithDescription("You don't have any eggs incubating right now.\nUse `/breed` to produce one!")
-                .WithFooter(Username, AvatarUrl)
-                .WithCurrentTimestamp()
-                .Build());
+            await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+                "🥚  No Pending Eggs", "You don't have any eggs incubating right now.\nUse `/breed` to produce one!",
+                ColourWarn, footer: Username, footerIconUrl: AvatarUrl).Build());
             return;
         }
 
@@ -232,17 +231,14 @@ public class Breeding : InteractionModuleBase<SocketInteractionContext>
         desc.AppendLine();
         desc.AppendLine($"-# You can hold up to {MaxEggs} unhatched eggs at once.");
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"🥚  Your Eggs ({dt.Rows.Count}/{MaxEggs})")
-            .WithColor(ColourGold)
-            .WithDescription(desc.ToString())
-            .WithFooter(Username, AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"🥚  Your Eggs ({dt.Rows.Count}/{MaxEggs})", desc.ToString(),
+            ColourGold, footer: Username, footerIconUrl: AvatarUrl).Build());
     }
 
     // ── /hatchegg ─────────────────────────────────────────────────────────────
 
+    /// <summary>Hatches a ready egg into a new pet, applying its inherited stats and head-start XP, and auto-activating it if it's the user's first pet.</summary>
     [SlashCommand("hatchegg", "Hatch a ready egg into a new pet!")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleHatchEggAsync(
@@ -364,23 +360,20 @@ public class Breeding : InteractionModuleBase<SocketInteractionContext>
         statLines.AppendLine($"🛁 Hygiene:   **{baseHygiene}**");
         statLines.AppendLine($"⭐ Starting XP: **{baseXp:N0}** (Level **{level}**)");
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"{emoji}  {name} has hatched!")
-            .WithColor(ColourSuccess)
-            .WithDescription(
-                $"Your egg has hatched into a **{breed} {species}**!\n\n" +
-                $"👨‍👩‍👧 Parents: Pet **#{parent1}** × Pet **#{parent2}**\n" +
-                (hasActive
-                    ? $"✅ **{name}** is now your active pet."
-                    : $"Use `/setactive` to make **{name}** your active pet."))
-            .AddField("Starting Stats", statLines.ToString(), inline: false)
-            .WithFooter($"{Username} • Use /petcard to see your new pet!", AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"{emoji}  {name} has hatched!",
+            $"Your egg has hatched into a **{breed} {species}**!\n\n" +
+            $"👨‍👩‍👧 Parents: Pet **#{parent1}** × Pet **#{parent2}**\n" +
+            (hasActive
+                ? $"✅ **{name}** is now your active pet."
+                : $"Use `/setactive` to make **{name}** your active pet."),
+            ColourSuccess, footer: $"{Username} • Use /petcard to see your new pet!", footerIconUrl: AvatarUrl,
+            fields: [("Starting Stats", statLines.ToString(), false)]).Build());
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
+    /// <summary>Posts a standard Breeding-branded error embed.</summary>
     private async Task ErrorAsync(string message) =>
         await FollowupAsync(embed: _embed.BuildErrorEmbed("Breeding", message, Username).Build());
 }

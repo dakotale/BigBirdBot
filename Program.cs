@@ -17,14 +17,23 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
+// Entry point: build the generic host, wire up DI, then hand control to BotHost.
 var builder = Host.CreateApplicationBuilder(args);
 ConfigureServices(builder.Services);
 await builder.Build().Services
              .GetRequiredService<BotHost>()
              .RunAsync();
 
+/// <summary>
+/// Registers every service the bot needs with the DI container: the Discord socket
+/// client, command/interaction handling, Lavalink (voice/music), Spotify, and the AI
+/// chat service. Called once at startup before BotHost.RunAsync begins.
+/// </summary>
 static void ConfigureServices(IServiceCollection services) =>
     services
+        // Gateway intents control which events Discord sends us — these three cover
+        // guild/channel content plus member join/leave, without requesting privileged
+        // intents we don't need.
         .AddSingleton(new DiscordSocketConfig
         {
             GatewayIntents = GatewayIntents.AllUnprivileged
@@ -66,6 +75,13 @@ static void ConfigureServices(IServiceCollection services) =>
         .AddLogging(x => x.ClearProviders().SetMinimumLevel(LogLevel.Trace));
 
 
+/// <summary>
+/// Top-level orchestrator for the bot's lifetime: connects to Discord, wires up every
+/// gateway event handler, and runs the background scheduler and stock-price timers.
+/// Also hosts the message-based (non-slash-command) features — keyword triggers, mini
+/// games (Scramble/Wordle/pet word puzzles), pronoun buttons, and NSFW/dead-link cleanup —
+/// since these react to raw events rather than slash commands.
+/// </summary>
 internal sealed class BotHost(
     DiscordSocketClient client,
     LoggingService logger,
@@ -90,6 +106,12 @@ internal sealed class BotHost(
     // Shared between the scheduler (creation), T+30/T+50 reveal tasks, and
     // OnMessageReceivedAsync (guess tracking) so all reveals accumulate correctly.
 
+    /// <summary>
+    /// Tracks which letters of a bonus word puzzle have been revealed so far, and how many
+    /// guesses have been made. One instance lives per active puzzle channel; the scheduler's
+    /// T+30/T+50 reveal tasks and the every-20-guesses check in OnMessageReceivedAsync all
+    /// read/write the same instance so hints only ever accumulate, never reset.
+    /// </summary>
     private sealed class PuzzleHintState
     {
         public readonly string Word;
@@ -97,6 +119,7 @@ internal sealed class BotHost(
         private readonly HashSet<int> _revealed = new();
         private int _guessCount;
 
+        /// <summary>Creates the state for a new puzzle, with the first letter already revealed.</summary>
         public PuzzleHintState(string word, IUserMessage msg)
         {
             Word = word;
@@ -104,13 +127,17 @@ internal sealed class BotHost(
             _revealed.Add(0); // first letter shown from the start
         }
 
+        /// <summary>
         /// Tries to reveal one new unrevealed letter.
         /// Returns true and sets <paramref name="hint"/> to the updated string when
         /// a new letter was revealed; returns false when all letters are already shown.
+        /// </summary>
         public bool TryRevealNext(out string hint)
         {
             lock (_revealed)
             {
+                // Pick uniformly at random among letters not yet shown, so reveals
+                // don't always proceed left-to-right.
                 var available = Enumerable.Range(1, Word.Length - 1)
                     .Where(i => !_revealed.Contains(i))
                     .ToList();
@@ -128,14 +155,16 @@ internal sealed class BotHost(
             }
         }
 
+        /// <summary>Returns the hint string reflecting whatever letters are currently revealed.</summary>
         public string GetCurrentHint()
         {
             lock (_revealed) return BuildHint();
         }
 
-        /// Returns the new total guess count.
+        /// <summary>Atomically increments and returns the new total guess count.</summary>
         public int IncrementGuesses() => Interlocked.Increment(ref _guessCount);
 
+        /// <summary>Renders the word as underscores with only the revealed letters filled in.</summary>
         private string BuildHint()
         {
             char[] chars = new string('_', Word.Length).ToCharArray();
@@ -160,6 +189,11 @@ internal sealed class BotHost(
     };
 
 
+    /// <summary>
+    /// Starts the bot: initializes slash-command registration, wires up every gateway
+    /// event handler, kicks off the background scheduler and stock-price timers, then
+    /// connects to Discord and blocks forever (the process exits only via host shutdown).
+    /// </summary>
     public async Task RunAsync()
     {
         await services.GetRequiredService<InteractionHandlerService>().InitializeAsync();
@@ -170,6 +204,7 @@ internal sealed class BotHost(
         await Task.Delay(Timeout.Infinite);
     }
 
+    /// <summary>Logs in and starts the Discord gateway connection; on failure, hands off to the reconnect loop.</summary>
     private async Task ConnectAsync()
     {
         try
@@ -184,6 +219,7 @@ internal sealed class BotHost(
         }
     }
 
+    /// <summary>Logs the failure, logs out to clear any half-open session, waits, then retries the connection.</summary>
     private async Task ReconnectAsync(Exception ex)
     {
         await logger.InfoAsync($"{ex.GetType().Name}: {ex.Message}");
@@ -192,22 +228,31 @@ internal sealed class BotHost(
         await ConnectAsync();
     }
 
+    /// <summary>
+    /// Subscribes to every Discord gateway event this bot reacts to. Each subscription below
+    /// is event-driven — the corresponding handler fires whenever Discord.NET raises that
+    /// event, not on any fixed schedule.
+    /// </summary>
     private void RegisterEvents()
     {
-        client.Connected += OnConnectedAsync;
-        client.Disconnected += OnDisconnectedAsync;
-        client.Log += OnLogMessageAsync;
-        client.JoinedGuild += OnJoinedGuildAsync;
-        client.UserJoined += OnUserJoinedAsync;
-        client.UserLeft += OnUserLeftAsync;
-        client.ButtonExecuted += OnButtonExecutedAsync;
-        client.MessageReceived += OnMessageReceivedAsync;
-        client.MessageUpdated += OnMessageUpdatedAsync;
-        client.ReactionAdded += OnReactionAddedAsync;
-        client.UserVoiceStateUpdated += OnUserVoiceStateUpdatedAsync;
+        client.Connected += OnConnectedAsync;                      // gateway connection established
+        client.Disconnected += OnDisconnectedAsync;                 // gateway connection dropped
+        client.Log += OnLogMessageAsync;                            // Discord.NET internal log/exception messages
+        client.JoinedGuild += OnJoinedGuildAsync;                   // bot added to a new server
+        client.UserJoined += OnUserJoinedAsync;                     // member joined a server the bot is in
+        client.UserLeft += OnUserLeftAsync;                         // member left/was removed from a server
+        client.ButtonExecuted += OnButtonExecutedAsync;             // component (button) interaction, e.g. pronoun roles
+        client.MessageReceived += OnMessageReceivedAsync;           // any message posted in a visible channel or DM
+        client.MessageUpdated += OnMessageUpdatedAsync;             // message edited (used to detect late native embeds)
+        client.ReactionAdded += OnReactionAddedAsync;                // emoji reaction added, e.g. trivia answers, NSFW flagging
+        client.UserVoiceStateUpdated += OnUserVoiceStateUpdatedAsync; // voice channel join/leave/move
     }
 
 
+    /// <summary>
+    /// Fires each time the gateway connection is (re-)established. Sets the bot's status
+    /// and restarts the scheduler/stock timers if they died while disconnected.
+    /// </summary>
     private async Task OnConnectedAsync()
     {
         await logger.InfoAsync("Bot connected");
@@ -230,13 +275,19 @@ internal sealed class BotHost(
         }
     }
 
+    /// <summary>Fires when the gateway connection drops; just logs — reconnection is handled by Discord.NET/ConnectAsync.</summary>
     private async Task OnDisconnectedAsync(Exception ex) =>
         await logger.InfoAsync($"Bot disconnected ({client.ConnectionState}): {ex.Message}");
 
+    /// <summary>
+    /// Fires on every Discord.NET internal log line. Filters down to genuine exceptions
+    /// (ignoring routine reconnect exceptions and non-exception log noise) and forwards
+    /// those to the owner's private log channel.
+    /// </summary>
     private async Task OnLogMessageAsync(LogMessage msg)
     {
-        if (msg.Exception is null || msg.Message.Length == 0) return;
-        if (msg.Exception is Discord.WebSocket.GatewayReconnectException) return;
+        if (msg.Exception is null || msg.Message.Length == 0) return; // not an exception — nothing to report
+        if (msg.Exception is Discord.WebSocket.GatewayReconnectException) return; // routine, expected — don't spam the log channel
 
         var channel = client.GetGuild(LogGuildId)?.GetTextChannel(LogChannelId);
         if (channel is null) return;
@@ -248,9 +299,10 @@ internal sealed class BotHost(
     }
 
 
+    /// <summary>Fires when a member leaves (or is removed from) a guild: purges their DB row and audits the departure.</summary>
     private Task OnUserLeftAsync(SocketGuild guild, SocketUser user)
     {
-        if (user.IsBot || user.IsWebhook) return Task.CompletedTask;
+        if (user.IsBot || user.IsWebhook) return Task.CompletedTask; // bots/webhooks aren't tracked in the user table
 
         _sp.UpdateCreate(Constants.discordBotConnStr, "DeleteUser",
         [
@@ -261,14 +313,16 @@ internal sealed class BotHost(
         return Task.CompletedTask;
     }
 
+    /// <summary>Fires when a member joins a guild: records them in the DB, audits the join, and assigns the guild's auto-role (if configured).</summary>
     private async Task OnUserJoinedAsync(SocketGuildUser user)
     {
-        if (user.IsBot || user.IsWebhook) return;
+        if (user.IsBot || user.IsWebhook) return; // bots/webhooks aren't tracked in the user table
         AddUserToDatabase(user, user.Guild.Id);
         new Audit().InsertUserJoinedAudit(user.Id.ToString(), user.Guild.Id.ToString(), Constants.discordBotConnStr);
         await AssignAutoRoleAsync(user);
     }
 
+    /// <summary>Grants the guild's configured auto-role to a newly-joined member, if one is set up.</summary>
     private async Task AssignAutoRoleAsync(SocketGuildUser user)
     {
         var dt = _sp.Select(Constants.discordBotConnStr, "GetGuildAutoRole",
@@ -276,22 +330,29 @@ internal sealed class BotHost(
             new SqlParameter("@GuildId", (long)user.Guild.Id)
         ]);
 
-        if (dt.Rows.Count == 0) return;
+        if (dt.Rows.Count == 0) return; // no auto-role configured for this guild
 
         ulong roleId = (ulong)(long)dt.Rows[0]["RoleId"];
         var role = user.Guild.GetRole(roleId);
-        if (role is null) return;
+        if (role is null) return; // role was deleted since being configured
 
         try { await user.AddRoleAsync(role); }
         catch { /* role may have been deleted or bot lacks permission */ }
     }
 
+    /// <summary>
+    /// Fires when the bot is added to a new guild: registers the server in the DB (if not
+    /// already present), downloads the member list, and backfills every existing member
+    /// into the user table.
+    /// </summary>
     private async Task OnJoinedGuildAsync(SocketGuild guild)
     {
         await Task.Run(() =>
         {
             new Audit().InsertGuildJoinedAudit(guild.Id.ToString(), guild.Name, Constants.discordBotConnStr);
 
+            // Build the set of server IDs we already know about, so re-adding the bot to a
+            // guild it was previously in doesn't insert a duplicate row.
             var existingIds = _sp
                 .Select(Constants.discordBotConnStr, "GetServers", [])
                 .AsEnumerable()
@@ -313,6 +374,8 @@ internal sealed class BotHost(
 
         if (guild.Users.Count == 0)
         {
+            // DownloadUsersAsync can silently return nothing if the gateway member-list
+            // request fails; flag it rather than proceeding as if the guild were empty.
             await SendLogAsync(
                 $"Bot joined **{guild.Name}** but DownloadUsersAsync returned 0 users. Owner: {guild.Owner}",
                 Color.Red);
@@ -321,6 +384,8 @@ internal sealed class BotHost(
 
         await Task.Run(() =>
         {
+            // Backfill every existing human member — new joins after this point are
+            // handled individually by OnUserJoinedAsync.
             foreach (var user in guild.Users.Where(u => !u.IsBot && !u.IsWebhook))
                 AddUserToDatabase(user, guild.Id);
         });
@@ -328,6 +393,7 @@ internal sealed class BotHost(
         await logger.InfoAsync($"{guild.Users.Count} users added for {guild.Name}");
     }
 
+    /// <summary>Inserts or updates a single member's row in the user table.</summary>
     private void AddUserToDatabase(SocketGuildUser user, ulong guildId) =>
         _sp.UpdateCreate(Constants.discordBotConnStr, "AddUser",
         [
@@ -339,8 +405,15 @@ internal sealed class BotHost(
         ]);
 
 
+    /// <summary>
+    /// Fires on every button click. Only handles pronoun-role buttons (identified by a
+    /// plain numeric custom ID with no <c>_</c> or <c>:</c> — those separators mark buttons
+    /// owned by other features, e.g. gambling's double-or-nothing). Toggles the matching
+    /// pronoun role on the clicking user, creating the role on the guild if it doesn't exist yet.
+    /// </summary>
     private async Task OnButtonExecutedAsync(SocketMessageComponent component)
     {
+        // Not a pronoun-button ID — some other feature (e.g. Duel, Gambling) owns this button.
         if (component.Data.CustomId.Contains('_') || component.Data.CustomId.Contains(':'))
             return;
 
@@ -353,6 +426,7 @@ internal sealed class BotHost(
             string name = row["Pronoun"].ToString()!;
             string id = row["ID"].ToString()!;
 
+            // Lazily create the pronoun role on this guild the first time it's needed.
             if (!guild.Roles.Any(r => r.Name == name))
                 await guild.CreateRoleAsync(name);
 
@@ -360,7 +434,7 @@ internal sealed class BotHost(
                 pronounSelected = name;
         }
 
-        guild = client.GetGuild(component.GuildId!.Value);
+        guild = client.GetGuild(component.GuildId!.Value); // re-fetch: role list above may have just changed
         var role = guild.Roles.FirstOrDefault(r => r.Name == pronounSelected);
         var guildUser = guild.GetUser(component.User.Id);
 
@@ -368,6 +442,7 @@ internal sealed class BotHost(
 
         bool hasRole = guildUser.Roles.Any(r => r.Name == role.Name);
 
+        // Toggle: remove the role if the user already has it, otherwise add it.
         if (hasRole)
             await ((IGuildUser)guildUser).RemoveRoleAsync(role);
         else
@@ -388,105 +463,142 @@ internal sealed class BotHost(
     }
 
 
+    /// <summary>
+    /// Handles a DM as a possible guess for a scramble or Wordle game the author has
+    /// active in this DM channel. DMs have no guild/server context, so unlike the guild-channel
+    /// path in <see cref="OnMessageReceivedAsync"/> these guesses are not audit-logged.
+    /// </summary>
     private async Task HandleDmGameResponseAsync(SocketMessage msg, SocketDMChannel dmChannel)
     {
         string message   = msg.Content.Trim().ToLowerInvariant();
-        string userId    = msg.Author.Id.ToString();
         string channelId = dmChannel.Id.ToString();
 
-        // Scramble
+        if (await TryHandleScrambleGuessAsync(msg.Channel, channelId, message, msg.Author, onSolved: null))
+            return;
+
+        await TryHandleWordleGuessAsync(msg.Channel, channelId, message);
+    }
+
+    /// <summary>
+    /// Checks <paramref name="message"/> against an active scramble game for the channel.
+    /// A non-expired game is always "consumed" (returns true) whether or not the guess was
+    /// correct, so callers should stop further message processing; a missing or expired game
+    /// returns false so the message can fall through to other checks (e.g. Wordle). Shared by
+    /// the DM path and the guild-channel path in <see cref="OnMessageReceivedAsync"/>.
+    /// <paramref name="onSolved"/> lets callers add context-specific side effects (e.g. audit
+    /// logging) — DMs have no server ID to log against, so the DM caller passes null.
+    /// </summary>
+    private async Task<bool> TryHandleScrambleGuessAsync(
+        IMessageChannel channel, string channelId, string message, IUser author, Action? onSolved)
+    {
         var scramble = _sp.Select(Constants.discordBotConnStr, "GetScrambleByChannel",
             [new SqlParameter("@ChannelID", channelId)]);
 
-        if (scramble.Rows.Count > 0)
+        if (scramble.Rows.Count == 0) return false;
+
+        bool expired = DateTime.TryParse(scramble.Rows[0]["ExpiresAt"].ToString(), out var expiresAt)
+                       && DateTime.UtcNow > expiresAt;
+        if (expired) return false;
+
+        string correctAnswer = scramble.Rows[0]["Answer"].ToString()!;
+
+        if (string.Equals(message, correctAnswer, StringComparison.OrdinalIgnoreCase))
         {
-            bool expired = DateTime.TryParse(scramble.Rows[0]["ExpiresAt"].ToString(), out var expiresAt)
-                           && DateTime.UtcNow > expiresAt;
-
-            if (!expired)
-            {
-                string correctAnswer = scramble.Rows[0]["Answer"].ToString()!;
-
-                if (string.Equals(message, correctAnswer, StringComparison.OrdinalIgnoreCase))
-                {
-                    _sp.UpdateCreate(Constants.discordBotConnStr, "DeleteScrambleGame",
-                        [new SqlParameter("@ChannelID", channelId)]);
-
-                    await msg.Channel.SendMessageAsync(embed: new EmbedBuilder()
-                        .WithTitle("🎉  Correct!")
-                        .WithColor(Color.Green)
-                        .WithDescription(
-                            $"{msg.Author.Mention} solved it! The word was **{correctAnswer}**.")
-                        .WithFooter($"Solved by {msg.Author.Username}")
-                        .WithCurrentTimestamp()
-                        .Build());
-                }
-
-                return;
-            }
-        }
-
-        // Wordle
-        if (message.Length == 5 && message.All(char.IsLetter))
-        {
-            var wordle = _sp.Select(Constants.discordBotConnStr, "GetWordleByChannel",
+            _sp.UpdateCreate(Constants.discordBotConnStr, "DeleteScrambleGame",
                 [new SqlParameter("@ChannelID", channelId)]);
 
-            if (wordle.Rows.Count > 0)
-            {
-                string answer       = wordle.Rows[0]["Answer"].ToString()!;
-                string messageIdStr = wordle.Rows[0]["MessageID"].ToString()!;
-                string guessesRaw   = wordle.Rows[0]["Guesses"].ToString()!;
+            onSolved?.Invoke();
 
-                var guesses = string.IsNullOrEmpty(guessesRaw)
-                    ? new List<string>()
-                    : guessesRaw.Split(',').ToList();
-
-                guesses.Add(message);
-
-                bool won      = message.Equals(answer, StringComparison.OrdinalIgnoreCase);
-                bool gameOver = won || guesses.Count >= 6;
-
-                string newGuesses = string.Join(",", guesses);
-
-                if (gameOver)
-                    _sp.UpdateCreate(Constants.discordBotConnStr, "DeleteWordleGame",
-                        [new SqlParameter("@ChannelID", channelId)]);
-                else
-                    _sp.UpdateCreate(Constants.discordBotConnStr, "UpdateWordleGame",
-                    [
-                        new SqlParameter("@ChannelID", channelId),
-                        new SqlParameter("@Guesses",   newGuesses)
-                    ]);
-
-                if (ulong.TryParse(messageIdStr, out ulong messageId) &&
-                    await msg.Channel.GetMessageAsync(messageId) is IUserMessage gameMsg)
-                {
-                    await gameMsg.ModifyAsync(m =>
-                        m.Embed = DiscordBot.SlashCommands.Games
-                            .BuildWordleEmbed(answer, guesses, gameOver).Build());
-                }
-            }
+            await channel.SendMessageAsync(embed: _embed.BuildSimpleEmbed(
+                "🎉  Correct!", $"{author.Mention} solved it! The word was **{correctAnswer}**.",
+                Color.Green, footer: $"Solved by {author.Username}").Build());
         }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Records <paramref name="message"/> as a guess against an active Wordle game for the
+    /// channel, updates/ends the game in the database, and refreshes the game's embed message.
+    /// Returns false (no-op) if the message isn't 5 letters or no game is active for the channel.
+    /// Shared by the DM path and the guild-channel path in <see cref="OnMessageReceivedAsync"/>.
+    /// <paramref name="onGuessed"/> fires with the win/loss result before the DB update, letting
+    /// callers add context-specific side effects (e.g. audit-logging a guild win).
+    /// </summary>
+    private async Task<bool> TryHandleWordleGuessAsync(
+        IMessageChannel channel, string channelId, string message, Action<bool>? onGuessed = null)
+    {
+        if (message.Length != 5 || !message.All(char.IsLetter)) return false;
+
+        var wordle = _sp.Select(Constants.discordBotConnStr, "GetWordleByChannel",
+            [new SqlParameter("@ChannelID", channelId)]);
+
+        if (wordle.Rows.Count == 0) return false;
+
+        string answer       = wordle.Rows[0]["Answer"].ToString()!;
+        string messageIdStr = wordle.Rows[0]["MessageID"].ToString()!;
+        string guessesRaw   = wordle.Rows[0]["Guesses"].ToString()!;
+
+        var guesses = string.IsNullOrEmpty(guessesRaw)
+            ? new List<string>()
+            : guessesRaw.Split(',').ToList();
+
+        guesses.Add(message);
+
+        bool won      = message.Equals(answer, StringComparison.OrdinalIgnoreCase);
+        bool gameOver = won || guesses.Count >= 6;
+
+        onGuessed?.Invoke(won);
+
+        string newGuesses = string.Join(",", guesses);
+
+        if (gameOver)
+            _sp.UpdateCreate(Constants.discordBotConnStr, "DeleteWordleGame",
+                [new SqlParameter("@ChannelID", channelId)]);
+        else
+            _sp.UpdateCreate(Constants.discordBotConnStr, "UpdateWordleGame",
+            [
+                new SqlParameter("@ChannelID", channelId),
+                new SqlParameter("@Guesses",   newGuesses)
+            ]);
+
+        if (ulong.TryParse(messageIdStr, out ulong messageId) &&
+            await channel.GetMessageAsync(messageId) is IUserMessage gameMsg)
+        {
+            await gameMsg.ModifyAsync(m =>
+                m.Embed = DiscordBot.SlashCommands.Games
+                    .BuildWordleEmbed(answer, guesses, gameOver).Build());
+        }
+
+        return true;
     }
 
 
+    /// <summary>
+    /// Central message router — fires on every message the bot can see. Order matters: each
+    /// branch below returns as soon as it claims the message, so DM game-guesses, the social-
+    /// media-embed fixer, the "-" keyword prefix, and the various mini-games are mutually
+    /// exclusive per message. Also drives passive credit income and pet XP-from-chatting,
+    /// which apply to ordinary conversation and don't return early.
+    /// </summary>
     private async Task OnMessageReceivedAsync(SocketMessage msg)
     {
-        if (msg.Author.IsBot || msg.Author.IsWebhook) return;
+        if (msg.Author.IsBot || msg.Author.IsWebhook) return; // never react to bots/webhooks (avoids feedback loops)
 
+        // DMs have no guild/economy context, so they're routed to a separate,
+        // games-only handler rather than falling through the guild logic below.
         if (msg.Channel is SocketDMChannel dmChannel)
         {
             await HandleDmGameResponseAsync(msg, dmChannel);
             return;
         }
 
-        if (msg.Channel is not SocketGuildChannel msgChannel) return;
+        if (msg.Channel is not SocketGuildChannel msgChannel) return; // not a DM and not a guild channel — nothing to do
 
         string message = msg.Content.Trim().ToLowerInvariant();
         string serverId = msgChannel.Guild.Id.ToString();
         string userId = msg.Author.Id.ToString();
-        const string prefix = "-";
+        const string prefix = "-"; // marks a keyword-add/lookup command, e.g. "-cat http://..."
 
         _sp.UpdateCreate(Constants.discordBotConnStr, "UpdateUserLastSeen",
         [
@@ -500,16 +612,22 @@ internal sealed class BotHost(
         var serverInfo = _sp.Select(Constants.discordBotConnStr, "GetServerByID",
             [new SqlParameter("ServerUID", long.Parse(serverId))]);
 
+        // Server-wide kill switch — if the server record is missing/inactive, skip all
+        // further processing (no keyword triggers, games, or pet XP) for this message.
         if (!bool.TryParse(serverInfo.Rows[0]["IsActive"]?.ToString(), out bool active) || !active)
             return;
 
         var cleanup = new URLCleanup();
 
+        // A raw social-media link (Twitter/X, Bluesky, etc.) whose native Discord embed may
+        // be broken, and that isn't itself a "-" keyword command — try to fix its embed.
         if (cleanup.HasSocialMediaEmbed(message) && !message.StartsWith(prefix))
         {
             var embedSettings = _sp.Select(Constants.discordBotConnStr, "GetEmbedBroken",
                 [new SqlParameter("@ServerUID", long.Parse(serverId))]);
 
+            // Only step in if this server opted into the fix AND Discord's own crawler
+            // didn't manage to attach a rich embed on its own within the wait window.
             if (bool.TryParse(embedSettings.Rows[0]["FixEmbed"]?.ToString(), out bool fix) && fix
                 && !await DiscordEmbedSucceededAsync(msg.Id))
             {
@@ -519,6 +637,7 @@ internal sealed class BotHost(
             return;
         }
 
+        // "-keyword ..." — add or manage a chat-triggered keyword; handled entirely elsewhere.
         if (message.StartsWith(prefix))
         {
             await HandlePrefixCommandAsync(msg, message, serverId, userId, prefix, cleanup);
@@ -529,6 +648,8 @@ internal sealed class BotHost(
         var activePetRow = _sp.Select(Constants.discordBotConnStr, "GetActivePet",
             [new SqlParameter("@UserID", userId)]);
 
+        // Award passive pet XP for ordinary chatting — only if the user has an active,
+        // non-hibernating pet. This block doesn't return early: games/keywords below still run.
         if (activePetRow.Rows.Count > 0)
         {
             bool petHibernating = bool.TryParse(
@@ -539,10 +660,10 @@ internal sealed class BotHost(
                 int petId = int.Parse(activePetRow.Rows[0]["PetID"].ToString()!);
                 int xpGain = DiscordBot.Helper.PetHelper.XpMessage;
 
-                if (msg.Attachments.Count > 0)
+                if (msg.Attachments.Count > 0)      // bonus XP for posting an image/file
                     xpGain += DiscordBot.Helper.PetHelper.XpAttachment;
 
-                if (message.Contains("http://") || message.Contains("https://"))
+                if (message.Contains("http://") || message.Contains("https://")) // bonus XP for sharing a link
                     xpGain += DiscordBot.Helper.PetHelper.XpLink;
 
                 var xpResult = _sp.Select(Constants.discordBotConnStr, "AddPetXP",
@@ -551,14 +672,14 @@ internal sealed class BotHost(
                     new SqlParameter("@Amount", xpGain)
                 ]);
 
-                if (xpResult.Rows.Count > 0)
+                if (xpResult.Rows.Count > 0) // AddPetXP returns the updated row only when the pet still exists
                 {
                     int newXp = int.Parse(xpResult.Rows[0]["XP"].ToString()!);
                     int oldXp = newXp - xpGain;
                     int oldLevel = DiscordBot.Helper.PetHelper.LevelFromXp(oldXp);
                     int newLevel = DiscordBot.Helper.PetHelper.LevelFromXp(newXp);
 
-                    if (newLevel > oldLevel)
+                    if (newLevel > oldLevel) // crossed a level threshold — announce it and pay out the level-up bonus
                     {
                         string petName = activePetRow.Rows[0]["Name"].ToString()!;
                         string species = activePetRow.Rows[0]["Species"].ToString()!;
@@ -569,58 +690,28 @@ internal sealed class BotHost(
                         decimal lvlBonus = CreditHelper.PetLevelUpAmount(newLevel);
                         decimal newBalance = _creditEco.AddCredits(userId, serverId, lvlBonus, "pet_levelup");
 
-                        await msg.Channel.SendMessageAsync(embed: new EmbedBuilder()
-                            .WithTitle($"{emoji}  {petName} levelled up!")
-                            .WithColor(new Color(255, 215, 0))
-                            .WithDescription(
-                                $"{msg.Author.Mention}'s pet **{petName}** is now **Level {newLevel}**! 🎉\n" +
-                                $"Bonus: {CreditHelper.Format(lvlBonus)} | Balance: {CreditHelper.Format(newBalance)}" +
-                                (unlock is not null ? $"\n\n{unlock}" : ""))
-                            .WithCurrentTimestamp()
-                            .Build());
+                        await msg.Channel.SendMessageAsync(embed: _embed.BuildSimpleEmbed(
+                            $"{emoji}  {petName} levelled up!",
+                            $"{msg.Author.Mention}'s pet **{petName}** is now **Level {newLevel}**! 🎉\n" +
+                            $"Bonus: {CreditHelper.Format(lvlBonus)} | Balance: {CreditHelper.Format(newBalance)}" +
+                            (unlock is not null ? $"\n\n{unlock}" : ""),
+                            new Color(255, 215, 0)).Build());
                     }
                 }
             }
         }
 
 
-        var scramble = _sp.Select(Constants.discordBotConnStr, "GetScrambleByChannel",
-            [new SqlParameter("@ChannelID", msgChannel.Id.ToString())]);
-
-        if (scramble.Rows.Count > 0)
-        {
-            bool expired = DateTime.TryParse(scramble.Rows[0]["ExpiresAt"].ToString(), out var expiresAt)
-                           && DateTime.UtcNow > expiresAt;
-
-            if (!expired)
-            {
-                string correctAnswer = scramble.Rows[0]["Answer"].ToString()!;
-
-                if (string.Equals(message, correctAnswer, StringComparison.OrdinalIgnoreCase))
-                {
-                    _sp.UpdateCreate(Constants.discordBotConnStr, "DeleteScrambleGame",
-                        [new SqlParameter("@ChannelID", msgChannel.Id.ToString())]);
-
-                    new Audit().InsertGameTriggerAudit("scramble", userId, serverId, Constants.discordBotConnStr);
-
-                    await msg.Channel.SendMessageAsync(embed: new EmbedBuilder()
-                        .WithTitle("🎉  Correct!")
-                        .WithColor(Color.Green)
-                        .WithDescription(
-                            $"{msg.Author.Mention} solved it! The word was **{correctAnswer}**.")
-                        .WithFooter($"Solved by {msg.Author.Username}")
-                        .WithCurrentTimestamp()
-                        .Build());
-                }
-
-                return;
-            }
-        }
+        // Guild-channel scramble guess — audit-logged (DMs have no server ID to log against).
+        if (await TryHandleScrambleGuessAsync(msg.Channel, msgChannel.Id.ToString(), message, msg.Author,
+                onSolved: () => new Audit().InsertGameTriggerAudit("scramble", userId, serverId, Constants.discordBotConnStr)))
+            return;
 
 
         var petPuzzle = _sp.Select(Constants.discordBotConnStr, "GetActivePetPuzzle",
             [new SqlParameter("@ChannelID", msg.Channel.Id.ToString())]);
 
+        // A bonus word puzzle (posted hourly by the scheduler) is active in this channel.
         if (petPuzzle.Rows.Count > 0)
         {
             string puzzleWord = petPuzzle.Rows[0]["Word"].ToString()!;
@@ -647,6 +738,8 @@ internal sealed class BotHost(
                 bool awardedXp = false;
                 string petLine  = string.Empty;
 
+                // Pet XP bonus is separate from the credit reward above and only applies
+                // if the solver has an active, non-hibernating pet.
                 if (solverPet.Rows.Count > 0)
                 {
                     bool solverHib = bool.TryParse(
@@ -674,12 +767,8 @@ internal sealed class BotHost(
                     : $"{msg.Author.Mention} solved the bonus word puzzle!\n" +
                       $"They earned {CreditHelper.Format(CreditHelper.PuzzleSolveAmount)}! 🎉";
 
-                await msg.Channel.SendMessageAsync(embed: new EmbedBuilder()
-                    .WithTitle("🧩  Puzzle Solved!")
-                    .WithColor(Color.Green)
-                    .WithDescription(description)
-                    .WithCurrentTimestamp()
-                    .Build());
+                await msg.Channel.SendMessageAsync(embed: _embed.BuildSimpleEmbed(
+                    "🧩  Puzzle Solved!", description, Color.Green).Build());
 
                 return;
             }
@@ -690,24 +779,25 @@ internal sealed class BotHost(
             string trimmedGuess = message.Trim();
             bool isWordAttempt  = trimmedGuess.Length > 0 && trimmedGuess.All(char.IsLetter);
 
+            // Only channels with live hint-tracking state (i.e. the puzzle was posted by
+            // the scheduler, not left over some other way) accumulate reveals.
             if (isWordAttempt && _puzzleHintStates.TryGetValue(puzzleChannelId, out var guessState))
             {
                 int totalGuesses = guessState.IncrementGuesses();
+                // Reveal one more letter every 20 wrong guesses, on top of the scheduler's
+                // own T+30/T+50 timed reveals — whichever fires first wins for that letter.
                 if (totalGuesses % 20 == 0 && guessState.TryRevealNext(out string guessHint))
                 {
                     try
                     {
-                        await guessState.Message.ModifyAsync(m => m.Embed = new EmbedBuilder()
-                            .WithTitle("🧩  Bonus Word Puzzle!")
-                            .WithColor(new Color(255, 179, 71))
-                            .WithDescription(
-                                $"Type the secret word in this channel to earn " +
-                                $"**+{DiscordBot.Helper.PetHelper.XpWordPuzzle} XP** for your active pet!\n\n" +
-                                $"**Hint:** `{guessHint}`  ({guessState.Word.Length} letters)\n" +
-                                $"*(A letter was revealed after {totalGuesses} guesses!)*\n\n" +
-                                $"⏳ First correct answer wins!")
-                            .WithCurrentTimestamp()
-                            .Build());
+                        await guessState.Message.ModifyAsync(m => m.Embed = _embed.BuildSimpleEmbed(
+                            "🧩  Bonus Word Puzzle!",
+                            $"Type the secret word in this channel to earn " +
+                            $"**+{DiscordBot.Helper.PetHelper.XpWordPuzzle} XP** for your active pet!\n\n" +
+                            $"**Hint:** `{guessHint}`  ({guessState.Word.Length} letters)\n" +
+                            $"*(A letter was revealed after {totalGuesses} guesses!)*\n\n" +
+                            $"⏳ First correct answer wins!",
+                            new Color(255, 179, 71)).Build());
                     }
                     catch { /* message may have been deleted */ }
                 }
@@ -715,54 +805,16 @@ internal sealed class BotHost(
         }
 
 
-        if (message.Length == 5 && message.All(char.IsLetter))
-        {
-            var wordle = _sp.Select(Constants.discordBotConnStr, "GetWordleByChannel",
-                [new SqlParameter("@ChannelID", msgChannel.Id.ToString())]);
-
-            if (wordle.Rows.Count > 0)
+        // Guild-channel Wordle guess — audit-log only on a win, same as the original inline check.
+        if (await TryHandleWordleGuessAsync(msg.Channel, msgChannel.Id.ToString(), message, won =>
             {
-                string answer = wordle.Rows[0]["Answer"].ToString()!;
-                string messageIdStr = wordle.Rows[0]["MessageID"].ToString()!;
-                string guessesRaw = wordle.Rows[0]["Guesses"].ToString()!;
-
-                var guesses = string.IsNullOrEmpty(guessesRaw)
-                    ? new List<string>()
-                    : guessesRaw.Split(',').ToList();
-
-                guesses.Add(message);
-
-                bool won = message.Equals(answer, StringComparison.OrdinalIgnoreCase);
-                bool gameOver = won || guesses.Count >= 6;
-
-                if (won)
-                    new Audit().InsertGameTriggerAudit("wordle", userId, serverId, Constants.discordBotConnStr);
-
-                string newGuesses = string.Join(",", guesses);
-
-                if (gameOver)
-                    _sp.UpdateCreate(Constants.discordBotConnStr, "DeleteWordleGame",
-                        [new SqlParameter("@ChannelID", msgChannel.Id.ToString())]);
-                else
-                    _sp.UpdateCreate(Constants.discordBotConnStr, "UpdateWordleGame",
-                    [
-                        new SqlParameter("@ChannelID", msgChannel.Id.ToString()),
-                        new SqlParameter("@Guesses",   newGuesses)
-                    ]);
-
-                if (ulong.TryParse(messageIdStr, out ulong messageId) &&
-                    await msg.Channel.GetMessageAsync(messageId) is IUserMessage gameMsg)
-                {
-                    await gameMsg.ModifyAsync(m =>
-                        m.Embed = DiscordBot.SlashCommands.Games
-                            .BuildWordleEmbed(answer, guesses, gameOver).Build());
-                }
-
-                return;
-            }
-        }
+                if (won) new Audit().InsertGameTriggerAudit("wordle", userId, serverId, Constants.discordBotConnStr);
+            }))
+            return;
 
 
+        // Fall-through: check whether this exact message text matches a registered
+        // chat-triggered keyword (e.g. auto-replying with a saved image/link).
         var actions = _sp.Select(Constants.discordBotConnStr, "GetChatAction",
         [
             new SqlParameter("@ServerID", long.Parse(serverId)),
@@ -770,12 +822,15 @@ internal sealed class BotHost(
         ]);
 
         if (actions.Rows.Count > 0)
+            // Fire-and-forget: don't block the gateway event handler on file/network I/O.
             _ = Task.Run(() => SendChatActionsAsync(msg, msgChannel, actions));
     }
 
+    /// <summary>
     /// Waits briefly to see whether Discord's own link crawler attaches a rich
     /// embed (image/video) to <paramref name="messageId"/> on its own. Returns
     /// true if it did, so callers can skip posting a redundant fixed-link message.
+    /// </summary>
     private async Task<bool> DiscordEmbedSucceededAsync(ulong messageId)
     {
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -793,6 +848,11 @@ internal sealed class BotHost(
         }
     }
 
+    /// <summary>
+    /// Fires when a message is edited. Used only to detect that Discord's own link crawler
+    /// finally attached a rich embed to a message <see cref="DiscordEmbedSucceededAsync"/>
+    /// is currently waiting on, so that waiter can resolve immediately instead of timing out.
+    /// </summary>
     private Task OnMessageUpdatedAsync(
         Cacheable<IMessage, ulong> before, SocketMessage after, ISocketMessageChannel channel)
     {
@@ -805,6 +865,11 @@ internal sealed class BotHost(
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Handles a "-keyword ..." message: registers an attachment, single URL, or comma-
+    /// separated list of URLs against a chat-triggered keyword so it can later be replayed
+    /// by <see cref="SendChatActionsAsync"/>.
+    /// </summary>
     private async Task HandlePrefixCommandAsync(
         SocketMessage msg, string message, string serverId,
         string userId, string prefix, URLCleanup cleanup)
@@ -816,29 +881,30 @@ internal sealed class BotHost(
         var keywordMap = _sp.Select(Constants.discordBotConnStr, "GetChatKeywordMap",
             [new SqlParameter("@AddKeyword", keyword)]);
 
-        if (keywordMap.Rows.Count == 0) return;
+        if (keywordMap.Rows.Count == 0) return; // not a registered keyword — ignore silently
 
         if (msg.Attachments.Count > 0)
         {
             await AddAttachmentsAsync(msg, keywordMap.Rows[0]["Keyword"].ToString()!,
                                       Constants.discordBotConnStr, userId);
             await msg.Channel.SendMessageAsync(
-                embed: MakeEmbed("Added Image", Color.Blue, "Added attachment(s) successfully.").Build());
+                embed: _embed.BuildSimpleEmbed("Added Image", "Added attachment(s) successfully.", Color.Blue).Build());
         }
 
-        if (parts.Length <= 1) return;
+        if (parts.Length <= 1) return; // attachment-only message with no URL/text argument — nothing more to add
 
         string content = message[(prefix.Length + keyword.Length)..].Trim();
         bool isMultiUrl = content.Contains(',') && content.Contains("http");
 
         if (isMultiUrl)
         {
+            // Comma-separated list — register each URL as its own entry under the keyword.
             foreach (string url in content.Split(',', StringSplitOptions.TrimEntries))
             {
                 if (!url.StartsWith("http"))
                 {
                     await msg.Channel.SendMessageAsync(
-                        embed: MakeEmbed("Error", Color.Red, $"Invalid URL: *{url}*").Build());
+                        embed: _embed.BuildSimpleEmbed("Error", $"Invalid URL: *{url}*", Color.Red).Build());
                     continue;
                 }
 
@@ -848,7 +914,7 @@ internal sealed class BotHost(
             }
 
             await msg.Channel.SendMessageAsync(
-                embed: MakeEmbed("Added Image", Color.Blue, "Added link(s) successfully.").Build());
+                embed: _embed.BuildSimpleEmbed("Added Image", "Added link(s) successfully.", Color.Blue).Build());
         }
         else
         {
@@ -857,15 +923,18 @@ internal sealed class BotHost(
 
             StoreChatKeyword(keywordMap, storeValue, userId);
 
+            // Locally-downloaded social media images get a different confirmation message
+            // than a plain URL/text entry, since the stored value is a file path either way.
             string confirmation = storeValue.StartsWith(@"C:\")
                 ? "Image downloaded and saved locally."
                 : "Added URL/Text successfully.";
 
             await msg.Channel.SendMessageAsync(
-                embed: MakeEmbed("Added URL/Text", Color.Blue, confirmation).Build());
+                embed: _embed.BuildSimpleEmbed("Added URL/Text", confirmation, Color.Blue).Build());
         }
     }
 
+    /// <summary>Persists one keyword value (a file path, URL, or plain text) for every table name the keyword maps to.</summary>
     private void StoreChatKeyword(DataTable keywordMap, string value, string userId)
     {
         foreach (DataRow row in keywordMap.Rows)
@@ -879,6 +948,12 @@ internal sealed class BotHost(
         }
     }
 
+    /// <summary>
+    /// Replays every registered response for a matched chat keyword: a locally-stored file,
+    /// a live URL, or plain text. Dead links are auto-removed from the keyword's URL list;
+    /// posted images/links get a ❌ reaction so any member can delete them (see
+    /// <see cref="OnReactionAddedAsync"/>).
+    /// </summary>
     private async Task SendChatActionsAsync(SocketMessage msg, SocketGuildChannel msgChannel, DataTable actions)
     {
         if (client.GetChannel(msgChannel.Id) is not IMessageChannel sender) return;
@@ -895,6 +970,8 @@ internal sealed class BotHost(
 
             keyword = char.ToUpperInvariant(keyword[0]) + keyword[1..];
 
+            // Three possible stored shapes for a keyword's value: a local file path,
+            // a live URL, or plain text — each is delivered differently.
             if (chatAction.StartsWith(@"C:\"))
             {
                 bool isSpoiler = isNsfw && !chatAction.Contains("SPOILER_");
@@ -908,7 +985,7 @@ internal sealed class BotHost(
                 var output = await msg.Channel.SendFileAsync(
                     stream, Path.GetFileName(chatAction), embed: embed, isSpoiler: isSpoiler);
 
-                if (!isSpoiler)
+                if (!isSpoiler) // spoilered NSFW content isn't tagged for deletion — it's already hidden
                     await output.AddReactionAsync(new Emoji("❌"));
             }
             else if (chatAction.Contains("http"))
@@ -927,6 +1004,7 @@ internal sealed class BotHost(
                 }
                 else
                 {
+                    // Link is dead — remove it from the keyword's rotation so it isn't served again.
                     await sender.SendMessageAsync($"Link was dead so I deleted it :) -> {chatAction}");
                     _sp.UpdateCreate(Constants.discordBotConnStr, "DeleteChatKeywordURL",
                     [
@@ -937,7 +1015,7 @@ internal sealed class BotHost(
             }
             else
             {
-                string display = isNsfw ? $"||{chatAction}||" : chatAction;
+                string display = isNsfw ? $"||{chatAction}||" : chatAction; // Discord spoiler markup
                 var output = await sender.SendMessageAsync(display);
                 if (!isNsfw)
                     await output.AddReactionAsync(new Emoji("❌"));
@@ -946,6 +1024,11 @@ internal sealed class BotHost(
     }
 
 
+    /// <summary>
+    /// Fires when any user's voice state changes (join/leave/move). Its only job is cleanup:
+    /// when the last human leaves a voice channel the bot is in, disconnect the bot and clear
+    /// its music queue; if the bot itself gets disconnected, clear the "player connected" row too.
+    /// </summary>
     private async Task OnUserVoiceStateUpdatedAsync(
         SocketUser user, SocketVoiceState before, SocketVoiceState after)
     {
@@ -954,6 +1037,8 @@ internal sealed class BotHost(
 
         SqlParameter[] serverParam = [new SqlParameter("@ServerID", guild.Id.ToString())];
 
+        // Local helper: forces every bot user out of a voice channel (used both when the
+        // music bot itself disconnects and when the last human leaves).
         async Task DisconnectBotsAsync(SocketVoiceChannel channel)
         {
             foreach (var bot in channel.ConnectedUsers.Where(u => u.IsBot))
@@ -962,6 +1047,8 @@ internal sealed class BotHost(
 
         if (user.IsBot)
         {
+            // The bot itself left a channel — clear its "connected" DB row so future
+            // commands know no player is active for this server.
             if (after.VoiceChannel is null && before.VoiceChannel is not null)
             {
                 await DisconnectBotsAsync(before.VoiceChannel);
@@ -970,6 +1057,8 @@ internal sealed class BotHost(
         }
         else if (before.VoiceChannel is not null && after.VoiceChannel is null)
         {
+            // A human left a channel — if no humans remain, there's no one to listen,
+            // so disconnect the bot and clear the queue rather than playing to an empty room.
             bool anyNonBotRemaining = before.VoiceChannel.ConnectedUsers.Any(u => !u.IsBot);
             if (!anyNonBotRemaining)
             {
@@ -981,6 +1070,12 @@ internal sealed class BotHost(
     }
 
 
+    /// <summary>
+    /// Fires on every reaction added anywhere the bot can see. Handles two unrelated features
+    /// via the reacted emoji: a ❌ on one of the bot's own image posts deletes/NSFW-flags it,
+    /// and a trivia letter emoji (🇦-🇩) is scored as a quiz answer. Runs as fire-and-forget
+    /// so a slow download/DB call never blocks the gateway event loop.
+    /// </summary>
     private Task OnReactionAddedAsync(
         Cacheable<IUserMessage, ulong> cachedMsg,
         Cacheable<IMessageChannel, ulong> cachedChannel,
@@ -989,11 +1084,13 @@ internal sealed class BotHost(
         _ = Task.Run(async () =>
         {
             var download = await cachedMsg.GetOrDownloadAsync();
-            if (download is null) return;
-            if (client.GetUser(reaction.UserId)?.IsBot == true) return;
+            if (download is null) return; // message was deleted before we could fetch it
+            if (client.GetUser(reaction.UserId)?.IsBot == true) return; // ignore the bot's own reactions
 
             var imageUrl = download.Embeds.FirstOrDefault(e => e.Image.HasValue)?.Image?.Url;
 
+            // ❌ on one of the bot's own posts, with fewer than 2 reactions so far (i.e. not
+            // already actioned) — treat it as a "delete/flag this" request from a member.
             if (reaction.Emote.Name == "❌" && download.Author.IsBot && download.Reactions.Count < 2)
             {
                 string? fileName = imageUrl is not null
@@ -1027,9 +1124,11 @@ internal sealed class BotHost(
         return Task.CompletedTask;
     }
 
+    /// <summary>True if the reacted emoji is one of the four trivia answer letters (🇦-🇩).</summary>
     private static bool IsTriviaEmoji(string name) =>
         name is "🇦" or "🇧" or "🇨" or "🇩";
 
+    /// <summary>Flags a chat-keyword file as NSFW the first time it's ❌-reacted, if it isn't already marked.</summary>
     private async Task TryMarkNsfwAsync(
         string content,
         Cacheable<IMessageChannel, ulong> channel,
@@ -1038,7 +1137,7 @@ internal sealed class BotHost(
         var existing = _sp.Select(Constants.discordBotConnStr, "GetKeywordNSFW",
             [new SqlParameter("@Message", content)]);
 
-        if (existing.AsEnumerable().Any(r => r["NSFW"].ToString() == "1")) return;
+        if (existing.AsEnumerable().Any(r => r["NSFW"].ToString() == "1")) return; // already flagged — nothing to do
 
         var result = _sp.Select(Constants.discordBotConnStr, "MarkKeywordNSFW",
             [new SqlParameter("@Message", content)]);
@@ -1052,6 +1151,11 @@ internal sealed class BotHost(
         }
     }
 
+    /// <summary>
+    /// Scores a trivia-emoji reaction against the stored correct answer for that message,
+    /// replies with a correct/wrong result, and deletes the trivia record once answered
+    /// correctly (so later reactions on the same message are no-ops).
+    /// </summary>
     private async Task HandleTriviaReactionAsync(
         Cacheable<IUserMessage, ulong> cachedMsg,
         Cacheable<IMessageChannel, ulong> channel,
@@ -1060,7 +1164,7 @@ internal sealed class BotHost(
     {
         try
         {
-            if (download.Embeds.Count == 0) return;
+            if (download.Embeds.Count == 0) return; // not a trivia embed
 
             long messageId = (long)cachedMsg.Id;
             string userMention = reaction.User.Value.Mention;
@@ -1068,15 +1172,19 @@ internal sealed class BotHost(
             var dt = _sp.Select(Constants.discordBotConnStr, "GetTriviaMessage",
                 [new SqlParameter("@TriviaMessageID", messageId)]);
 
-            if (dt.Rows.Count == 0) return;
+            if (dt.Rows.Count == 0) return; // no matching trivia record (already answered, or not a trivia message)
 
             string correctAnswer = dt.Rows[0]["CorrectAnswer"].ToString()!;
 
+            // The answer-choice fields are named "A. ...", "B. ...", etc. — filter out any
+            // other fields the embed might have (e.g. a question/category field with no dot).
             var fields = download.Embeds
                 .SelectMany(e => e.Fields)
                 .Where(f => f.Name.Contains('.'))
                 .ToList();
 
+            // Map the reacted emoji (🇦-🇩) to its letter, then confirm that letter's field
+            // is the one holding the correct answer text.
             var correctField = fields.FirstOrDefault(f => f.Value == correctAnswer);
             if (correctField == default
                 || !EmojiToLetter.TryGetValue(reaction.Emote.Name, out string? selectedLetter))
@@ -1103,7 +1211,25 @@ internal sealed class BotHost(
         }
     }
 
+    /// <summary>
+    /// Resolves a guild's configured default text channel by its stored ID string.
+    /// Returns null if the ID is missing/malformed or the channel no longer exists —
+    /// callers treat either case as "nowhere to announce, skip." Shared by the several
+    /// scheduler blocks below that each announce to a guild's default channel.
+    /// </summary>
+    private static ITextChannel? ResolveAnnouncementChannel(SocketGuild guild, string? defaultChannelId) =>
+        ulong.TryParse(defaultChannelId, out ulong channelId) && channelId != 0
+            ? guild.GetTextChannel(channelId)
+            : null;
 
+
+    /// <summary>
+    /// Background loop that drives every time-based feature: reminders and journal pings
+    /// (every tick), pet stat decay (every 30 min), activity-based pet XP (every 15 min),
+    /// bonus word puzzles and jackpot draws (hourly), plus stock-price ticks via
+    /// <see cref="StartStockTimer"/> on its own separate timer. Runs for the lifetime of the
+    /// process; <see cref="OnConnectedAsync"/> restarts it if it ever dies while disconnected.
+    /// </summary>
     private async Task RunSchedulerAsync()
     {
         // Wait until the top of the next minute so every tick lands on a clock minute
@@ -1138,13 +1264,9 @@ internal sealed class BotHost(
                         if (reminderUser is null) continue;
 
                         var dm = await reminderUser.CreateDMChannelAsync();
-                        await dm.SendMessageAsync(embed: new EmbedBuilder()
-                            .WithTitle("⏰  Reminder")
-                            .WithColor(Color.Gold)
-                            .WithDescription(message)
-                            .WithFooter("You asked me to remind you at this time.")
-                            .WithCurrentTimestamp()
-                            .Build());
+                        await dm.SendMessageAsync(embed: _embed.BuildSimpleEmbed(
+                            "⏰  Reminder", message, Color.Gold,
+                            footer: "You asked me to remind you at this time.").Build());
                     }
                     catch { /* DMs disabled or user not found */ }
                 }
@@ -1163,17 +1285,14 @@ internal sealed class BotHost(
                         string prompt = DiscordBot.Helper.JournalHelper.GetRandomPrompt();
 
                         var dm = await journalUser.CreateDMChannelAsync();
-                        await dm.SendMessageAsync(embed: new EmbedBuilder()
-                            .WithTitle("📓  Time to Journal!")
-                            .WithColor(new Color(0x7B68EE))
-                            .WithDescription(
-                                "Your daily journaling reminder is here!\n\n" +
-                                $"**Today's prompt:**\n> *{prompt}*\n\n" +
-                                "Take a few minutes to write your thoughts. " +
-                                "When you're done, use `/journal done` to log your entry and build your streak!")
-                            .WithFooter("Use /journal done when you finish • Use /journal unsubscribe to stop reminders")
-                            .WithCurrentTimestamp()
-                            .Build());
+                        await dm.SendMessageAsync(embed: _embed.BuildSimpleEmbed(
+                            "📓  Time to Journal!",
+                            "Your daily journaling reminder is here!\n\n" +
+                            $"**Today's prompt:**\n> *{prompt}*\n\n" +
+                            "Take a few minutes to write your thoughts. " +
+                            "When you're done, use `/journal done` to log your entry and build your streak!",
+                            new Color(0x7B68EE),
+                            footer: "Use /journal done when you finish • Use /journal unsubscribe to stop reminders").Build());
                     }
                     catch { /* DMs disabled or user not found */ }
                 }
@@ -1202,23 +1321,21 @@ internal sealed class BotHost(
                         {
                             var serverDetails = ServerHelper.GetServerInfo(guildId);
                             if (serverDetails is null || !serverDetails.AnnouncementsEnabled) continue;
-                            if (string.IsNullOrWhiteSpace(serverDetails.DefaultChannelID)) continue;
 
-                            channel = birthdayGuild.GetTextChannel(ulong.Parse(serverDetails.DefaultChannelID));
+                            channel = ResolveAnnouncementChannel(birthdayGuild, serverDetails.DefaultChannelID);
                         }
 
                         if (channel is null) continue;
 
-                        await channel.SendMessageAsync(embed: new EmbedBuilder()
-                            .WithTitle("🎂  Happy Birthday!")
-                            .WithColor(new Color(255, 105, 180))
-                            .WithDescription($"Everyone wish {mention} a very happy birthday! 🎉🎈")
-                            .WithCurrentTimestamp()
-                            .Build());
+                        await channel.SendMessageAsync(embed: _embed.BuildSimpleEmbed(
+                            "🎂  Happy Birthday!",
+                            $"Everyone wish {mention} a very happy birthday! 🎉🎈",
+                            new Color(255, 105, 180)).Build());
                     }
                     catch { /* guild/channel may no longer exist */ }
                 }
 
+            // Runs once every 30 minutes (tick increments once per minute).
             if (_schedulerTick % 30 == 0)
             {
                 var decayed = _sp.Select(Constants.discordBotConnStr, "DecayPetStats", []);
@@ -1234,20 +1351,20 @@ internal sealed class BotHost(
                         string petName = decayRow["Name"].ToString()!;
                         string species = decayRow["Species"].ToString()!;
 
-                        await owner.SendMessageAsync(embed: new EmbedBuilder()
-                            .WithTitle("💤  Your pet is hibernating!")
-                            .WithColor(Color.DarkGrey)
-                            .WithDescription(
-                                $"**{petName}** the {species} has gone into hibernation.\n\n" +
-                                $"They were too hungry, unhappy, and tired while you were away.\n\n" +
-                                $"Use `/feed` to wake them up! Don't worry — they're safe. 🌿")
-                            .WithCurrentTimestamp()
-                            .Build());
+                        await owner.SendMessageAsync(embed: _embed.BuildSimpleEmbed(
+                            "💤  Your pet is hibernating!",
+                            $"**{petName}** the {species} has gone into hibernation.\n\n" +
+                            $"They were too hungry, unhappy, and tired while you were away.\n\n" +
+                            $"Use `/feed` to wake them up! Don't worry — they're safe. 🌿",
+                            Color.DarkGrey).Build());
                     }
                     catch { /* DMs disabled or user not found */ }
                 }
             }
 
+            // Runs once every 15 minutes — awards pet XP to users currently shown as
+            // playing/listening/streaming (Discord "Activity" status), rewarding presence
+            // rather than requiring active chatting.
             if (_schedulerTick % 15 == 0)
             {
                 foreach (var guild in client.Guilds)
@@ -1261,7 +1378,7 @@ internal sealed class BotHost(
                                    or ActivityType.Listening
                                    or ActivityType.Streaming) == true;
 
-                        if (!hasActivity) continue;
+                        if (!hasActivity) continue; // not showing a qualifying activity status right now
 
                         var userPet = _sp.Select(Constants.discordBotConnStr, "GetActivePet",
                             [new SqlParameter("@UserID", guildUser.Id.ToString())]);
@@ -1288,6 +1405,7 @@ internal sealed class BotHost(
                 }
             }
 
+            // Runs once every 60 minutes — posts a new bonus word puzzle to every eligible guild.
             if (_schedulerTick % 60 == 0)
             {
                 // Pull a random word from the Words table
@@ -1300,8 +1418,7 @@ internal sealed class BotHost(
                 {
                     var serverDetails = ServerHelper.GetServerInfo(guild.Id);
                     if (serverDetails is null || !serverDetails.AnnouncementsEnabled) continue;
-                    if (string.IsNullOrWhiteSpace(serverDetails.DefaultChannelID)) continue;
-                    var channel = guild.GetTextChannel(UInt64.Parse(serverDetails.DefaultChannelID));
+                    var channel = ResolveAnnouncementChannel(guild, serverDetails.DefaultChannelID);
                     if (channel is null) continue;
 
                     _sp.UpdateCreate(Constants.discordBotConnStr, "AddPetWordPuzzle",
@@ -1313,16 +1430,13 @@ internal sealed class BotHost(
 
                     string blankHint = $"{puzzleWord[0]}{new string('_', puzzleWord.Length - 1)}";
 
-                    var puzzleMsg = await channel.SendMessageAsync(embed: new EmbedBuilder()
-                        .WithTitle("🧩  Bonus Word Puzzle!")
-                        .WithColor(new Color(255, 179, 71))
-                        .WithDescription(
-                            $"Type the secret word in this channel to earn " +
-                            $"**+{DiscordBot.Helper.PetHelper.XpWordPuzzle} XP** for your active pet!\n\n" +
-                            $"**Hint:** `{blankHint}`  ({puzzleWord.Length} letters)\n\n" +
-                            $"⏳ Expires in 55 minutes — first correct answer wins!")
-                        .WithCurrentTimestamp()
-                        .Build());
+                    var puzzleMsg = await channel.SendMessageAsync(embed: _embed.BuildSimpleEmbed(
+                        "🧩  Bonus Word Puzzle!",
+                        $"Type the secret word in this channel to earn " +
+                        $"**+{DiscordBot.Helper.PetHelper.XpWordPuzzle} XP** for your active pet!\n\n" +
+                        $"**Hint:** `{blankHint}`  ({puzzleWord.Length} letters)\n\n" +
+                        $"⏳ Expires in 55 minutes — first correct answer wins!",
+                        new Color(255, 179, 71)).Build());
 
                     // Register shared hint state — all reveal sources (T+30, T+50, every-20-guesses)
                     // accumulate into this so the hint only ever grows, never resets.
@@ -1347,17 +1461,14 @@ internal sealed class BotHost(
 
                         try
                         {
-                            await capturedMsg.ModifyAsync(m => m.Embed = new EmbedBuilder()
-                                .WithTitle("🧩  Bonus Word Puzzle!")
-                                .WithColor(new Color(255, 179, 71))
-                                .WithDescription(
-                                    $"Type the secret word in this channel to earn " +
-                                    $"**+{DiscordBot.Helper.PetHelper.XpWordPuzzle} XP** for your active pet!\n\n" +
-                                    $"**Hint:** `{hint30}`  ({capturedWord.Length} letters)\n" +
-                                    $"*(A letter has been revealed!)*\n\n" +
-                                    $"⏳ Expires in ~25 minutes — first correct answer wins!")
-                                .WithCurrentTimestamp()
-                                .Build());
+                            await capturedMsg.ModifyAsync(m => m.Embed = _embed.BuildSimpleEmbed(
+                                "🧩  Bonus Word Puzzle!",
+                                $"Type the secret word in this channel to earn " +
+                                $"**+{DiscordBot.Helper.PetHelper.XpWordPuzzle} XP** for your active pet!\n\n" +
+                                $"**Hint:** `{hint30}`  ({capturedWord.Length} letters)\n" +
+                                $"*(A letter has been revealed!)*\n\n" +
+                                $"⏳ Expires in ~25 minutes — first correct answer wins!",
+                                new Color(255, 179, 71)).Build());
                         }
                         catch { /* message may have been deleted */ }
                     });
@@ -1375,17 +1486,14 @@ internal sealed class BotHost(
 
                         try
                         {
-                            await capturedMsg.ModifyAsync(m => m.Embed = new EmbedBuilder()
-                                .WithTitle("🧩  Bonus Word Puzzle — Last Chance!")
-                                .WithColor(new Color(255, 120, 40))
-                                .WithDescription(
-                                    $"Type the secret word in this channel to earn " +
-                                    $"**+{DiscordBot.Helper.PetHelper.XpWordPuzzle} XP** for your active pet!\n\n" +
-                                    $"**Hint:** `{hint50}`  ({capturedWord.Length} letters)\n" +
-                                    $"*(Another letter has been revealed!)*\n\n" +
-                                    $"⏳ Only **5 minutes** left — first correct answer wins!")
-                                .WithCurrentTimestamp()
-                                .Build());
+                            await capturedMsg.ModifyAsync(m => m.Embed = _embed.BuildSimpleEmbed(
+                                "🧩  Bonus Word Puzzle — Last Chance!",
+                                $"Type the secret word in this channel to earn " +
+                                $"**+{DiscordBot.Helper.PetHelper.XpWordPuzzle} XP** for your active pet!\n\n" +
+                                $"**Hint:** `{hint50}`  ({capturedWord.Length} letters)\n" +
+                                $"*(Another letter has been revealed!)*\n\n" +
+                                $"⏳ Only **5 minutes** left — first correct answer wins!",
+                                new Color(255, 120, 40)).Build());
                         }
                         catch { /* message may have been deleted */ }
                     });
@@ -1409,15 +1517,12 @@ internal sealed class BotHost(
 
                         try
                         {
-                            await capturedMsg.ModifyAsync(m => m.Embed = new EmbedBuilder()
-                                .WithTitle("🧩  Puzzle Expired — No One Got It!")
-                                .WithColor(new Color(150, 150, 150))
-                                .WithDescription(
-                                    $"Time's up! Nobody guessed the word.\n\n" +
-                                    $"The answer was: **{capturedWord}**\n\n" +
-                                    $"Better luck next time! 🕐")
-                                .WithCurrentTimestamp()
-                                .Build());
+                            await capturedMsg.ModifyAsync(m => m.Embed = _embed.BuildSimpleEmbed(
+                                "🧩  Puzzle Expired — No One Got It!",
+                                $"Time's up! Nobody guessed the word.\n\n" +
+                                $"The answer was: **{capturedWord}**\n\n" +
+                                $"Better luck next time! 🕐",
+                                new Color(150, 150, 150)).Build());
                         }
                         catch { /* message may have been deleted */ }
                     });
@@ -1426,6 +1531,8 @@ internal sealed class BotHost(
                 skipPuzzle:;
             }
 
+            // Runs once every 60 minutes — draws a weighted-random winner from each guild's
+            // entry jackpot pool (contributions from /jackpot).
             if (_schedulerTick % 60 == 0)
             {
                 foreach (var guild in client.Guilds)
@@ -1447,6 +1554,9 @@ internal sealed class BotHost(
 
                     if (entryDt.Rows.Count == 0) continue;
 
+                    // Weighted random draw: each entrant's odds are proportional to how much
+                    // they contributed. Sum every contribution, roll a point in that range,
+                    // then walk the running cumulative total until the roll falls inside it.
                     long totalWeight = entryDt.AsEnumerable()
                         .Sum(r => long.Parse(r["TotalContributed"].ToString()!));
 
@@ -1460,7 +1570,7 @@ internal sealed class BotHost(
                         if (roll < cum) { winnerId = eRow["UserID"].ToString()!; break; }
                     }
 
-                    winnerId ??= entryDt.Rows[0]["UserID"].ToString()!;
+                    winnerId ??= entryDt.Rows[0]["UserID"].ToString()!; // floating-point fallback — should be unreachable
 
                     var _eco = new DiscordBot.SlashCommands.Economy();
                     _eco.AddCredits(winnerId, guild.Id.ToString(), pot, "jackpot_win");
@@ -1468,8 +1578,7 @@ internal sealed class BotHost(
                     _sp.UpdateCreate(Constants.discordBotConnStr, "ClearJackpot",
                         [new SqlParameter("@ServerID", guild.Id.ToString())]);
 
-                    if (string.IsNullOrWhiteSpace(serverDetails.DefaultChannelID)) continue;
-                    var channel = guild.GetTextChannel(UInt64.Parse(serverDetails.DefaultChannelID));
+                    var channel = ResolveAnnouncementChannel(guild, serverDetails.DefaultChannelID);
                     if (channel is null) continue;
 
                     IUser? winner = null;
@@ -1477,21 +1586,20 @@ internal sealed class BotHost(
 
                     string winnerDisplay = winner is not null ? winner.Mention : $"<@{winnerId}>";
 
-                    await channel.SendMessageAsync(embed: new EmbedBuilder()
-                        .WithTitle("🎰  Jackpot Winner!")
-                        .WithColor(new Color(255, 215, 0))
-                        .WithDescription(
-                            $"🎉 {winnerDisplay} won the jackpot!\n\n" +
-                            $"💰 **Prize:** {CreditHelper.Format(pot)}\n" +
-                            $"🎟️ **Entries this round:** {entries}\n\n" +
-                            $"*The jackpot resets now — use `/jackpot` to enter the next round!*\n" +
-                            $"*The jackpot will also add 1% of all gambling bets to the next round!*")
-                        .WithCurrentTimestamp()
-                        .Build());
+                    await channel.SendMessageAsync(embed: _embed.BuildSimpleEmbed(
+                        "🎰  Jackpot Winner!",
+                        $"🎉 {winnerDisplay} won the jackpot!\n\n" +
+                        $"💰 **Prize:** {CreditHelper.Format(pot)}\n" +
+                        $"🎟️ **Entries this round:** {entries}\n\n" +
+                        $"*The jackpot resets now — use `/jackpot` to enter the next round!*\n" +
+                        $"*The jackpot will also add 1% of all gambling bets to the next round!*",
+                        new Color(255, 215, 0)).Build());
                 }
             }
 
             // ── Passive jackpot hourly draw ────────────────────────────────────────
+            // Runs once every 60 minutes — separate pool from the entry jackpot above,
+            // fed automatically by 1% of every gambling bet rather than direct contributions.
             if (_schedulerTick % 60 == 0)
             {
                 foreach (var guild in client.Guilds)
@@ -1511,23 +1619,18 @@ internal sealed class BotHost(
                     var passiveDetails = ServerHelper.GetServerInfo(guild.Id);
                     if (passiveDetails is null || !passiveDetails.AnnouncementsEnabled) continue;
 
-                    ITextChannel? passiveChan = null;
-                    if (ulong.TryParse(passiveDetails.DefaultChannelID, out ulong pChanId) && pChanId != 0)
-                        passiveChan = guild.GetTextChannel(pChanId);
+                    var passiveChan = ResolveAnnouncementChannel(guild, passiveDetails.DefaultChannelID);
                     if (passiveChan is null) continue;
 
                     IUser? passiveWinner = null;
                     try { passiveWinner = await client.GetUserAsync(ulong.Parse(passiveWinnerId)); } catch { }
                     string passiveDisplay = passiveWinner is not null ? passiveWinner.Mention : $"<@{passiveWinnerId}>";
 
-                    await passiveChan.SendMessageAsync(embed: new EmbedBuilder()
-                        .WithTitle("🌊  Passive Jackpot Winner!")
-                        .WithColor(new Color(100, 200, 255))
-                        .WithDescription(
-                            $"🎉 {passiveDisplay} won the **passive jackpot** and took home **{DiscordBot.Helper.CreditHelper.Format(passivePool)}**!\n\n" +
-                            $"*1% of every gambling bet feeds this pool — keep playing to build it back up!*")
-                        .WithCurrentTimestamp()
-                        .Build());
+                    await passiveChan.SendMessageAsync(embed: _embed.BuildSimpleEmbed(
+                        "🌊  Passive Jackpot Winner!",
+                        $"🎉 {passiveDisplay} won the **passive jackpot** and took home **{DiscordBot.Helper.CreditHelper.Format(passivePool)}**!\n\n" +
+                        $"*1% of every gambling bet feeds this pool — keep playing to build it back up!*",
+                        new Color(100, 200, 255)).Build());
                 }
             }
             } // end outer try
@@ -1538,6 +1641,11 @@ internal sealed class BotHost(
         }
     }
 
+    /// <summary>
+    /// Delivers each user's due "thirst" (scheduled DM keyword) send via DM: a local file
+    /// (compressed first if over Discord's 8 MB limit), a live URL, or removes the entry if
+    /// the link is dead. Failed sends are requeued for a minute later rather than dropped.
+    /// </summary>
     private async Task RunScheduledKeywordsAsync()
     {
         System.Data.DataTable dt;
@@ -1575,13 +1683,14 @@ internal sealed class BotHost(
                     continue;
                 }
 
+                // Stored value is either a local file path or a URL — branch accordingly.
                 if (filePath.StartsWith(@"C:\"))
                 {
-                    if (!File.Exists(filePath))
+                    if (!File.Exists(filePath)) // file was moved/deleted since being registered
                     {
                         _sp.Select(Constants.discordBotConnStr, "UpdateUsersScheduledKeywordRequeue", [new SqlParameter("@UserID", userId)]);
                     }
-                    else if (new FileInfo(filePath).Length > 8 * 1024 * 1024)
+                    else if (new FileInfo(filePath).Length > 8 * 1024 * 1024) // exceeds Discord's non-boosted upload limit
                     {
                         using var compressed = TryCompressImageUnder8Mb(filePath);
                         if (compressed is null)
@@ -1613,7 +1722,7 @@ internal sealed class BotHost(
 
                 else if (await IsLinkWorkingAsync(filePath))
                 {
-                    if (IsDirectImageUrl(filePath))
+                    if (IsDirectImageUrl(filePath)) // embeddable image — build our own embed
                     {
                         var urlEmbed = new EmbedBuilder()
                             .WithTitle(tableName)
@@ -1630,7 +1739,7 @@ internal sealed class BotHost(
                         await user.SendMessageAsync($"**{tableName}** — {timestamp}\n{filePath}");
                     }
                 }
-                else
+                else // link no longer resolves — remove it rather than keep re-attempting a dead send
                 {
                     _sp.UpdateCreate(Constants.discordBotConnStr, "DeleteChatKeywordURL",
                     [
@@ -1663,12 +1772,18 @@ internal sealed class BotHost(
     }
 
 
+    /// <summary>
+    /// Starts the two stock-market timers, independent of the minute-based scheduler loop:
+    /// a repeating price-tick timer, and a one-shot-then-repeating 24h high/low reset timer
+    /// aligned to UTC midnight. Both fire their handler via the .NET <c>Timer.Elapsed</c>
+    /// event rather than polling.
+    /// </summary>
     private void StartStockTimer()
     {
         // Price tick every 15 minutes
         _stockTimer = new System.Timers.Timer(
             TimeSpan.FromMinutes(StockHelper.TickIntervalMinutes).TotalMilliseconds);
-        _stockTimer.Elapsed += (_, _) => TickStockPrices();
+        _stockTimer.Elapsed += (_, _) => TickStockPrices(); // event-driven: fires automatically on each interval
         _stockTimer.AutoReset = true;
         _stockTimer.Start();
 
@@ -1680,11 +1795,13 @@ internal sealed class BotHost(
         _stockDayResetTimer = new System.Timers.Timer(initialDelay);
         _stockDayResetTimer.Elapsed += (_, _) =>
         {
+            // First firing lands exactly at midnight (initialDelay above); once it fires,
+            // reconfigure the same timer to repeat every 24h from then on.
             ResetStockDayRange();
             _stockDayResetTimer!.Interval = TimeSpan.FromHours(24).TotalMilliseconds;
             _stockDayResetTimer.AutoReset = true;
         };
-        _stockDayResetTimer.AutoReset = false;
+        _stockDayResetTimer.AutoReset = false; // one-shot until the handler above switches it to repeating
         _stockDayResetTimer.Start();
 
         Console.WriteLine(
@@ -1692,6 +1809,7 @@ internal sealed class BotHost(
             $"day reset at {nextMidnight:HH:mm} UTC.");
     }
 
+    /// <summary>Timer.Elapsed handler: advances every stock's price by one random-walk step and clears expired shop effects.</summary>
     private void TickStockPrices()
     {
         try
@@ -1737,6 +1855,7 @@ internal sealed class BotHost(
         }
     }
 
+    /// <summary>Timer.Elapsed handler (fires once at UTC midnight, then every 24h): resets each stock's recorded 24h high/low.</summary>
     private void ResetStockDayRange()
     {
         try
@@ -1751,6 +1870,12 @@ internal sealed class BotHost(
     }
 
 
+    /// <summary>
+    /// For a recognized social-media URL (see <see cref="IsSupportedSocialUrl"/>), downloads
+    /// the underlying image/video to local disk and returns its path — or the og:image/og:video
+    /// meta tag's target if the URL itself isn't a direct media link. Returns null for anything
+    /// unsupported or on any failure, so callers can fall back to storing the raw URL instead.
+    /// </summary>
     private async Task<string?> TrySaveSocialImageAsync(string url, string keyword)
     {
         if (!IsSupportedSocialUrl(url)) return null;
@@ -1764,9 +1889,10 @@ internal sealed class BotHost(
             using var head = await http.SendAsync(new HttpRequestMessage(HttpMethod.Head, url));
             string? contentType = head.Content.Headers.ContentType?.MediaType;
 
-            if (IsImageContentType(contentType))
+            if (IsImageContentType(contentType)) // URL is already a direct image — download it as-is
                 return await DownloadSocialImageAsync(http, url, keyword, ExtFromContentType(contentType!));
 
+            // Not a direct image — fetch the page HTML and scrape its Open Graph tags instead.
             string html = await http.GetStringAsync(url);
             string? mediaUrl = ExtractOgTag(html, "og:image")
                             ?? ExtractOgTag(html, "og:video");
@@ -1785,6 +1911,7 @@ internal sealed class BotHost(
         }
     }
 
+    /// <summary>Downloads a media file to a keyword-specific folder under the bot's temp directory and returns the saved path.</summary>
     private async Task<string?> DownloadSocialImageAsync(
         HttpClient http, string imageUrl, string keyword, string ext)
     {
@@ -1804,6 +1931,12 @@ internal sealed class BotHost(
     }
 
 
+    /// <summary>
+    /// Iteratively re-encodes an image until it fits Discord's 8 MB upload limit: first by
+    /// lowering JPEG quality in steps, then by shrinking dimensions once quality bottoms out
+    /// (PNG/WebP skip straight to shrinking, since quality isn't meaningful for them here).
+    /// Returns null if the format is unsupported or the image can't be shrunk further.
+    /// </summary>
     private static MemoryStream? TryCompressImageUnder8Mb(string filePath)
     {
         var ext = Path.GetExtension(filePath).ToLowerInvariant();
@@ -1845,13 +1978,14 @@ internal sealed class BotHost(
             {
                 width = (int)(width * 0.75);
                 height = (int)(height * 0.75);
-                quality = 85;
+                quality = 85; // reset quality after a resize so the next pass starts from full quality again
                 if (width < 100 || height < 100)
-                    return null;
+                    return null; // too small to shrink further — give up
             }
         }
     }
 
+    /// <summary>True if the URL's path ends in a recognized image extension (ignoring any query string).</summary>
     private static bool IsDirectImageUrl(string url)
     {
         var path = url.Split('?')[0].ToLowerInvariant();
@@ -1859,6 +1993,11 @@ internal sealed class BotHost(
             || path.EndsWith(".gif") || path.EndsWith(".webp");
     }
 
+    /// <summary>
+    /// Checks whether a link still resolves. Only actually probes fx/vxtwitter mirror links
+    /// (which are known to return a "post doesn't exist" page for deleted tweets); every other
+    /// URL is assumed live without a network call, since not every host is checkable this way.
+    /// </summary>
     private async Task<bool> IsLinkWorkingAsync(string url)
     {
         if (!url.Contains("fxtwitter") && !url.Contains("vxtwitter"))
@@ -1877,6 +2016,7 @@ internal sealed class BotHost(
         }
     }
 
+    /// <summary>Downloads every attachment on a message and registers each as a value under the given keyword.</summary>
     private async Task AddAttachmentsAsync(
         SocketMessage msg, string tablename, string connStr, string userId)
     {
@@ -1903,6 +2043,7 @@ internal sealed class BotHost(
     }
 
 
+    /// <summary>Posts a message to the owner's private log channel, if it's still reachable.</summary>
     private async Task SendLogAsync(string message, Color color)
     {
         var channel = client.GetGuild(LogGuildId)?.GetTextChannel(LogChannelId);
@@ -1911,26 +2052,23 @@ internal sealed class BotHost(
             .BuildMessageEmbed("Log", message, "", "BigBirdBot", color).Build());
     }
 
+    /// <summary>Sends a plain DM to the bot owner — used for scheduler/keyword failures that need attention.</summary>
     private async Task NotifyOwnerAsync(string message)
     {
         var owner = await client.GetUserAsync(OwnerId);
         await owner.SendMessageAsync(message);
     }
 
-    private static EmbedBuilder MakeEmbed(string title, Color color, string description) =>
-        new EmbedBuilder()
-            .WithTitle(title)
-            .WithColor(color)
-            .WithDescription(description)
-            .WithCurrentTimestamp();
 
-
+    /// <summary>True for the specific social-media mirror hosts this bot knows how to scrape media from.</summary>
     private static bool IsSupportedSocialUrl(string url) =>
         url.Contains("dl.fxtwitter.com") || url.Contains("bskx.app");
 
+    /// <summary>True if the HTTP Content-Type is one of the image formats this bot re-hosts.</summary>
     private static bool IsImageContentType(string? ct) =>
         ct is "image/png" or "image/gif" or "image/jpeg";
 
+    /// <summary>Maps an image MIME type to the file extension used when saving it to disk.</summary>
     private static string ExtFromContentType(string ct) => ct switch
     {
         "image/png" => "png",
@@ -1939,15 +2077,25 @@ internal sealed class BotHost(
         _ => ""
     };
 
+    /// <summary>True if the extension is one of the image formats this bot re-hosts.</summary>
     private static bool IsSupportedExtension(string ext) =>
         ext.ToLowerInvariant() is "png" or "gif" or "jpeg" or "jpg";
 
+    /// <summary>
+    /// Extracts an Open Graph meta tag's content value (e.g. <c>og:image</c>) from raw HTML via
+    /// string search rather than a full HTML parser, since we only need one attribute from a
+    /// known tag shape. Returns null if the tag is missing or its content isn't a well-formed
+    /// absolute URL.
+    /// </summary>
     private static string? ExtractOgTag(string html, string property)
     {
         string marker = $"property=\"{property}\"";
         int idx = html.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
-        if (idx < 0) return null;
+        if (idx < 0) return null; // tag not present in this page
 
+        // The content="..." attribute should appear shortly after the property attribute
+        // within the same <meta> tag — cap the search window so a stray later match can't
+        // be picked up.
         int searchEnd = Math.Min(idx + 300, html.Length);
         int cIdx = html.IndexOf("content=\"", idx, searchEnd - idx, StringComparison.OrdinalIgnoreCase);
         if (cIdx < 0) return null;

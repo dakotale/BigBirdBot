@@ -46,6 +46,7 @@ public sealed class Playlist(IAudioService audioService)
     // /playlist save <name>
     // =========================================================================
 
+    /// <summary>Snapshots the currently-playing track plus the rest of the queue (by URI) into a named playlist, overwriting any existing playlist with the same name.</summary>
     [SlashCommand("save", "Save the current queue as a named playlist.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task SaveAsync(
@@ -132,15 +133,11 @@ public sealed class Playlist(IAudioService audioService)
                 ]);
             }
 
-            await FollowupAsync(embed: new EmbedBuilder()
-                .WithTitle("💾  Playlist Saved")
-                .WithColor(ColourGreen)
-                .WithDescription(
-                    $"Saved **{tracks.Count} track{(tracks.Count == 1 ? "" : "s")}** as **\"{name}\"**.\n" +
-                    $"Use `/playlist load {name}` to restore it.")
-                .WithFooter(Username, AvatarUrl)
-                .WithCurrentTimestamp()
-                .Build(), ephemeral: true);
+            await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+                "💾  Playlist Saved",
+                $"Saved **{tracks.Count} track{(tracks.Count == 1 ? "" : "s")}** as **\"{name}\"**.\n" +
+                $"Use `/playlist load {name}` to restore it.",
+                ColourGreen, footer: Username, footerIconUrl: AvatarUrl).Build(), ephemeral: true);
         }
         catch (Exception ex)
         {
@@ -154,6 +151,7 @@ public sealed class Playlist(IAudioService audioService)
     // /playlist load <name>
     // =========================================================================
 
+    /// <summary>Joins the caller's voice channel (if needed) and re-resolves + queues every saved track URI from a named playlist, reporting any tracks that failed to load.</summary>
     [SlashCommand("load", "Load a saved playlist into the current queue.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task LoadAsync(
@@ -249,13 +247,8 @@ public sealed class Playlist(IAudioService audioService)
         if (failed > 0)
             sb.AppendLine($"⚠️ {failed} track{(failed == 1 ? "" : "s")} could not be loaded (removed from source?).");
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle("📂  Playlist Loaded")
-            .WithColor(ColourOk)
-            .WithDescription(sb.ToString())
-            .WithFooter(Username, AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            "📂  Playlist Loaded", sb.ToString(), ColourOk, footer: Username, footerIconUrl: AvatarUrl).Build());
     }
 
 
@@ -263,6 +256,7 @@ public sealed class Playlist(IAudioService audioService)
     // /playlist list
     // =========================================================================
 
+    /// <summary>Lists the user's saved playlists for this server with each one's track count.</summary>
     [SlashCommand("list", "Show all your saved playlists.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task ListAsync()
@@ -302,13 +296,9 @@ public sealed class Playlist(IAudioService audioService)
             sb.AppendLine($"📀 **{pName}** — {trackCount} track{(trackCount == 1 ? "" : "s")}");
         }
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"🎶  {Username}'s Playlists")
-            .WithColor(ColourGold)
-            .WithDescription(sb.ToString())
-            .WithFooter("Use /playlist load <name> to queue one up", AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build(), ephemeral: true);
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"🎶  {Username}'s Playlists", sb.ToString(), ColourGold,
+            footer: "Use /playlist load <name> to queue one up", footerIconUrl: AvatarUrl).Build(), ephemeral: true);
     }
 
 
@@ -316,6 +306,7 @@ public sealed class Playlist(IAudioService audioService)
     // /playlist delete <name>
     // =========================================================================
 
+    /// <summary>Deletes one of the user's saved playlists by name, after verifying it exists.</summary>
     [SlashCommand("delete", "Delete one of your saved playlists.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task DeleteAsync(
@@ -354,13 +345,9 @@ public sealed class Playlist(IAudioService audioService)
                 new SqlParameter("@Name",     name)
             ]);
 
-            await FollowupAsync(embed: new EmbedBuilder()
-                .WithTitle("🗑️  Playlist Deleted")
-                .WithColor(ColourRed)
-                .WithDescription($"Playlist **\"{name}\"** has been deleted.")
-                .WithFooter(Username, AvatarUrl)
-                .WithCurrentTimestamp()
-                .Build(), ephemeral: true);
+            await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+                "🗑️  Playlist Deleted", $"Playlist **\"{name}\"** has been deleted.",
+                ColourRed, footer: Username, footerIconUrl: AvatarUrl).Build(), ephemeral: true);
         }
         catch (Exception ex)
         {
@@ -369,6 +356,7 @@ public sealed class Playlist(IAudioService audioService)
         }
     }
 
+    /// <summary>Factory delegate passed to Lavalink4NET's player-retrieval API to construct a new <see cref="CustomPlayer"/> when one doesn't already exist.</summary>
     private static ValueTask<CustomPlayer> CreatePlayerAsync(
         IPlayerProperties<CustomPlayer, CustomPlayerOptions> properties,
         CancellationToken cancellationToken = default)

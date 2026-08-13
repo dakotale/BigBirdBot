@@ -22,6 +22,7 @@ public class Revolt : InteractionModuleBase<SocketInteractionContext>
 {
     private readonly StoredProcedure _sp = new();
     private readonly Economy _eco = new();
+    private readonly EmbedHelper _embed = new();
 
     private string UserId => Context.User.Id.ToString();
     private string ServerId => Context.Guild?.Id.ToString() ?? "DM";
@@ -35,6 +36,7 @@ public class Revolt : InteractionModuleBase<SocketInteractionContext>
     // ── In-memory revolt state ────────────────────────────────────────────────
     // Key: "serverId:targetUserId"
     // Value: revolt state including revolters and expiry
+    /// <summary>In-progress revolt against one target: who has joined so far, when the window expires, and where the join-progress message lives.</summary>
     private record RevoltState(
         string TargetId,
         string TargetName,
@@ -51,6 +53,7 @@ public class Revolt : InteractionModuleBase<SocketInteractionContext>
 
     // ── /revolt ───────────────────────────────────────────────────────────────
 
+    /// <summary>Joins (or starts) a revolt against a target: once <see cref="RequiredRevolters"/> distinct low-balance users have joined within the time window, immediately triggers the guillotine.</summary>
     [SlashCommand("revolt", "Rise up against a wealthy user — 3 paupers must agree within 5 minutes.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleRevoltAsync(IUser target)
@@ -138,21 +141,18 @@ public class Revolt : InteractionModuleBase<SocketInteractionContext>
         int needed = RequiredRevolters - revolt.Revolters.Count;
         long expiry = new DateTimeOffset(revolt.ExpiresAt).ToUnixTimeSeconds();
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle("⚔️  Revolt Started!")
-            .WithColor(ColourRed)
-            .WithDescription(
-                $"**{revolt.Revolters.Count}/{RequiredRevolters}** revolters have joined against **{target.Username}**.\n\n" +
-                $"**{needed}** more {(needed == 1 ? "person" : "people")} with under " +
-                $"{CreditHelper.Format(MaxRevolterBalance)} must run `/revolt {target.Username}` to proceed.\n\n" +
-                $"⏱ Expires <t:{expiry}:R>")
-            .WithFooter($"{Username} joined the revolt", AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            "⚔️  Revolt Started!",
+            $"**{revolt.Revolters.Count}/{RequiredRevolters}** revolters have joined against **{target.Username}**.\n\n" +
+            $"**{needed}** more {(needed == 1 ? "person" : "people")} with under " +
+            $"{CreditHelper.Format(MaxRevolterBalance)} must run `/revolt {target.Username}` to proceed.\n\n" +
+            $"⏱ Expires <t:{expiry}:R>",
+            ColourRed, footer: $"{Username} joined the revolt", footerIconUrl: AvatarUrl).Build());
     }
 
     // ── Guillotine execution ──────────────────────────────────────────────────
 
+    /// <summary>Seizes the target's credits and liquidated stock portfolio, splits the total evenly across every other server member, and announces the result in both the command channel and the server's default channel.</summary>
     private async Task ExecuteGuillotine(IUser target, RevoltState revolt)
     {
         string targetId = target.Id.ToString();
@@ -228,20 +228,17 @@ public class Revolt : InteractionModuleBase<SocketInteractionContext>
         foreach (string uid in revolt.Revolters)
             revolterList.AppendLine($"• <@{uid}>");
 
-        var resultEmbed = new EmbedBuilder()
-            .WithTitle("🩸  The Guillotine Falls!")
-            .WithColor(ColourRed)
-            .WithDescription(
-                $"**{target.Mention}** has been guillotined by the people!\n\n" +
-                $"The revolt was led by:\n{revolterList}\n" +
-                $"Their assets have been seized and distributed.")
-            .AddField("💰 Credits Seized", CreditHelper.Format(seizedCredits), inline: true)
-            .AddField("📈 Stocks Liquidated", CreditHelper.Format(stockProceeds), inline: true)
-            .AddField("💎 Total Seized", CreditHelper.Format(totalSeized), inline: true)
-            .AddField("👥 Recipients", $"{recipients.Count:N0} users", inline: true)
-            .AddField("✂️ Share Each", CreditHelper.Format(share), inline: true)
-            .WithColor(ColourGold)
-            .WithCurrentTimestamp();
+        var resultEmbed = _embed.BuildSimpleEmbed(
+            "🩸  The Guillotine Falls!",
+            $"**{target.Mention}** has been guillotined by the people!\n\n" +
+            $"The revolt was led by:\n{revolterList}\n" +
+            $"Their assets have been seized and distributed.",
+            ColourGold,
+            fields: [("💰 Credits Seized", CreditHelper.Format(seizedCredits), true),
+                     ("📈 Stocks Liquidated", CreditHelper.Format(stockProceeds), true),
+                     ("💎 Total Seized", CreditHelper.Format(totalSeized), true),
+                     ("👥 Recipients", $"{recipients.Count:N0} users", true),
+                     ("✂️ Share Each", CreditHelper.Format(share), true)]);
 
         // Post in the channel the command was used in
         await FollowupAsync(embed: resultEmbed.Build());
@@ -257,11 +254,9 @@ public class Revolt : InteractionModuleBase<SocketInteractionContext>
         catch { }
     }
 
+    /// <summary>Posts a standard revolt error embed as the interaction followup.</summary>
     private async Task ErrorAsync(string message) =>
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle("❌  Revolt Failed")
-            .WithColor(ColourGrey)
-            .WithDescription(message)
-            .WithFooter(Username, AvatarUrl)
-            .Build(), ephemeral: true);
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            "❌  Revolt Failed", message, ColourGrey,
+            footer: Username, footerIconUrl: AvatarUrl, timestamp: false).Build(), ephemeral: true);
 }

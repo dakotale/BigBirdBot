@@ -11,6 +11,11 @@ namespace DiscordBot.SlashCommands;
 
 public partial class Games
 {
+    /// <summary>
+    /// Fetches one question from the Open Trivia DB, posts it with shuffled answer choices as
+    /// lettered fields, and adds matching emoji reactions so members can answer by reacting
+    /// (scored later in BotHost.HandleTriviaReactionAsync).
+    /// </summary>
     [SlashCommand("trivia", "Trivia Bot")]
     [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
     public async Task HandleTrivia()
@@ -102,9 +107,11 @@ public partial class Games
         }
     }
 
+    /// <summary>Capitalizes only the first letter, lowercasing the rest.</summary>
     private string Capitalize(string input) =>
         string.IsNullOrEmpty(input) ? input : char.ToUpper(input[0]) + input[1..].ToLower();
 
+    /// <summary>Posts a standard trivia error embed.</summary>
     private async Task SendTriviaError(string message)
     {
         await FollowupAsync(embed: _embed.BuildErrorEmbed("", message, Username).Build());

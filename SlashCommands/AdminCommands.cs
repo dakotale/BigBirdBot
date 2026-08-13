@@ -8,6 +8,7 @@ using Microsoft.Data.SqlClient;
 
 namespace DiscordBot.SlashCommands
 {
+    /// <summary>Server moderation/admin utility commands: pronoun-role menu, bot nickname, message purge, and announcement toggling.</summary>
     public class AdminCommands : InteractionModuleBase<SocketInteractionContext>
     {
         private readonly EmbedHelper _embed = new();
@@ -15,6 +16,7 @@ namespace DiscordBot.SlashCommands
 
         private string Username => Context.User.Username;
 
+        /// <summary>Posts a button menu letting members self-assign a pronoun role (handled by BotHost.OnButtonExecutedAsync).</summary>
         [SlashCommand("pronoun", "Post a pronoun selection menu for members.")]
         [CommandContextType(InteractionContextType.Guild)]
         [RequireUserPermission(ChannelPermission.ManageMessages)]
@@ -36,6 +38,7 @@ namespace DiscordBot.SlashCommands
                 components: builder.Build());
         }
 
+        /// <summary>Changes the bot's own server nickname.</summary>
         [SlashCommand("editbotnickname", "Change the bot's nickname in this server.")]
         [CommandContextType(InteractionContextType.Guild)]
         [RequireUserPermission(ChannelPermission.ManageRoles)]

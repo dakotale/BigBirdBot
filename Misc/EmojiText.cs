@@ -2,6 +2,7 @@ using System.Text;
 
 namespace DiscordBot.Misc
 {
+    /// <summary>Converts plain text into a string of Discord emoji-code letters/digits for a "big text" chat effect.</summary>
     public class EmojiText
     {
         private static readonly Dictionary<char, string> CharMap = new()
@@ -45,6 +46,7 @@ namespace DiscordBot.Misc
             ['9'] = " :nine: ",
         };
 
+        /// <summary>Converts each letter/digit in the input to its emoji-code equivalent, joined with spaces; unmapped characters are dropped.</summary>
         public string GetEmojiString(string emojiSentence)
         {
             var sb = new StringBuilder();

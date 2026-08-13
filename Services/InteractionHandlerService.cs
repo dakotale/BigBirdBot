@@ -39,15 +39,21 @@ public sealed class InteractionHandlerService
         _audioService = audioService;
     }
 
+    /// <summary>Discovers every interaction module and wires up the Ready/InteractionCreated/InteractionExecuted event handlers.</summary>
     public async Task InitializeAsync()
     {
-        _client.Ready += ReadyAsync;
-        _client.InteractionCreated += HandleInteractionAsync;
-        _handler.InteractionExecuted += HandleInteractionExecutedAsync;
+        _client.Ready += ReadyAsync;                                  // gateway ready — sync slash commands, restore voice players
+        _client.InteractionCreated += HandleInteractionAsync;          // any slash command / component / autocomplete interaction
+        _handler.InteractionExecuted += HandleInteractionExecutedAsync; // fires after a matched interaction command finishes
 
         await _handler.AddModulesAsync(Assembly.GetEntryAssembly(), _services);
     }
 
+    /// <summary>
+    /// Fires each time the gateway becomes ready (guarded to run only once, even across
+    /// reconnects): syncs global slash commands if they've changed, then restores any
+    /// voice players/queues that were active before a restart.
+    /// </summary>
     private async Task ReadyAsync()
     {
         if (Interlocked.Exchange(ref _readyFired, 1) != 0)
@@ -104,6 +110,7 @@ public sealed class InteractionHandlerService
         });
     }
 
+    /// <summary>Compares the live registered commands against the desired set by count, description, and parameter count.</summary>
     private static bool CommandsDiffer(
         IReadOnlyCollection<IApplicationCommand> existing,
         IReadOnlyCollection<SlashCommandInfo> desired)
@@ -128,6 +135,11 @@ public sealed class InteractionHandlerService
         return false;
     }
 
+    /// <summary>
+    /// Reconnects the music player to every voice channel that was active before the bot last
+    /// stopped (per the DB's PlayerConnected rows), restores the saved volume, and re-queues
+    /// whatever tracks were still pending — skipping channels that are now empty.
+    /// </summary>
     private async Task RestorePlayersAsync(LoggingService logging)
     {
         var dt = new StoredProcedure().Select(
@@ -250,6 +262,11 @@ public sealed class InteractionHandlerService
         }
     }
 
+    /// <summary>
+    /// Fires on every interaction (slash command, component, autocomplete). Audits slash-
+    /// command usage, dispatches to the matching module via the InteractionService, and
+    /// cleans up the deferred response if execution throws before replying.
+    /// </summary>
     private async Task HandleInteractionAsync(SocketInteraction interaction)
     {
         try
@@ -299,6 +316,7 @@ public sealed class InteractionHandlerService
         }
     }
 
+    /// <summary>Builds the full "/group subcommand" name for audit logging by walking down through nested subcommand groups.</summary>
     private static string GetFullCommandName(SocketSlashCommand cmd)
     {
         var parts = new System.Text.StringBuilder(cmd.CommandName);
@@ -312,6 +330,7 @@ public sealed class InteractionHandlerService
         return parts.ToString();
     }
 
+    /// <summary>Fires after a matched interaction command finishes; posts an error embed if it didn't succeed.</summary>
     private async Task HandleInteractionExecutedAsync(
         ICommandInfo info, IInteractionContext context, IResult result)
     {
@@ -319,6 +338,7 @@ public sealed class InteractionHandlerService
             await SendErrorAsync(context.Interaction, result);
     }
 
+    /// <summary>Posts a plain-language ephemeral error embed for a failed interaction, falling back to a followup if the initial response was already used.</summary>
     private static async Task SendErrorAsync(IDiscordInteraction interaction, IResult result)
     {
         string title = result.Error switch
@@ -347,6 +367,7 @@ public sealed class InteractionHandlerService
         catch { await interaction.FollowupAsync(embed: embed, ephemeral: true); }
     }
 
+    /// <summary>Factory delegate Lavalink calls to construct a <see cref="CustomPlayer"/> when joining a voice channel.</summary>
     private static ValueTask<CustomPlayer> CreatePlayerAsync(
         IPlayerProperties<CustomPlayer, CustomPlayerOptions> properties,
         CancellationToken cancellationToken = default)

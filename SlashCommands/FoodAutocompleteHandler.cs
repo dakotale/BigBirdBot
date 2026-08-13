@@ -14,6 +14,7 @@ public class FoodAutocompleteHandler : AutocompleteHandler
 {
     private readonly StoredProcedure _sp = new();
 
+    /// <summary>Returns up to 25 food suggestions unlocked at the user's active pet's level, filtered by their partial input.</summary>
     public override Task<AutocompletionResult> GenerateSuggestionsAsync(
         IInteractionContext context,
         IAutocompleteInteraction autocompleteInteraction,

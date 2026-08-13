@@ -8,8 +8,10 @@ using System.Text;
 
 namespace DiscordBot.Helper
 {
+    /// <summary>Static helper for looking up a guild's server-configuration row (default channel, active flag, announcement settings).</summary>
     public static class ServerHelper
     {
+        /// <summary>Fetches the configured server row for a guild, or null if the guild has no server record yet.</summary>
         public static ServerInfo GetServerInfo(ulong serverId)
         {
             StoredProcedure stored = new StoredProcedure();
@@ -19,6 +21,7 @@ namespace DiscordBot.Helper
             return serverInfo;
         }
 
+        /// <summary>Plain-data snapshot of a guild's row in the Servers table.</summary>
         public class ServerInfo
         {
             public ulong ServerUID { get; set; }
@@ -27,6 +30,7 @@ namespace DiscordBot.Helper
             public bool IsActive { get; set; }
             public bool AnnouncementsEnabled { get; set; }
 
+            /// <summary>Builds a ServerInfo from the first row of a GetServerByID result, or null if the query returned no rows.</summary>
             public static ServerInfo PopulateByDataTable(DataTable dt)
             {
                 if (dt.Rows.Count == 0)

@@ -8,6 +8,7 @@ namespace DiscordBot.Constants
     /// </summary>
     public class Audit
     {
+        /// <summary>Records a generic command execution against a server.</summary>
         public void InsertAudit(string command, string createdBy, string connStr, string serverId)
         {
             using SqlConnection conn = new SqlConnection(connStr);
@@ -19,6 +20,7 @@ namespace DiscordBot.Constants
             cmd.ExecuteNonQuery();
         }
 
+        /// <summary>Records that a member joined a guild.</summary>
         public void InsertUserJoinedAudit(string userId, string guildId, string connStr)
         {
             using SqlConnection conn = new SqlConnection(connStr);
@@ -29,6 +31,7 @@ namespace DiscordBot.Constants
             cmd.ExecuteNonQuery();
         }
 
+        /// <summary>Records that a member left (or was removed from) a guild.</summary>
         public void InsertUserLeftAudit(string userId, string guildId, string connStr)
         {
             using SqlConnection conn = new SqlConnection(connStr);
@@ -39,6 +42,7 @@ namespace DiscordBot.Constants
             cmd.ExecuteNonQuery();
         }
 
+        /// <summary>Records a button/component interaction, e.g. a pronoun-role toggle.</summary>
         public void InsertButtonAudit(string buttonId, string userId, string guildId, string connStr)
         {
             using SqlConnection conn = new SqlConnection(connStr);
@@ -50,6 +54,7 @@ namespace DiscordBot.Constants
             cmd.ExecuteNonQuery();
         }
 
+        /// <summary>Records that the bot was added to a new guild.</summary>
         public void InsertGuildJoinedAudit(string guildId, string guildName, string connStr)
         {
             using SqlConnection conn = new SqlConnection(connStr);
@@ -60,6 +65,7 @@ namespace DiscordBot.Constants
             cmd.ExecuteNonQuery();
         }
 
+        /// <summary>Records an emoji reaction added to a message, e.g. a trivia answer or NSFW-flag reaction.</summary>
         public void InsertReactionAudit(string emoji, string messageId, string userId, string channelId, string connStr)
         {
             using SqlConnection conn = new SqlConnection(connStr);
@@ -72,6 +78,7 @@ namespace DiscordBot.Constants
             cmd.ExecuteNonQuery();
         }
 
+        /// <summary>Records that a message-triggered mini-game (Scramble, Wordle, pet word puzzle) was won.</summary>
         public void InsertGameTriggerAudit(string game, string userId, string guildId, string connStr)
         {
             using SqlConnection conn = new SqlConnection(connStr);

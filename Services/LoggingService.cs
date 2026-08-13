@@ -45,12 +45,15 @@ public sealed class LoggingService
     private static readonly Lock _fileLock = new();
 
 
+    /// <summary>Creates a console-only logger that logs everything — the default used when the bot is registered via DI.</summary>
     public LoggingService(IServiceProvider services)
         : this(services, OutputType.Console, FilterSeverity.All, null) { }
 
+    /// <summary>Creates a logger with a custom output type and severity filter, but no file output path.</summary>
     public LoggingService(IServiceProvider services, OutputType outputType, FilterSeverity filterSeverity)
         : this(services, outputType, filterSeverity, null) { }
 
+    /// <summary>Creates a fully-configured logger and subscribes it to Discord.NET's CommandService/DiscordSocketClient/InteractionService log events.</summary>
     public LoggingService(
         IServiceProvider services,
         OutputType outputType,
@@ -68,24 +71,28 @@ public sealed class LoggingService
     }
 
 
+    /// <summary>Logs a Debug-severity message. Caller/file/line are captured automatically via compiler attributes.</summary>
     public Task DebugAsync(string message,
         [CallerMemberName] string caller = "",
         [CallerFilePath] string file = "",
         [CallerLineNumber] int line = 0) =>
         LogAsync(Severity.Debug, message, caller, file, line);
 
+    /// <summary>Logs an Info-severity message. Caller/file/line are captured automatically via compiler attributes.</summary>
     public Task InfoAsync(string message,
         [CallerMemberName] string caller = "",
         [CallerFilePath] string file = "",
         [CallerLineNumber] int line = 0) =>
         LogAsync(Severity.Info, message, caller, file, line);
 
+    /// <summary>Logs a Warning-severity message. Caller/file/line are captured automatically via compiler attributes.</summary>
     public Task WarningAsync(string message,
         [CallerMemberName] string caller = "",
         [CallerFilePath] string file = "",
         [CallerLineNumber] int line = 0) =>
         LogAsync(Severity.Warning, message, caller, file, line);
 
+    /// <summary>Logs an exception at Error severity, using its innermost stack frame as the caller/file/line context.</summary>
     public Task ErrorAsync(Exception? ex)
     {
         if (ex is null) return Task.CompletedTask;
@@ -102,6 +109,7 @@ public sealed class LoggingService
     }
 
 
+    /// <summary>Formats and dispatches a log line to console and/or file, subject to the configured output type and severity filter.</summary>
     private Task LogAsync(
         Severity severity,
         string message,
@@ -130,6 +138,11 @@ public sealed class LoggingService
     }
 
 
+    /// <summary>
+    /// Fires on Discord.NET's own Log event (from the command/socket/interaction services).
+    /// Writes exceptions and messages to a dated exception-log file, and mirrors
+    /// Warning/Error severity into the console as well.
+    /// </summary>
     private Task OnDiscordLogAsync(LogMessage log)
     {
         try
@@ -166,6 +179,7 @@ public sealed class LoggingService
     }
 
 
+    /// <summary>True if a message at the given severity passes the configured filter.</summary>
     private static bool ShouldLog(Severity severity, FilterSeverity filter) => filter switch
     {
         FilterSeverity.All => true,

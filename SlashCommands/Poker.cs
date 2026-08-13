@@ -40,6 +40,7 @@ public partial class Games
 
     // ── /poker ────────────────────────────────────────────────────────────────
 
+    /// <summary>Creates a poker lobby in the channel (one at a time), auto-seating the bot and the host after deducting the host's buy-in, and posts Join/Start buttons.</summary>
     [SlashCommand("poker", "Start a Texas Hold'em table! Up to 4 players vs the bot.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandlePokerAsync([MinValue(50)] long bet)
@@ -132,6 +133,7 @@ public partial class Games
 
     // ── Embed builders ─────────────────────────────────────────────────────────
 
+    /// <summary>Builds the pre-game lobby embed listing seated players, empty seats, buy-in, and current pot.</summary>
     internal static EmbedBuilder BuildLobbyEmbed(
         long bet,
         IEnumerable<(string userId, bool isBot)> players,
@@ -145,16 +147,15 @@ public partial class Games
         for (int i = seat; i <= MaxHumans; i++)
             sb.AppendLine($"{i}. *Waiting…*");
 
-        return new EmbedBuilder()
-            .WithTitle("🃏  Texas Hold'em — Lobby")
-            .WithColor(ColourInfo)
-            .WithDescription(
-                $"💰 **Buy-in:** {CreditHelper.Format((decimal)bet)} per player\n" +
-                $"🏆 **Pot:** {CreditHelper.Format(humanCount * (decimal)bet)} ({humanCount} human{(humanCount == 1 ? "" : "s")})\n\n" +
-                $"**Players:**\n{sb.ToString().TrimEnd()}")
-            .WithFooter("Click Join to enter • Host clicks Start when ready");
+        return new EmbedHelper().BuildSimpleEmbed(
+            "🃏  Texas Hold'em — Lobby",
+            $"💰 **Buy-in:** {CreditHelper.Format((decimal)bet)} per player\n" +
+            $"🏆 **Pot:** {CreditHelper.Format(humanCount * (decimal)bet)} ({humanCount} human{(humanCount == 1 ? "" : "s")})\n\n" +
+            $"**Players:**\n{sb.ToString().TrimEnd()}",
+            ColourInfo, footer: "Click Join to enter • Host clicks Start when ready", timestamp: false);
     }
 
+    /// <summary>Builds one in-progress frame of the game embed for a given phase (shuffle/deal/flop/turn/river/etc.), revealing <paramref name="reveal"/> community cards with hole cards kept hidden.</summary>
     internal static EmbedBuilder BuildGameEmbed(
         string phase,
         List<string> community,
@@ -177,15 +178,14 @@ public partial class Games
             sb.AppendLine($"{name} — {cards}");
         }
 
-        return new EmbedBuilder()
-            .WithTitle($"🃏  Texas Hold'em — {phase}")
-            .WithColor(ColourInfo)
-            .WithDescription(
-                $"**Community:** {commLine}\n\n" +
-                $"**Players:**\n{sb.ToString().TrimEnd()}")
-            .WithFooter($"Buy-in: {CreditHelper.Format((decimal)bet)} each");
+        return new EmbedHelper().BuildSimpleEmbed(
+            $"🃏  Texas Hold'em — {phase}",
+            $"**Community:** {commLine}\n\n" +
+            $"**Players:**\n{sb.ToString().TrimEnd()}",
+            ColourInfo, footer: $"Buy-in: {CreditHelper.Format((decimal)bet)} each", timestamp: false);
     }
 
+    /// <summary>Builds the final showdown embed: every player's revealed hand ranked by score, the winning hand name, and the payout (or house-win) message.</summary>
     internal static EmbedBuilder BuildShowdownEmbed(
         List<string> community,
         IEnumerable<(string userId, List<string> hand, bool isBot, string handName, int score)> results,
@@ -215,18 +215,16 @@ public partial class Games
 
         Color colour = botWon ? ColourLoss : ColourWin;
 
-        return new EmbedBuilder()
-            .WithTitle(title)
-            .WithColor(colour)
-            .WithDescription(
-                $"**Community:** {commLine}\n\n" +
-                $"**Showdown:**\n{sb.ToString().TrimEnd()}")
-            .WithFooter($"Buy-in was {CreditHelper.Format((decimal)bet)} per player • Pot: {CreditHelper.Format(humanPot)}")
-            .WithCurrentTimestamp();
+        return new EmbedHelper().BuildSimpleEmbed(
+            title,
+            $"**Community:** {commLine}\n\n" +
+            $"**Showdown:**\n{sb.ToString().TrimEnd()}",
+            colour, footer: $"Buy-in was {CreditHelper.Format((decimal)bet)} per player • Pot: {CreditHelper.Format(humanPot)}");
     }
 
     // ── Component builder ──────────────────────────────────────────────────────
 
+    /// <summary>Builds the lobby's Join/Start buttons, disabling Join once the table is full.</summary>
     internal static MessageComponent BuildLobbyButtons(int gameId, bool joinDisabled = false) =>
         new ComponentBuilder()
             .WithButton("🃏 Join Game", $"poker:join:{gameId}", ButtonStyle.Primary, disabled: joinDisabled)
@@ -235,6 +233,7 @@ public partial class Games
 
     // ── Helpers ────────────────────────────────────────────────────────────────
 
+    /// <summary>Takes the next <paramref name="count"/> cards off the top of the deck, returning the dealt hand and the remaining deck.</summary>
     internal static (List<string> hand, List<string> remaining) DealFromDeck(
         List<string> deck, int count)
     {
@@ -243,6 +242,7 @@ public partial class Games
         return (hand, remaining);
     }
 
+    /// <summary>Attempts to DM a player their hole cards, silently ignoring failures (e.g. DMs disabled) since the cards are also shown ephemerally.</summary>
     internal static async Task TrySendHoleCards(IUser user, List<string> hand, long bet)
     {
         try
@@ -259,6 +259,7 @@ public partial class Games
 
 // ── Component handlers for poker buttons (must be outside [Group("game")]) ───────
 
+/// <summary>Button handlers for the poker lobby's Join/Start flow — declared outside [Group] since component interaction IDs aren't routed through the slash-command group.</summary>
 public class GameComponentHandlers : InteractionModuleBase<SocketInteractionContext>
 {
     private readonly StoredProcedure _sp  = new();
@@ -269,6 +270,7 @@ public class GameComponentHandlers : InteractionModuleBase<SocketInteractionCont
 
     // ── Join button ────────────────────────────────────────────────────────────
 
+    /// <summary>Seats the clicking user at the table (validating the game is still open, they're not already seated, the table isn't full, and they can afford the buy-in), deducts their buy-in, deals their hand, and refreshes the lobby embed.</summary>
     [ComponentInteraction("poker:join:*")]
     public async Task OnPokerJoinAsync(string gameIdStr)
     {
@@ -358,6 +360,7 @@ public class GameComponentHandlers : InteractionModuleBase<SocketInteractionCont
 
     // ── Start button ───────────────────────────────────────────────────────────
 
+    /// <summary>Runs the full hand once at least one human has joined: animates through shuffle/deal/flop/turn/river/showdown via successive message edits, scores every hand, and pays the winner from the human pot (or the house keeps it if the bot wins).</summary>
     [ComponentInteraction("poker:start:*")]
     public async Task OnPokerStartAsync(string gameIdStr)
     {

@@ -13,6 +13,7 @@ namespace DiscordBot.Constants
     {
             private static readonly Dictionary<string, string> _values = new();
 
+        /// <summary>Preloads secrets.json (if present) once at first access to this class.</summary>
         static Constants()
         {
             try
@@ -39,6 +40,10 @@ namespace DiscordBot.Constants
             }
         }
 
+        /// <summary>
+        /// Resolves a config value by key, checking (in order) the environment variable,
+        /// then secrets.json, then the supplied fallback.
+        /// </summary>
         private static string Get(string key, string? fallback = null)
         {
             // 1) Check environment variable (use exact key name)

@@ -25,6 +25,8 @@ namespace DiscordBot.SlashCommands;
 public sealed class Audio(IAudioService audioService, InteractiveService interactiveService)
     : InteractionModuleBase<SocketInteractionContext>
 {
+    private readonly EmbedHelper _embed = new();
+
     private const string EmojiMusic = "🎵";
     private const string EmojiPlay = "▶️";
     private const string EmojiPause = "⏸️";
@@ -510,6 +512,7 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
 
     #region Button Interactions
 
+    /// <summary>Pause button handler — pauses playback and refreshes the Now Playing message in place.</summary>
     [ComponentInteraction(BtnPause)]
     public async Task OnPauseButtonAsync()
     {
@@ -527,6 +530,7 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
         await UpdateNowPlayingMessageAsync(player, paused: true);
     }
 
+    /// <summary>Resume button handler — resumes playback and refreshes the Now Playing message in place.</summary>
     [ComponentInteraction(BtnResume)]
     public async Task OnResumeButtonAsync()
     {
@@ -544,6 +548,7 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
         await UpdateNowPlayingMessageAsync(player, paused: false);
     }
 
+    /// <summary>Skip button handler — skips the current track and refreshes the Now Playing message, or shows an empty-queue message if nothing follows.</summary>
     [ComponentInteraction(BtnSkip)]
     public async Task OnSkipButtonAsync()
     {
@@ -571,6 +576,7 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
             });
     }
 
+    /// <summary>Stop button handler — stops playback, disconnects, and swaps the message to the Disconnected embed with no buttons.</summary>
     [ComponentInteraction(BtnStop)]
     public async Task OnStopButtonAsync()
     {
@@ -589,6 +595,7 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
         });
     }
 
+    /// <summary>Shuffle button handler — shuffles the queue and refreshes the Now Playing message in place.</summary>
     [ComponentInteraction(BtnShuffle)]
     public async Task OnShuffleButtonAsync()
     {
@@ -606,6 +613,7 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
         await UpdateNowPlayingMessageAsync(player, player.State is PlayerState.Paused);
     }
 
+    /// <summary>Loop ×1 button handler — re-queues the current track once and refreshes the Now Playing message in place.</summary>
     [ComponentInteraction(BtnLoop1)]
     public async Task OnLoop1ButtonAsync()
     {
@@ -619,6 +627,7 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
         await UpdateNowPlayingMessageAsync(player, player.State is PlayerState.Paused);
     }
 
+    /// <summary>Volume-up button handler — raises volume by 10%.</summary>
     [ComponentInteraction(BtnVolUp)]
     public async Task OnVolUpButtonAsync()
     {
@@ -626,6 +635,7 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
         await AdjustVolumeAsync(delta: +10);
     }
 
+    /// <summary>Volume-down button handler — lowers volume by 10%.</summary>
     [ComponentInteraction(BtnVolDown)]
     public async Task OnVolDownButtonAsync()
     {
@@ -633,6 +643,7 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
         await AdjustVolumeAsync(delta: -10);
     }
 
+    /// <summary>Queue button handler — shows the first 10 upcoming tracks ephemerally.</summary>
     [ComponentInteraction(BtnQueueB)]
     public async Task OnQueueButtonAsync()
     {
@@ -671,6 +682,7 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
 
     #region Private Helpers
 
+    /// <summary>Retrieves (optionally creating/joining) the guild's Lavalink player, replying with a friendly error and returning null if the user or bot isn't in a voice channel.</summary>
     private async ValueTask<QueuedLavalinkPlayer?> GetPlayerAsync(bool connectToVoiceChannel = true)
     {
         var options = new CustomPlayerOptions
@@ -703,6 +715,7 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
         return result.Player;
     }
 
+    /// <summary>Joins the invoking user's voice channel if not already connected, then returns the player.</summary>
     private async Task<LavalinkPlayer?> EnsureJoinedAsync()
     {
         if (Context.User is not IVoiceState { VoiceChannel: not null } voiceState)
@@ -717,6 +730,7 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
         return await GetPlayerAsync(connectToVoiceChannel: true);
     }
 
+    /// <summary>Resolves a search query or URL to one or more tracks via Lavalink and dispatches to the single-track or playlist queuing path.</summary>
     private async Task QueueAndPlayAsync(LavalinkPlayer player, string query, bool playNext)
     {
         var tracks = await audioService.Tracks.LoadTracksAsync(query, TrackSearchMode.YouTube);
@@ -734,6 +748,7 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
             : PlaySingleTrackAsync(player, tracks.Track, playNext));
     }
 
+    /// <summary>Queues a single resolved track (or inserts it next), applies the guild's saved volume, records it in the music history table, and replies with a track-detail embed.</summary>
     private async Task PlaySingleTrackAsync(LavalinkPlayer player, LavalinkTrack track, bool playNext)
     {
         AddMusicTable(track, Context.Guild.Id.ToString(), Context.User.Username);
@@ -832,6 +847,7 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
     }
 
 
+    /// <summary>Inserts a single track immediately after the currently playing one by temporarily draining and restoring the rest of the queue.</summary>
     private async Task InsertAsNextAsync(LavalinkPlayer player, LavalinkTrack singleTrack)
     {
         var queued = await GetPlayerAsync(connectToVoiceChannel: false);
@@ -850,6 +866,7 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
         }
     }
 
+    /// <summary>Inserts an entire resolved playlist immediately after the currently playing track by temporarily draining and restoring the rest of the queue.</summary>
     private async Task InsertPlaylistAsNextAsync(
         LavalinkPlayer player, TrackLoadResult tracks, string guildIdStr, string userName)
     {
@@ -869,6 +886,7 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
         }
     }
 
+    /// <summary>Queues every track in a resolved playlist and records each one in the music history table.</summary>
     private async Task EnqueueAllAsync(
         LavalinkPlayer player, TrackLoadResult tracks, string guildIdStr, string userName)
     {
@@ -880,6 +898,7 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
     }
 
 
+    /// <summary>Nudges the guild's volume by a delta (clamped 0–100), persists it, and refreshes the Now Playing message.</summary>
     private async Task AdjustVolumeAsync(int delta)
     {
         var player = await GetPlayerAsync(connectToVoiceChannel: false);
@@ -900,6 +919,7 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
     }
 
 
+    /// <summary>Posts a fresh Now Playing embed with playback buttons as the interaction followup.</summary>
     private async Task ReplyNowPlayingAsync(QueuedLavalinkPlayer player, bool paused)
     {
         if (player.CurrentTrack is null) return;
@@ -909,6 +929,7 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
             components: BuildPlaybackButtons(paused));
     }
 
+    /// <summary>Replaces the original response with an updated Now Playing embed and playback buttons — used by button handlers to refresh in place.</summary>
     private async Task UpdateNowPlayingMessageAsync(LavalinkPlayer player, bool paused)
     {
         if (player.CurrentTrack is null) return;
@@ -920,6 +941,7 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
         });
     }
 
+    /// <summary>Replaces the original response with a plain warning embed — used when a button action can't be completed.</summary>
     private async Task RespondWithWarningUpdateAsync(string message)
     {
         await ModifyOriginalResponseAsync(m =>
@@ -929,6 +951,7 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
     }
 
 
+    /// <summary>Rewrites twitter.com/x.com URLs to their dl.fxtwitter.com equivalent so Lavalink can resolve them.</summary>
     private static string HandleTwitter(string query) =>
         query switch
         {
@@ -937,11 +960,13 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
             _ => query
         };
 
+    /// <summary>Reads one key out of a track's AdditionalInformation dictionary, or an empty string if absent.</summary>
     private static string ExtractAdditionalInfo(LavalinkTrack track, string key) =>
         track.AdditionalInformation is { Count: > 0 } info && info.TryGetValue(key, out var val)
             ? val.ToString() ?? ""
             : "";
 
+    /// <summary>Factory delegate passed to Lavalink4NET's player-retrieval API to construct a new <see cref="CustomPlayer"/> when one doesn't already exist.</summary>
     private static ValueTask<CustomPlayer> CreatePlayerAsync(
         IPlayerProperties<CustomPlayer, CustomPlayerOptions> properties,
         CancellationToken cancellationToken = default)
@@ -959,16 +984,17 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
 
     #region Embed & Component Factories
 
+    /// <summary>Builds the shared base embed (emoji+title, color, requester footer) used by every audio command reply.</summary>
     private EmbedBuilder MakeEmbed(string emoji, string title, Color color) =>
-        new EmbedBuilder()
-            .WithTitle($"{emoji}  {title}")
-            .WithColor(color)
-            .WithFooter($"Requested by {Context.User.Username}", Context.User.GetAvatarUrl())
-            .WithCurrentTimestamp();
+        _embed.BuildSimpleEmbed(
+            $"{emoji}  {title}", "", color,
+            footer: $"Requested by {Context.User.Username}", footerIconUrl: Context.User.GetAvatarUrl());
 
+    /// <summary>Posts a simple emoji/title/description embed as the interaction followup — the common case for command replies that aren't Now Playing.</summary>
     private async Task ReplyEmbedAsync(string emoji, string title, string description, Color color) =>
         await FollowupAsync(embed: MakeEmbed(emoji, title, color).WithDescription(description).Build());
 
+    /// <summary>Builds the Now Playing embed: artwork thumbnail, title/artist/duration/source fields, and remaining queue count.</summary>
     private EmbedBuilder BuildNowPlayingEmbed(LavalinkTrack track, int queueRemaining) =>
         MakeEmbed(EmojiPlay, "Now Playing", ColourDefault)
             .WithThumbnailUrl(track.ArtworkUri?.ToString())
@@ -990,14 +1016,12 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
             ? $"{EmojiQueue}  Queue  —  {total} track(s)  (Page {page}/{pageCount})"
             : $"{EmojiQueue}  Queue  —  {total} track(s)";
 
-        return new EmbedBuilder()
-            .WithTitle(title)
-            .WithDescription($"**Now playing:** {current.Title}\n\n{content}")
-            .WithColor(ColourDefault)
-            .WithFooter($"Requested by {Context.User.Username}", Context.User.GetAvatarUrl())
-            .WithCurrentTimestamp();
+        return _embed.BuildSimpleEmbed(
+            title, $"**Now playing:** {current.Title}\n\n{content}", ColourDefault,
+            footer: $"Requested by {Context.User.Username}", footerIconUrl: Context.User.GetAvatarUrl());
     }
 
+    /// <summary>Builds the two-row playback control button set (Pause/Resume, Skip, Stop, Shuffle, Loop, Volume, Queue), swapping Pause for Resume when paused.</summary>
     private static MessageComponent BuildPlaybackButtons(bool paused) =>
         new ComponentBuilder()
             .WithButton(
@@ -1014,10 +1038,12 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
             .WithButton("Queue", BtnQueueB, ButtonStyle.Secondary, new Emoji(EmojiQueue), row: 1)
             .Build();
 
+    /// <summary>Builds the shared "disconnected" embed posted on /leave, /stop, and the Stop button.</summary>
     private EmbedBuilder LeaveEmbed() =>
         MakeEmbed(EmojiLeave, "Disconnected", ColourDefault)
             .WithDescription("Goodbye! Have a great time. 👋");
 
+    /// <summary>Renders a 10-segment block-character bar representing a 0–100 volume level.</summary>
     private static string VolumeBar(int volume)
     {
         int filled = volume / 10;
@@ -1036,6 +1062,7 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
 
     #region DB Helpers
 
+    /// <summary>Reads the guild's saved playback volume, defaulting to 50 if none is stored.</summary>
     private int GetVolume(long guildId)
     {
         var dt = new StoredProcedure().Select(Constants.Constants.discordBotConnStr, "GetVolume",
@@ -1052,6 +1079,7 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
         return 50;
     }
 
+    /// <summary>Records that the bot has connected to a voice/text channel pair in this guild.</summary>
     private void AddPlayerConnected(IVoiceState voiceState) =>
         new StoredProcedure().UpdateCreate(Constants.Constants.discordBotConnStr, "AddPlayerConnected",
         [
@@ -1061,6 +1089,7 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
             new SqlParameter("@CreatedBy",      Context.User.Id.ToString())
         ]);
 
+    /// <summary>Clears the guild's connected-player record and any leftover queued-track rows.</summary>
     private void DeletePlayerConnected(long serverId)
     {
         SqlParameter[] p = [new SqlParameter("@ServerID", serverId)];
@@ -1069,6 +1098,7 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
         sp.UpdateCreate(Constants.Constants.discordBotConnStr, "DeleteMusicQueueAll", [.. p]);
     }
 
+    /// <summary>Logs a played track to the music history table.</summary>
     private void AddMusicTable(LavalinkTrack? track, string serverId, string createdBy)
     {
         if (track is null) return;

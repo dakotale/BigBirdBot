@@ -2,6 +2,9 @@ using Discord;
 
 namespace DiscordBot.Constants
 {
+    /// <summary>
+    /// Shared embed color palette so slash commands don't each redefine the same RGB values.
+    /// </summary>
     public static class EmbedColors
     {
         public static readonly Color Green   = new(87,  242, 135);

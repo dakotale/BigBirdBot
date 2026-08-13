@@ -6,6 +6,10 @@ using Microsoft.Data.SqlClient;
 
 namespace DiscordBot.SlashCommands;
 
+/// <summary>
+/// /journal subcommands — daily journaling reminders and streak tracking, DM-only.
+/// Reminder delivery itself happens in BotHost.RunSchedulerAsync.
+/// </summary>
 [Group("journal", "Daily journaling tools — DM only.")]
 [CommandContextType(InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
 public class JournalCommands : InteractionModuleBase<SocketInteractionContext>
@@ -19,6 +23,7 @@ public class JournalCommands : InteractionModuleBase<SocketInteractionContext>
     private static readonly Color JournalColor = new(0x7B68EE);
 
 
+    /// <summary>Subscribes the user to a daily journaling reminder DM at their chosen time.</summary>
     [SlashCommand("subscribe", "Sign up for a daily journaling reminder at your chosen time.")]
     public async Task HandleSubscribeAsync(
         [Summary("time", "Time for your daily reminder, e.g. '9:00 AM' or '21:00'")] string time,
@@ -50,19 +55,16 @@ public class JournalCommands : InteractionModuleBase<SocketInteractionContext>
 
         string prompt = JournalHelper.GetRandomPrompt();
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle("📓  Daily Journal Reminder Set!")
-            .WithColor(JournalColor)
-            .WithDescription(
-                $"You'll receive a journaling reminder every day at **{displayTime}**.\n\n" +
-                $"**A prompt to get you started today:**\n> *{prompt}*\n\n" +
-                $"Once you finish writing, use `/journal done` to log your entry and track your streak!")
-            .WithFooter($"Reminders are sent here in DMs • {Username}")
-            .WithCurrentTimestamp()
-            .Build(), ephemeral: true);
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            "📓  Daily Journal Reminder Set!",
+            $"You'll receive a journaling reminder every day at **{displayTime}**.\n\n" +
+            $"**A prompt to get you started today:**\n> *{prompt}*\n\n" +
+            $"Once you finish writing, use `/journal done` to log your entry and track your streak!",
+            JournalColor, footer: $"Reminders are sent here in DMs • {Username}").Build(), ephemeral: true);
     }
 
 
+    /// <summary>Cancels the daily reminder DM, without affecting the user's saved streak/entries.</summary>
     [SlashCommand("unsubscribe", "Stop receiving daily journaling reminders.")]
     public async Task HandleUnsubscribeAsync()
     {
@@ -73,18 +75,15 @@ public class JournalCommands : InteractionModuleBase<SocketInteractionContext>
             new SqlParameter("@UserID", Context.User.Id.ToString())
         ]);
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle("📓  Journal Reminders Cancelled")
-            .WithColor(Color.LightGrey)
-            .WithDescription(
-                "You've unsubscribed from daily journal reminders.\n\n" +
-                "Your streak and entries are still saved — you can re-subscribe any time with `/journal subscribe`.")
-            .WithFooter(Username)
-            .WithCurrentTimestamp()
-            .Build(), ephemeral: true);
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            "📓  Journal Reminders Cancelled",
+            "You've unsubscribed from daily journal reminders.\n\n" +
+            "Your streak and entries are still saved — you can re-subscribe any time with `/journal subscribe`.",
+            Color.LightGrey, footer: Username).Build(), ephemeral: true);
     }
 
 
+    /// <summary>Logs today's journal entry (once per day), advancing the streak, and shows 3 fresh prompts for next time.</summary>
     [SlashCommand("done", "Log today's journal entry and celebrate your progress!")]
     public async Task HandleDoneAsync()
     {
@@ -106,15 +105,11 @@ public class JournalCommands : InteractionModuleBase<SocketInteractionContext>
 
         if (alreadyLogged)
         {
-            await FollowupAsync(embed: new EmbedBuilder()
-                .WithTitle("📓  Already Logged Today")
-                .WithColor(Color.Gold)
-                .WithDescription(
-                    $"You've already logged today's journal entry!\n\n" +
-                    $"Your current streak is **{streak} {DayWord(streak)}**. Come back tomorrow to keep it going!")
-                .WithFooter(Username)
-                .WithCurrentTimestamp()
-                .Build(), ephemeral: true);
+            await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+                "📓  Already Logged Today",
+                $"You've already logged today's journal entry!\n\n" +
+                $"Your current streak is **{streak} {DayWord(streak)}**. Come back tomorrow to keep it going!",
+                Color.Gold, footer: Username).Build(), ephemeral: true);
             return;
         }
 
@@ -143,19 +138,16 @@ public class JournalCommands : InteractionModuleBase<SocketInteractionContext>
         var nextPrompts = JournalHelper.GetRandomPrompts(3);
         string promptList = string.Join("\n", nextPrompts.Select((p, i) => $"{i + 1}. *{p}*"));
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"{titleEmoji}  Journal Entry Logged — Great Work!")
-            .WithColor(Color.Green)
-            .WithDescription(
-                $"**Congratulations on journaling today, {Username}!**\n\n" +
-                $"{streakMessage}\n\n" +
-                $"**Some prompts to save for tomorrow:**\n{promptList}")
-            .WithFooter($"Keep it up — see you tomorrow! • {Username}")
-            .WithCurrentTimestamp()
-            .Build(), ephemeral: true);
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"{titleEmoji}  Journal Entry Logged — Great Work!",
+            $"**Congratulations on journaling today, {Username}!**\n\n" +
+            $"{streakMessage}\n\n" +
+            $"**Some prompts to save for tomorrow:**\n{promptList}",
+            Color.Green, footer: $"Keep it up — see you tomorrow! • {Username}").Build(), ephemeral: true);
     }
 
 
+    /// <summary>Shows the user's current streak, total entries, and reminder subscription status.</summary>
     [SlashCommand("status", "Check your journaling streak and reminder schedule.")]
     public async Task HandleStatusAsync()
     {
@@ -192,31 +184,27 @@ public class JournalCommands : InteractionModuleBase<SocketInteractionContext>
             _     => "📝"
         };
 
-        var eb = new EmbedBuilder()
-            .WithTitle("📓  Your Journal Status")
-            .WithColor(JournalColor)
-            .AddField($"{streakEmoji} Current Streak", $"{streak} {DayWord(streak)}", inline: true)
-            .AddField("📖 Total Entries",  totalEntries.ToString(),                   inline: true);
+        var eb = _embed.BuildSimpleEmbed(
+            "📓  Your Journal Status", "", JournalColor, footer: Username,
+            fields: [($"{streakEmoji} Current Streak", $"{streak} {DayWord(streak)}", true),
+                     ("📖 Total Entries", totalEntries.ToString(), true)]);
 
         if (hasSubscription)
             eb.AddField("⏰ Daily Reminder", dailyTime, inline: true);
         else
             eb.AddField("⏰ Daily Reminder", "Not active — use `/journal subscribe` to set one", inline: false);
 
-        eb.WithFooter(Username).WithCurrentTimestamp();
-
         await FollowupAsync(embed: eb.Build(), ephemeral: true);
     }
 
 
-    private EmbedBuilder NoSubscriptionEmbed() => new EmbedBuilder()
-        .WithTitle("📓  Journal Status")
-        .WithColor(JournalColor)
-        .WithDescription(
-            "You don't have an active journal subscription yet.\n\n" +
-            "Use `/journal subscribe` to set a daily reminder and start your journaling journey!")
-        .WithFooter(Username)
-        .WithCurrentTimestamp();
+    /// <summary>Builds the "no active subscription" status embed.</summary>
+    private EmbedBuilder NoSubscriptionEmbed() => _embed.BuildSimpleEmbed(
+        "📓  Journal Status",
+        "You don't have an active journal subscription yet.\n\n" +
+        "Use `/journal subscribe` to set a daily reminder and start your journaling journey!",
+        JournalColor, footer: Username);
 
+    /// <summary>Pluralizes "day" for streak counts.</summary>
     private static string DayWord(int n) => n == 1 ? "day" : "days";
 }

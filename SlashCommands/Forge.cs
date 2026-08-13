@@ -43,6 +43,7 @@ public class Forge : InteractionModuleBase<SocketInteractionContext>
 
     // ── /forge title ──────────────────────────────────────────────────────────
 
+    /// <summary>Forges a custom title cosmetic onto the active pet — delegates to the shared <see cref="HandleForge"/> logic.</summary>
     [SlashCommand("title", "Forge a custom title for your active pet.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleForgeTitleAsync(
@@ -62,6 +63,7 @@ public class Forge : InteractionModuleBase<SocketInteractionContext>
 
     // ── /forge aura ───────────────────────────────────────────────────────────
 
+    /// <summary>Forges a custom aura cosmetic onto the active pet — delegates to the shared <see cref="HandleForge"/> logic.</summary>
     [SlashCommand("aura", "Forge a custom aura label for your active pet.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleForgeAuraAsync(
@@ -81,6 +83,7 @@ public class Forge : InteractionModuleBase<SocketInteractionContext>
 
     // ── /forge list ───────────────────────────────────────────────────────────
 
+    /// <summary>Lists every forged title/aura currently on the active pet.</summary>
     [SlashCommand("list", "View all forged cosmetics on your active pet.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleForgeListAsync()
@@ -107,15 +110,11 @@ public class Forge : InteractionModuleBase<SocketInteractionContext>
 
         if (dt.Rows.Count == 0)
         {
-            await FollowupAsync(embed: new EmbedBuilder()
-                .WithTitle($"Forge — {petName}")
-                .WithColor(ColourForge)
-                .WithDescription(
-                    $"**{petName}** has no forged cosmetics yet.\n\n" +
-                    $"Use `/forge title` or `/forge aura` to craft one.")
-                .WithFooter(Username, AvatarUrl)
-                .WithCurrentTimestamp()
-                .Build());
+            await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+                $"Forge — {petName}",
+                $"**{petName}** has no forged cosmetics yet.\n\n" +
+                $"Use `/forge title` or `/forge aura` to craft one.",
+                ColourForge, footer: Username, footerIconUrl: AvatarUrl).Build());
             return;
         }
 
@@ -138,17 +137,14 @@ public class Forge : InteractionModuleBase<SocketInteractionContext>
         desc.AppendLine();
         desc.AppendLine($"-# Total burned on {petName}: **{CreditHelper.Format(totalBurned)}**");
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"Forge — {petName}'s Cosmetics ({dt.Rows.Count})")
-            .WithColor(ColourForge)
-            .WithDescription(desc.ToString())
-            .WithFooter(Username, AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"Forge — {petName}'s Cosmetics ({dt.Rows.Count})", desc.ToString(),
+            ColourForge, footer: Username, footerIconUrl: AvatarUrl).Build());
     }
 
     // ── /forge tiers ─────────────────────────────────────────────────────────
 
+    /// <summary>Lists each forge tier's cost, character limit, and whether it allows a custom colour.</summary>
     [SlashCommand("tiers", "View forge tier costs and limits.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleForgeTiersAsync()
@@ -168,17 +164,18 @@ public class Forge : InteractionModuleBase<SocketInteractionContext>
                             $"\n　*{flavour}*");
         }
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle("Cosmetic Forge — Tiers")
-            .WithColor(ColourForge)
-            .WithDescription(desc.ToString())
-            .WithFooter(Username, AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            "Cosmetic Forge — Tiers", desc.ToString(),
+            ColourForge, footer: Username, footerIconUrl: AvatarUrl).Build());
     }
 
     // ── Shared forge logic ────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Shared implementation for /forge title and /forge aura: validates the tier, text length,
+    /// and optional hex colour (Epic/Legendary only), burns the tier's credit cost, and applies
+    /// the cosmetic to the active pet.
+    /// </summary>
     private async Task HandleForge(string type, int tierIdx, string text, string? colourHex)
     {
         var tier = Tiers[tierIdx - 1];
@@ -260,23 +257,20 @@ public class Forge : InteractionModuleBase<SocketInteractionContext>
             ? $"\nColour: `{resolvedColour}`"
             : "";
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"Forged — {tier.name} {char.ToUpper(type[0])}{type[1..]}")
-            .WithColor(ColourSuccess)
-            .WithDescription(
-                $"**{petName}** now bears the {type}:\n\n" +
-                $"**\"{text}\"**{colourDisplay}\n\n" +
-                $"*{tier.flavour}*")
-            .AddField("Tier", tier.name, inline: true)
-            .AddField("Burned", CreditHelper.Format(tier.cost), inline: true)
-            .AddField("Balance", CreditHelper.Format(newBalance), inline: true)
-            .WithFooter($"{Username} • Use /pet card to see it on your pet", AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"Forged — {tier.name} {char.ToUpper(type[0])}{type[1..]}",
+            $"**{petName}** now bears the {type}:\n\n" +
+            $"**\"{text}\"**{colourDisplay}\n\n" +
+            $"*{tier.flavour}*",
+            ColourSuccess, footer: $"{Username} • Use /pet card to see it on your pet", footerIconUrl: AvatarUrl,
+            fields: [("Tier", tier.name, true),
+                     ("Burned", CreditHelper.Format(tier.cost), true),
+                     ("Balance", CreditHelper.Format(newBalance), true)]).Build());
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
+    /// <summary>Display name for a forge tier index.</summary>
     private static string TierName(int tier) => tier switch
     {
         1 => "Common",
@@ -285,6 +279,7 @@ public class Forge : InteractionModuleBase<SocketInteractionContext>
         _ => "Legendary"
     };
 
+    /// <summary>True if the string is a well-formed "#RRGGBB" hex colour.</summary>
     private static bool IsValidHex(string hex)
     {
         if (hex.Length != 7 || hex[0] != '#') return false;
@@ -293,6 +288,7 @@ public class Forge : InteractionModuleBase<SocketInteractionContext>
         return true;
     }
 
+    /// <summary>Posts a standard Forge-branded error embed.</summary>
     private async Task ErrorAsync(string message) =>
         await FollowupAsync(embed: _embed.BuildErrorEmbed("Forge", message, Username).Build());
 }

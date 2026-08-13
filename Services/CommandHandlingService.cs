@@ -10,12 +10,19 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace DiscordBot.Services
 {
+    /// <summary>
+    /// Legacy text-command handler using Discord.NET's <see cref="CommandService"/> (prefix
+    /// commands, e.g. "!play"), separate from the modern slash-command pipeline in
+    /// <see cref="InteractionHandlerService"/>. Routes messages to matching command modules
+    /// and posts a friendly error embed when parsing/execution fails.
+    /// </summary>
     public class CommandHandlingService
     {
         private readonly CommandService _commands;
         private readonly DiscordSocketClient _discord;
         private readonly IServiceProvider _services;
 
+        /// <summary>Wires up the CommandExecuted and MessageReceived event handlers.</summary>
         public CommandHandlingService(IServiceProvider services)
         {
             _commands = services.GetRequiredService<CommandService>();
@@ -29,12 +36,17 @@ namespace DiscordBot.Services
             _discord.MessageReceived += MessageReceivedAsync;
         }
 
+        /// <summary>Discovers and registers every text-command module in the entry assembly.</summary>
         public async Task InitializeAsync()
         {
             // Register modules that are public and inherit ModuleBase<T>.
             await _commands.AddModulesAsync(Assembly.GetEntryAssembly(), _services);
         }
 
+        /// <summary>
+        /// Fires on every message; checks the server's configured prefix and active flag,
+        /// and if the message starts with that prefix, dispatches it to the command service.
+        /// </summary>
         public async Task MessageReceivedAsync(SocketMessage rawMessage)
         {
             // Ignore system messages, or messages from other bots
@@ -75,6 +87,11 @@ namespace DiscordBot.Services
             // we will handle the result in CommandExecutedAsync,
         }
 
+        /// <summary>
+        /// Fires after the command service attempts to run a matched command: audits successful
+        /// runs, and posts a plain-language error embed for the common failure reasons (missing
+        /// argument, bad number, blank argument, etc.) on failure.
+        /// </summary>
         public async Task CommandExecutedAsync(Optional<CommandInfo> command, ICommandContext context, IResult result)
         {
             // command is unspecified when there was a search failure (command not found); we don't care about these errors

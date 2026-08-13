@@ -16,6 +16,7 @@ public class Challenges : InteractionModuleBase<SocketInteractionContext>
 {
     private readonly StoredProcedure _sp = new();
     private readonly Economy _eco = new();
+    private readonly EmbedHelper _embed = new();
 
     private string Username => Context.User.Username;
     private string AvatarUrl => Context.User.GetAvatarUrl();
@@ -29,6 +30,11 @@ public class Challenges : InteractionModuleBase<SocketInteractionContext>
 
     // ── /challenges ───────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Shows the user's 3 daily challenges and progress toward each. Individual challenges
+    /// pay out automatically as they're completed elsewhere (via TrackChallenge hooks); this
+    /// command only marks the completion bonus as claimed once so it can't be paid twice.
+    /// </summary>
     [SlashCommand("challenges", "View your daily challenges and claim your bonus.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleChallengesAsync()
@@ -132,17 +138,13 @@ public class Challenges : InteractionModuleBase<SocketInteractionContext>
 
         var colour = bonusClaimed ? ColourGold : allDone ? ColourGreen : ColourBlue;
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle("📋  Daily Challenges")
-            .WithColor(colour)
-            .WithDescription(desc.ToString())
-            .WithFooter(Username, AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            "📋  Daily Challenges", desc.ToString(), colour, footer: Username, footerIconUrl: AvatarUrl).Build());
     }
 
     // ── /stats ────────────────────────────────────────────────────────────────
 
+    /// <summary>Shows a profile summary (balance, prestige, streak) plus aggregated gambling and fishing statistics, for yourself or another member.</summary>
     [SlashCommand("stats", "View your gambling and fishing stats.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleStatsAsync(IUser? user = null)
@@ -268,27 +270,21 @@ public class Challenges : InteractionModuleBase<SocketInteractionContext>
               (streakLabel != "" ? $" — {streakLabel}" : "")
             : "None";
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"📊  {target.Username}'s Stats")
-            .WithColor(ColourPurple)
-            .WithThumbnailUrl(target.GetAvatarUrl())
-            .AddField("💳 Balance", CreditHelper.Format(balance), inline: true)
-            .AddField("⭐ Lifetime Earned", CreditHelper.Format(lifetimeEarned), inline: true)
-            .AddField("🏅 Prestige", prestigeRank, inline: true)
-            .AddField("🔥 Daily Streak", streakDisplay, inline: true)
-            .AddField("🎲 Gambling", gambDesc.ToString(), inline: false)
-            .AddField("🎣 Fishing", fishDesc.ToString(), inline: false)
-            .WithFooter(isSelf ? Username : $"Viewing {target.Username}'s stats", AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"📊  {target.Username}'s Stats", "", ColourPurple,
+            footer: isSelf ? Username : $"Viewing {target.Username}'s stats", footerIconUrl: AvatarUrl,
+            fields: [("💳 Balance", CreditHelper.Format(balance), true),
+                     ("⭐ Lifetime Earned", CreditHelper.Format(lifetimeEarned), true),
+                     ("🏅 Prestige", prestigeRank, true),
+                     ("🔥 Daily Streak", streakDisplay, true),
+                     ("🎲 Gambling", gambDesc.ToString(), false),
+                     ("🎣 Fishing", fishDesc.ToString(), false)])
+            .WithThumbnailUrl(target.GetAvatarUrl()).Build());
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
+    /// <summary>Builds a standard Challenges-branded error embed.</summary>
     private EmbedBuilder BuildError(string msg) =>
-        new EmbedBuilder()
-            .WithTitle("❌  Error")
-            .WithColor(Color.Red)
-            .WithDescription(msg)
-            .WithFooter(Username, AvatarUrl);
+        _embed.BuildSimpleEmbed("❌  Error", msg, Color.Red, footer: Username, footerIconUrl: AvatarUrl, timestamp: false);
 }

@@ -9,6 +9,7 @@ using System.Text.Json;
 
 namespace DiscordBot.SlashCommands
 {
+    /// <summary>AI-generated color palettes: asks Claude for 5 themed colors and renders them as a labeled swatch image.</summary>
     public class PaletteCommands : InteractionModuleBase<SocketInteractionContext>
     {
         private readonly EmbedHelper _embed = new();
@@ -25,6 +26,7 @@ namespace DiscordBot.SlashCommands
             _httpFactory = httpFactory;
         }
 
+        /// <summary>Generates a 5-color palette from a text prompt via the Anthropic API and posts it as a rendered swatch image.</summary>
         [SlashCommand("palette", "Generate a color palette using AI.")]
         [CommandContextType(InteractionContextType.Guild)]
         public async Task HandlePaletteAsync(
@@ -47,17 +49,14 @@ namespace DiscordBot.SlashCommands
 
             using var stream = RenderPalette(colors);
 
-            var embed = new EmbedBuilder()
-                .WithTitle($"Color Palette — {prompt}")
-                .WithColor(EmbedColors.Purple)
-                .WithImageUrl("attachment://palette.png")
-                .WithFooter(Context.User.Username)
-                .WithCurrentTimestamp()
-                .Build();
+            var embed = _embed.BuildSimpleEmbed(
+                $"Color Palette — {prompt}", "", EmbedColors.Purple, footer: Context.User.Username)
+                .WithImageUrl("attachment://palette.png").Build();
 
             await FollowupWithFileAsync(stream, "palette.png", embed: embed);
         }
 
+        /// <summary>Calls the Anthropic Messages API asking for exactly 5 hex colors matching the prompt, and parses the JSON array out of the model's reply text.</summary>
         private async Task<List<(string Hex, string Name)>> GetPaletteFromAnthropicAsync(string prompt)
         {
             var client = _httpFactory.CreateClient();
@@ -115,6 +114,7 @@ namespace DiscordBot.SlashCommands
             return result;
         }
 
+        /// <summary>Draws up to 5 color swatches side-by-side with hex label (contrast-colored) and name, and encodes the result as a PNG stream.</summary>
         private static MemoryStream RenderPalette(List<(string Hex, string Name)> colors)
         {
             var info   = new SKImageInfo(ImageWidth, ImageHeight);
@@ -159,6 +159,7 @@ namespace DiscordBot.SlashCommands
             return ms;
         }
 
+        /// <summary>Computes perceptual luminance (0-1) of a color, used to pick black or white label text for contrast.</summary>
         private static float Luminance(SKColor c) =>
             (0.299f * c.Red + 0.587f * c.Green + 0.114f * c.Blue) / 255f;
     }

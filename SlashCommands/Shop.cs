@@ -38,6 +38,7 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
 
     // ── /shop browse ──────────────────────────────────────────────────────────
 
+    /// <summary>Shows either a summary of all categories, or (when a specific category is chosen) a detailed listing of each item's price and effect.</summary>
     [SlashCommand("browse", "Browse shop items by category.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleBrowseAsync(
@@ -60,14 +61,11 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
         if (cat == ShopHelper.ShopCategory.All)
         {
             // Summary view — one field per category
-            var embed = new EmbedBuilder()
-                .WithTitle("🛒  The Shop")
-                .WithColor(ColourShop)
-                .WithDescription(
-                    "Browse by category or use `/shop buy <item>` to purchase directly.\n" +
-                    "Use `/shop inventory` to see what you own.")
-                .WithFooter(Username, AvatarUrl)
-                .WithCurrentTimestamp();
+            var embed = _embed.BuildSimpleEmbed(
+                "🛒  The Shop",
+                "Browse by category or use `/shop buy <item>` to purchase directly.\n" +
+                "Use `/shop inventory` to see what you own.",
+                ColourShop, footer: Username, footerIconUrl: AvatarUrl);
 
             foreach (ShopHelper.ShopCategory c in Enum.GetValues<ShopHelper.ShopCategory>())
             {
@@ -88,12 +86,10 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
         }
 
         // Category detail view
-        var detailEmbed = new EmbedBuilder()
-            .WithTitle($"{ShopHelper.CategoryEmoji(cat)}  {ShopHelper.CategoryLabel(cat)}")
-            .WithColor(ColourShop)
-            .WithDescription(ShopHelper.CategoryDescription(cat))
-            .WithFooter($"Use /shop buy <item> to purchase • {Username}", AvatarUrl)
-            .WithCurrentTimestamp();
+        var detailEmbed = _embed.BuildSimpleEmbed(
+            $"{ShopHelper.CategoryEmoji(cat)}  {ShopHelper.CategoryLabel(cat)}",
+            ShopHelper.CategoryDescription(cat),
+            ColourShop, footer: $"Use /shop buy <item> to purchase • {Username}", footerIconUrl: AvatarUrl);
 
         foreach (var item in items)
         {
@@ -114,6 +110,7 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
 
     // ── /shop buy ─────────────────────────────────────────────────────────────
 
+    /// <summary>Buys a quantity of a shop item, deducting the total cost and adding it to the user's inventory.</summary>
     [SlashCommand("buy", "Purchase an item from the shop.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleBuyAsync(
@@ -156,21 +153,19 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
         ]);
 
         string qtyLabel = quantity > 1 ? $"{quantity}×  " : "";
-        var embed = new EmbedBuilder()
-            .WithTitle($"{item.Emoji}  Purchased: {qtyLabel}{item.Name}")
-            .WithColor(ColourSuccess)
-            .WithDescription(item.Effect)
-            .AddField("Quantity", $"×{quantity}", inline: true)
-            .AddField("Cost", CreditHelper.Format(totalCost), inline: true)
-            .AddField("Balance", CreditHelper.Format(newBalance), inline: true)
-            .WithFooter($"Use /shop use {item.Key} to apply it • {Username}", AvatarUrl)
-            .WithCurrentTimestamp();
+        var embed = _embed.BuildSimpleEmbed(
+            $"{item.Emoji}  Purchased: {qtyLabel}{item.Name}", item.Effect, ColourSuccess,
+            footer: $"Use /shop use {item.Key} to apply it • {Username}", footerIconUrl: AvatarUrl,
+            fields: [("Quantity", $"×{quantity}", true),
+                     ("Cost", CreditHelper.Format(totalCost), true),
+                     ("Balance", CreditHelper.Format(newBalance), true)]);
 
         await FollowupAsync(embed: embed.Build());
     }
 
     // ── /shop inventory ───────────────────────────────────────────────────────
 
+    /// <summary>Lists the user's owned inventory items (with quantities) and currently active effects (with expiry or uses remaining).</summary>
     [SlashCommand("inventory", "Show your owned items and active effects.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleInventoryAsync()
@@ -250,6 +245,7 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
 
     // ── /shop use ─────────────────────────────────────────────────────────────
 
+    /// <summary>Validates the item exists and is owned, then dispatches to the matching Use* handler by item key (cosmetics are routed by <see cref="ShopHelper.ShopItem.IsCosmetic"/> instead).</summary>
     [SlashCommand("use", "Use an item from your inventory.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleUseAsync(
@@ -423,13 +419,9 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
         if (energy != 0) sb.AppendLine($"⚡ Energy    {PetHelper.StatBar(newEnergy)}    **{newEnergy}/100**");
         if (hygiene != 0) sb.AppendLine($"🧼 Hygiene   {PetHelper.StatBar(newHygiene)}   **{newHygiene}/100**");
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"{item.Emoji}  Used {item.Name} on {petName}!")
-            .WithColor(ColourSuccess)
-            .WithDescription(sb.ToString())
-            .WithFooter(Username, AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"{item.Emoji}  Used {item.Name} on {petName}!", sb.ToString(),
+            ColourSuccess, footer: Username, footerIconUrl: AvatarUrl).Build());
     }
 
     /// <summary>Full Restore — maxes all stats on the active pet.</summary>
@@ -464,17 +456,14 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
             new SqlParameter("@LastSlept",     DBNull.Value)
         ]);
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"💊  {name} is fully restored!")
-            .WithColor(ColourSuccess)
-            .WithDescription(
-                $"All of **{name}**'s stats have been maxed out!\n\n" +
-                $"🍽️ Hunger    {PetHelper.StatBar(100)} **100/100**\n" +
-                $"😊 Happiness {PetHelper.StatBar(100)} **100/100**\n" +
-                $"⚡ Energy    {PetHelper.StatBar(100)} **100/100**\n" +
-                $"🧼 Hygiene   {PetHelper.StatBar(100)} **100/100**")
-            .WithFooter(Username, AvatarUrl)
-            .WithCurrentTimestamp()
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"💊  {name} is fully restored!",
+            $"All of **{name}**'s stats have been maxed out!\n\n" +
+            $"🍽️ Hunger    {PetHelper.StatBar(100)} **100/100**\n" +
+            $"😊 Happiness {PetHelper.StatBar(100)} **100/100**\n" +
+            $"⚡ Energy    {PetHelper.StatBar(100)} **100/100**\n" +
+            $"🧼 Hygiene   {PetHelper.StatBar(100)} **100/100**",
+            ColourSuccess, footer: Username, footerIconUrl: AvatarUrl)
             .Build());
     }
 
@@ -517,17 +506,14 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
             new SqlParameter("@LastSlept",     DBNull.Value)
         ]);
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"💫  {name} has been revived!")
-            .WithColor(ColourSuccess)
-            .WithDescription(
-                $"**{name}** is awake and ready to go again!\n\n" +
-                $"🍽️ Hunger    {PetHelper.StatBar(50)} **50/100**\n" +
-                $"😊 Happiness {PetHelper.StatBar(50)} **50/100**\n" +
-                $"⚡ Energy    {PetHelper.StatBar(50)} **50/100**\n" +
-                $"🧼 Hygiene   {PetHelper.StatBar(50)} **50/100**")
-            .WithFooter(Username, AvatarUrl)
-            .WithCurrentTimestamp()
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"💫  {name} has been revived!",
+            $"**{name}** is awake and ready to go again!\n\n" +
+            $"🍽️ Hunger    {PetHelper.StatBar(50)} **50/100**\n" +
+            $"😊 Happiness {PetHelper.StatBar(50)} **50/100**\n" +
+            $"⚡ Energy    {PetHelper.StatBar(50)} **50/100**\n" +
+            $"🧼 Hygiene   {PetHelper.StatBar(50)} **50/100**",
+            ColourSuccess, footer: Username, footerIconUrl: AvatarUrl)
             .Build());
     }
 
@@ -556,16 +542,12 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
 
         string slotLabel = cosType == "title" ? "Title" : "Aura";
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"{item.Emoji}  Cosmetic Applied!")
-            .WithColor(ColourSuccess)
-            .WithDescription(
-                $"**{petName}** now wears the **{item.Emoji} {item.Name}** {slotLabel.ToLower()}!\n\n" +
-                $"It'll show up on `/petcard`.\n" +
-                $"You can replace it anytime by using another {slotLabel.ToLower()} cosmetic.")
-            .WithFooter(Username, AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"{item.Emoji}  Cosmetic Applied!",
+            $"**{petName}** now wears the **{item.Emoji} {item.Name}** {slotLabel.ToLower()}!\n\n" +
+            $"It'll show up on `/petcard`.\n" +
+            $"You can replace it anytime by using another {slotLabel.ToLower()} cosmetic.",
+            ColourSuccess, footer: Username, footerIconUrl: AvatarUrl).Build());
     }
 
     /// <summary>
@@ -632,13 +614,9 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
 
         Gambling.ClearUserCooldowns(UserId);
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"⏩  Cooldowns Reset!")
-            .WithColor(ColourSuccess)
-            .WithDescription("All your gambling command cooldowns have been cleared. Go again!")
-            .WithFooter(Username, AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"⏩  Cooldowns Reset!", "All your gambling command cooldowns have been cleared. Go again!",
+            ColourSuccess, footer: Username, footerIconUrl: AvatarUrl).Build());
     }
 
     // ── Impregnator ───────────────────────────────────────────────────────────
@@ -700,18 +678,15 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
         catch { /* DMs closed */ }
 
         // 3. Public chat message
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle("🤖🍼  PREGANTE!")
-            .WithColor(new Color(255, 105, 180))
-            .WithDescription(
-                $"**{Context.User.Mention}** has impregnated <@{BotOwnerId}>!\n\n" +
-                $"A baby is on the way. Due date: <t:{birthUnix}:F>\n" +
-                $"Both parties have been notified. 🐣")
-            .WithFooter(Username, AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            "🤖🍼  PREGANTE!",
+            $"**{Context.User.Mention}** has impregnated <@{BotOwnerId}>!\n\n" +
+            $"A baby is on the way. Due date: <t:{birthUnix}:F>\n" +
+            $"Both parties have been notified. 🐣",
+            new Color(255, 105, 180), footer: Username, footerIconUrl: AvatarUrl).Build());
     }
 
+    /// <summary>Destroy Baby easter egg — clears the user's active pregnancy against the bot owner, if one exists.</summary>
     private async Task RemoveImpregnator(ShopHelper.ShopItem item)
     {
         if (!ShopHelper.ConsumeItem(UserId, ServerId, item.Key))
@@ -737,28 +712,23 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
             new SqlParameter("@ServerID", ServerId)
         ]);
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle("🍼  Baby Destroyed")
-            .WithColor(ColourError)
-            .WithDescription(
-                $"You have used the **{item.Name}** and destroyed the bot owner's baby.\n" +
-                $"The bot owner has been notified. 😢\n" +
-                "Enjoy the consequences of your actions!")
-            .WithFooter(Username, AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            "🍼  Baby Destroyed",
+            $"You have used the **{item.Name}** and destroyed the bot owner's baby.\n" +
+            $"The bot owner has been notified. 😢\n" +
+            "Enjoy the consequences of your actions!",
+            ColourError, footer: Username, footerIconUrl: AvatarUrl).Build());
     }
 
     // ── Embed helpers ─────────────────────────────────────────────────────────
 
+    /// <summary>Builds the shared "effect now active" embed used by the various booster/perk handlers.</summary>
     private EmbedBuilder EffectEmbed(ShopHelper.ShopItem item, string note) =>
-        new EmbedBuilder()
-            .WithTitle($"{item.Emoji}  {item.Name} — Active!")
-            .WithColor(ColourInfo)
-            .WithDescription($"{item.Effect}\n\n{note}")
-            .WithFooter(Username, AvatarUrl)
-            .WithCurrentTimestamp();
+        _embed.BuildSimpleEmbed(
+            $"{item.Emoji}  {item.Name} — Active!", $"{item.Effect}\n\n{note}",
+            ColourInfo, footer: Username, footerIconUrl: AvatarUrl);
 
+    /// <summary>Posts a standard shop error embed as the interaction followup.</summary>
     private async Task ErrorAsync(string message) =>
         await FollowupAsync(embed: _embed.BuildErrorEmbed("Shop", message, Username).Build());
 
@@ -787,16 +757,12 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
         string multi = item.Key == "golden_ticket_ii" ? "3×" : "2×";
         int hours = item.DurationMinutes!.Value / 60;
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"{item.Emoji}  {item.Name} — Active!")
-            .WithColor(ColourSuccess)
-            .WithDescription(
-                $"All credit income is now **{multi}** for the next **{hours} hour{(hours == 1 ? "" : "s")}**.\n\n" +
-                $"Applies to: `/daily`, `/work`, gambling payouts, and fishing rewards.\n\n" +
-                $"-# Expires <t:{new DateTimeOffset(expiresAt).ToUnixTimeSeconds()}:R>")
-            .WithFooter(Username, AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"{item.Emoji}  {item.Name} — Active!",
+            $"All credit income is now **{multi}** for the next **{hours} hour{(hours == 1 ? "" : "s")}**.\n\n" +
+            $"Applies to: `/daily`, `/work`, gambling payouts, and fishing rewards.\n\n" +
+            $"-# Expires <t:{new DateTimeOffset(expiresAt).ToUnixTimeSeconds()}:R>",
+            ColourSuccess, footer: Username, footerIconUrl: AvatarUrl).Build());
     }
 
     /// <summary>Interest Boost — flat 250M credit grant.</summary>
@@ -811,15 +777,11 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
         decimal payout = 250_000_000m;
         decimal newBalance = _eco.AddCredits(UserId, ServerId, payout, "interest_boost");
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"{item.Emoji}  Interest Paid!")
-            .WithColor(ColourSuccess)
-            .WithDescription(
-                $"**{CreditHelper.Format(payout)}** has been deposited into your account.\n\n" +
-                $"Balance: {CreditHelper.Format(newBalance)}")
-            .WithFooter(Username, AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"{item.Emoji}  Interest Paid!",
+            $"**{CreditHelper.Format(payout)}** has been deposited into your account.\n\n" +
+            $"Balance: {CreditHelper.Format(newBalance)}",
+            ColourSuccess, footer: Username, footerIconUrl: AvatarUrl).Build());
     }
 
     /// <summary>Bank Heist — steal 1–5% of a random other user's balance.</summary>
@@ -844,13 +806,10 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
         {
             ShopHelper.SetActiveEffect(UserId, ServerId, cooldownKey,
                 DateTime.UtcNow.AddHours(48), 1);
-            await FollowupAsync(embed: new EmbedBuilder()
-                .WithTitle($"{item.Emoji}  Heist Failed!")
-                .WithColor(ColourError)
-                .WithDescription("The security was too tight. You got away clean but walked out empty-handed.\n\n-# 48-hour cooldown applied.")
-                .WithFooter(Username, AvatarUrl)
-                .WithCurrentTimestamp()
-                .Build());
+            await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+                $"{item.Emoji}  Heist Failed!",
+                "The security was too tight. You got away clean but walked out empty-handed.\n\n-# 48-hour cooldown applied.",
+                ColourError, footer: Username, footerIconUrl: AvatarUrl).Build());
             return;
         }
 
@@ -888,16 +847,12 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
         ShopHelper.SetActiveEffect(UserId, ServerId, cooldownKey,
             DateTime.UtcNow.AddHours(48), 1);
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"{item.Emoji}  Heist Successful!")
-            .WithColor(ColourSuccess)
-            .WithDescription(
-                $"You robbed **{tName}** of **{CreditHelper.Format(stolen)}** ({pct * 100:F1}% of their balance).\n\n" +
-                $"Balance: {CreditHelper.Format(newBalance)}\n\n" +
-                $"-# 48-hour cooldown applied.")
-            .WithFooter(Username, AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"{item.Emoji}  Heist Successful!",
+            $"You robbed **{tName}** of **{CreditHelper.Format(stolen)}** ({pct * 100:F1}% of their balance).\n\n" +
+            $"Balance: {CreditHelper.Format(newBalance)}\n\n" +
+            $"-# 48-hour cooldown applied.",
+            ColourSuccess, footer: Username, footerIconUrl: AvatarUrl).Build());
     }
 
     /// <summary>Market Crash — drops all stock prices 20–40%.</summary>
@@ -933,24 +888,18 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
             var guild = Context.Guild;
             var serverDetails = ServerHelper.GetServerInfo(guild.Id);
             var channel = guild.GetTextChannel(UInt64.Parse(serverDetails.DefaultChannelID));
-            await channel.SendMessageAsync(embed: new EmbedBuilder()
-                    .WithTitle("📉  Market Crash!")
-                    .WithColor(ColourError)
-                    .WithDescription(
-                        $"{Context.User.Mention} triggered a **Market Crash**!\n\n" +
-                        $"All {count} stocks have dropped **20–40%**. Check `/stock market` for current prices.")
-                    .WithCurrentTimestamp()
-                    .Build());
+            await channel.SendMessageAsync(embed: _embed.BuildSimpleEmbed(
+                    "📉  Market Crash!",
+                    $"{Context.User.Mention} triggered a **Market Crash**!\n\n" +
+                    $"All {count} stocks have dropped **20–40%**. Check `/stock market` for current prices.",
+                    ColourError).Build());
         }
         catch { }
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"{item.Emoji}  Market Crash Triggered!")
-            .WithColor(ColourSuccess)
-            .WithDescription($"**{count}** stocks have been crashed by 20–40%. The announcement has been posted.")
-            .WithFooter(Username, AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"{item.Emoji}  Market Crash Triggered!",
+            $"**{count}** stocks have been crashed by 20–40%. The announcement has been posted.",
+            ColourSuccess, footer: Username, footerIconUrl: AvatarUrl).Build());
     }
 
     /// <summary>Jackpot Seed — injects 100B into the passive jackpot pool.</summary>
@@ -976,16 +925,12 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
             ? decimal.Parse(potDt.Rows[0]["Pool"].ToString()!)
             : seed;
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"{item.Emoji}  Jackpot Seeded!")
-            .WithColor(ColourSuccess)
-            .WithDescription(
-                $"**{CreditHelper.Format(seed)}** has been injected into the server passive jackpot.\n\n" +
-                $"New pool total: **{CreditHelper.Format(newPool)}**\n\n" +
-                $"*Win it on slots or scratch card (0.5% chance per play).*")
-            .WithFooter(Username, AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"{item.Emoji}  Jackpot Seeded!",
+            $"**{CreditHelper.Format(seed)}** has been injected into the server passive jackpot.\n\n" +
+            $"New pool total: **{CreditHelper.Format(newPool)}**\n\n" +
+            $"*Win it on slots or scratch card (0.5% chance per play).*",
+            ColourSuccess, footer: Username, footerIconUrl: AvatarUrl).Build());
     }
 
     /// <summary>Prestige Reset — zeros LifetimeEarned and refunds 100B.</summary>
@@ -1006,17 +951,13 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
         decimal refund = 100_000_000_000m;
         decimal newBalance = _eco.AddCredits(UserId, ServerId, refund, "prestige_reset_refund");
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"{item.Emoji}  Prestige Reset!")
-            .WithColor(ColourSuccess)
-            .WithDescription(
-                $"Your **LifetimeEarned** has been reset to 0. You're back to 🪨 Broke.\n\n" +
-                $"Refund of **{CreditHelper.Format(refund)}** applied.\n" +
-                $"Balance: {CreditHelper.Format(newBalance)}\n\n" +
-                $"*Use `/prestige` to start climbing again.*")
-            .WithFooter(Username, AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"{item.Emoji}  Prestige Reset!",
+            $"Your **LifetimeEarned** has been reset to 0. You're back to 🪨 Broke.\n\n" +
+            $"Refund of **{CreditHelper.Format(refund)}** applied.\n" +
+            $"Balance: {CreditHelper.Format(newBalance)}\n\n" +
+            $"*Use `/prestige` to start climbing again.*",
+            ColourSuccess, footer: Username, footerIconUrl: AvatarUrl).Build());
     }
 
     /// <summary>Wealth Flex — burns 1T, posts server-wide announcement.</summary>
@@ -1044,27 +985,20 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
             var guild = Context.Guild;
             var serverDetails = ServerHelper.GetServerInfo(guild.Id);
             var channel = guild.GetTextChannel(UInt64.Parse(serverDetails.DefaultChannelID));
-            await channel.SendMessageAsync(embed: new EmbedBuilder()
-                    .WithTitle("💸  Wealth Flex!")
-                    .WithColor(new Color(255, 215, 0))
-                    .WithDescription(
-                        $"{Context.User.Mention} just **burned {CreditHelper.Format(burnAmount)}** for absolutely no reason.\n\n" +
-                        $"*The ultimate flex. Absolutely nothing was gained.*")
-                    .WithCurrentTimestamp()
-                    .Build());
+            await channel.SendMessageAsync(embed: _embed.BuildSimpleEmbed(
+                    "💸  Wealth Flex!",
+                    $"{Context.User.Mention} just **burned {CreditHelper.Format(burnAmount)}** for absolutely no reason.\n\n" +
+                    $"*The ultimate flex. Absolutely nothing was gained.*",
+                    new Color(255, 215, 0)).Build());
         }
         catch { }
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"{item.Emoji}  Wealth Flex!")
-            .WithColor(ColourSuccess)
-            .WithDescription(
-                $"**{CreditHelper.Format(burnAmount)}** has been permanently destroyed.\n" +
-                $"Balance: {CreditHelper.Format(newBalance)}\n\n" +
-                $"The server has been notified of your sacrifice.")
-            .WithFooter(Username, AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"{item.Emoji}  Wealth Flex!",
+            $"**{CreditHelper.Format(burnAmount)}** has been permanently destroyed.\n" +
+            $"Balance: {CreditHelper.Format(newBalance)}\n\n" +
+            $"The server has been notified of your sacrifice.",
+            ColourSuccess, footer: Username, footerIconUrl: AvatarUrl).Build());
     }
 
     /// <summary>Economy Nuke — halves every user's balance in the server.</summary>
@@ -1084,24 +1018,18 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
             var guild = Context.Guild;
             var serverDetails = ServerHelper.GetServerInfo(guild.Id);
             var channel = guild.GetTextChannel(UInt64.Parse(serverDetails.DefaultChannelID));
-            await channel.SendMessageAsync(embed: new EmbedBuilder()
-                    .WithTitle("☢️  Economy Nuke!")
-                    .WithColor(ColourError)
-                    .WithDescription(
-                        $"{Context.User.Mention} detonated an **Economy Nuke**!\n\n" +
-                        $"**Every user's balance has been halved.** Check `/balance` to see the damage.")
-                    .WithCurrentTimestamp()
-                    .Build());
+            await channel.SendMessageAsync(embed: _embed.BuildSimpleEmbed(
+                    "☢️  Economy Nuke!",
+                    $"{Context.User.Mention} detonated an **Economy Nuke**!\n\n" +
+                    $"**Every user's balance has been halved.** Check `/balance` to see the damage.",
+                    ColourError).Build());
         }
         catch { }
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"{item.Emoji}  Economy Nuke Detonated!")
-            .WithColor(ColourSuccess)
-            .WithDescription("Every user's balance in this server has been halved. The announcement has been posted.")
-            .WithFooter(Username, AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"{item.Emoji}  Economy Nuke Detonated!",
+            "Every user's balance in this server has been halved. The announcement has been posted.",
+            ColourSuccess, footer: Username, footerIconUrl: AvatarUrl).Build());
     }
 
     /// <summary>Server Reset — zeros every user's balance.</summary>
@@ -1121,29 +1049,24 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
             var guild = Context.Guild;
             var serverDetails = ServerHelper.GetServerInfo(guild.Id);
             var channel = guild.GetTextChannel(UInt64.Parse(serverDetails.DefaultChannelID));
-            await channel.SendMessageAsync(embed: new EmbedBuilder()
-                    .WithTitle("💥  Server Economy Reset!")
-                    .WithColor(ColourError)
-                    .WithDescription(
-                        $"{Context.User.Mention} used a **Server Economy Reset**.\n\n" +
-                        $"**Every user's balance has been set to 0.** Prestige ranks are preserved.\n" +
-                        $"*Time to start over.*")
-                    .WithCurrentTimestamp()
-                    .Build());
+            await channel.SendMessageAsync(embed: _embed.BuildSimpleEmbed(
+                    "💥  Server Economy Reset!",
+                    $"{Context.User.Mention} used a **Server Economy Reset**.\n\n" +
+                    $"**Every user's balance has been set to 0.** Prestige ranks are preserved.\n" +
+                    $"*Time to start over.*",
+                    ColourError).Build());
         }
         catch { }
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"{item.Emoji}  Server Economy Reset!")
-            .WithColor(ColourSuccess)
-            .WithDescription("Every balance in this server has been zeroed. Prestige ranks are intact.")
-            .WithFooter(Username, AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"{item.Emoji}  Server Economy Reset!",
+            "Every balance in this server has been zeroed. Prestige ranks are intact.",
+            ColourSuccess, footer: Username, footerIconUrl: AvatarUrl).Build());
     }
 
     // ── Pet helper (mirrors Pet.cs pattern) ──────────────────────────────────
 
+    /// <summary>Fetches the user's currently active pet row, or an error message if they have none.</summary>
     private (DataRow? row, string? error) GetActivePet()
     {
         var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetActivePet",

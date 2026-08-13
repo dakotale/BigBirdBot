@@ -23,6 +23,7 @@ public class AICommands : InteractionModuleBase<SocketInteractionContext>
     private readonly EmbedHelper _embed = new();
     private readonly StoredProcedure _sp = new();
 
+    /// <summary>Injects the Spotify and AI chat backends used by /mood and /chat respectively.</summary>
     public AICommands(ISpotifyService spotifyService, IAIChatService aiChatService)
     {
         _spotifyService = spotifyService;
@@ -37,6 +38,11 @@ public class AICommands : InteractionModuleBase<SocketInteractionContext>
     // /chat
     // =========================================================================
 
+    /// <summary>
+    /// Sends the user's message to the AI backend with the chosen persona as system prompt,
+    /// persisting both sides of the exchange as conversation history (unless starting fresh),
+    /// and splits long replies across multiple follow-up messages beyond the embed limit.
+    /// </summary>
     [SlashCommand("chat", "Have a conversation with the bot using a chosen personality.")]
     [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
     public async Task HandleChatAsync(
@@ -141,6 +147,7 @@ public class AICommands : InteractionModuleBase<SocketInteractionContext>
     // /detectaibyattachment
     // =========================================================================
 
+    /// <summary>Downloads the attached image, submits it to the Sightengine AI-detection API, and reports the resulting AI-likelihood percentage.</summary>
     [SlashCommand("detectaibyattachment", "Upload an image to check the probability it was AI-generated.")]
     [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
     public async Task HandleAiByAttachmentAsync(Attachment attachment)
@@ -228,6 +235,7 @@ public class AICommands : InteractionModuleBase<SocketInteractionContext>
     private static readonly Color ColourSpotify = EmbedColors.Spotify;
     private static readonly Color ColourError   = EmbedColors.Red;
 
+    /// <summary>Posts a random Spotify track matching the given mood, with a reroll button attached.</summary>
     [SlashCommand("mood", "Get a random Spotify track that matches your mood.")]
     public async Task MoodAsync(
         [Summary("mood", "Describe your mood — e.g. melancholy, hype, chill, heartbreak")]
@@ -240,6 +248,7 @@ public class AICommands : InteractionModuleBase<SocketInteractionContext>
         await FollowupAsync(embed: embed, components: components);
     }
 
+    /// <summary>Re-rolls the mood track in-place on the same message when the Reroll button is pressed.</summary>
     [ComponentInteraction($"{BtnRerollPrefix}*")]
     public async Task OnMoodRerollAsync(string mood)
     {
@@ -252,6 +261,7 @@ public class AICommands : InteractionModuleBase<SocketInteractionContext>
         });
     }
 
+    /// <summary>Fetches a track for the mood and builds the resulting embed+button pair, or a "no results" embed with no reroll button if nothing matched.</summary>
     private async Task<(Embed embed, MessageComponent components)> BuildMoodResponseAsync(string mood)
     {
         var track = await _spotifyService.GetRandomTrackAsync(mood);
@@ -259,36 +269,29 @@ public class AICommands : InteractionModuleBase<SocketInteractionContext>
         if (track is null)
         {
             return (
-                new EmbedBuilder()
-                    .WithTitle("❌  No Results")
-                    .WithColor(ColourError)
-                    .WithDescription($"Spotify returned nothing for **{EscapeMd(mood)}**. Try a different mood!")
-                    .WithFooter($"Requested by {Username}", AvatarUrl)
-                    .WithCurrentTimestamp()
-                    .Build(),
+                _embed.BuildSimpleEmbed(
+                    "❌  No Results", $"Spotify returned nothing for **{EscapeMd(mood)}**. Try a different mood!",
+                    ColourError, footer: $"Requested by {Username}", footerIconUrl: AvatarUrl).Build(),
                 new ComponentBuilder().Build());
         }
 
         return (BuildSpotifyEmbed(mood, track).Build(), BuildRerollButton(mood));
     }
 
+    /// <summary>Builds the track-details embed (artist/album/duration/popularity, plus a preview link if one exists).</summary>
     private EmbedBuilder BuildSpotifyEmbed(string mood, SpotifyTrack t)
     {
         var duration  = TimeSpan.FromMilliseconds(t.DurationMs);
         string expl   = t.Explicit ? " 🅴" : "";
 
-        var embed = new EmbedBuilder()
-            .WithTitle($"{t.Name}{expl}")
-            .WithUrl(t.Url)
-            .WithColor(ColourSpotify)
-            .WithThumbnailUrl(t.ArtworkUrl)
-            .WithDescription($"A track picked for your **{EscapeMd(mood)}** mood.")
-            .AddField("Artist",     t.Artist, inline: true)
-            .AddField("Album",      $"[{t.Album}]({t.AlbumUrl})", inline: true)
-            .AddField("Duration",   $"`{duration:mm\\:ss}`", inline: true)
-            .AddField("Popularity", $"{SpotifyStars(t.Popularity)} `{t.Popularity}/100`", inline: true)
-            .WithFooter($"Powered by Spotify  •  Requested by {Username}", AvatarUrl)
-            .WithCurrentTimestamp();
+        var embed = _embed.BuildSimpleEmbed(
+            $"{t.Name}{expl}", $"A track picked for your **{EscapeMd(mood)}** mood.", ColourSpotify,
+            footer: $"Powered by Spotify  •  Requested by {Username}", footerIconUrl: AvatarUrl,
+            fields: [("Artist", t.Artist, true),
+                     ("Album", $"[{t.Album}]({t.AlbumUrl})", true),
+                     ("Duration", $"`{duration:mm\\:ss}`", true),
+                     ("Popularity", $"{SpotifyStars(t.Popularity)} `{t.Popularity}/100`", true)])
+            .WithUrl(t.Url).WithThumbnailUrl(t.ArtworkUrl);
 
         if (!string.IsNullOrEmpty(t.PreviewUrl))
             embed.AddField("30s Preview", $"[▶ Listen]({t.PreviewUrl})", inline: true);
@@ -296,11 +299,13 @@ public class AICommands : InteractionModuleBase<SocketInteractionContext>
         return embed;
     }
 
+    /// <summary>Builds the single Reroll button, carrying the mood string in its custom ID.</summary>
     private static MessageComponent BuildRerollButton(string mood) =>
         new ComponentBuilder()
             .WithButton("🎲  Reroll", $"{BtnRerollPrefix}{mood}", ButtonStyle.Success)
             .Build();
 
+    /// <summary>Renders a 0-100 popularity score as a 5-star rating.</summary>
     private static string SpotifyStars(int popularity)
     {
         int stars = (int)Math.Round(popularity / 20.0);
@@ -311,6 +316,7 @@ public class AICommands : InteractionModuleBase<SocketInteractionContext>
         });
     }
 
+    /// <summary>Escapes Discord markdown special characters so user-supplied text (e.g. the mood string) can't break embed formatting.</summary>
     private static string EscapeMd(string s) =>
         s.Replace("*", "\\*").Replace("_", "\\_").Replace("`", "\\`").Replace("~", "\\~");
 }

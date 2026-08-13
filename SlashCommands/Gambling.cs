@@ -61,6 +61,7 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
             .WithButton("Take winnings", BtnDonDecline, ButtonStyle.Secondary, new Emoji("💰"), row: 0)
             .Build();
 
+    /// <summary>True if the user is still within this game's cooldown window; if so, sets <paramref name="remaining"/> to the time left.</summary>
     private bool IsOnCooldown(string game, out TimeSpan remaining)
     {
         string key = $"{UserId}:{game}";
@@ -77,12 +78,14 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
         return false;
     }
 
+    /// <summary>Stamps the current time as the user's last play of this game, starting its cooldown window.</summary>
     private void SetCooldown(string game) =>
         _cooldowns[$"{UserId}:{game}"] = DateTime.UtcNow;
 
 
     [SlashCommand("slots", "Spin the slot machine!")]
     [CommandContextType(InteractionContextType.Guild)]
+    /// <summary>Spins the 3-reel slot machine with an animated reveal, then scores the result and checks for a passive jackpot hit.</summary>
     public async Task HandleSlotsAsync([MinValue(10)] long bet)
     {
         await DeferAsync();
@@ -115,15 +118,13 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
         }
 
         EmbedBuilder SpinFrame(string a, string b, string c, string? label = null) =>
-            new EmbedBuilder()
-                .WithTitle("🎰  Slot Machine")
-                .WithColor(ColourInfo)
-                .WithDescription(
-                    $"╔══════════════╗\n" +
-                    $"║  {a}  {b}  {c}  ║\n" +
-                    $"╚══════════════╝\n\n" +
-                    (label ?? "*Spinning…*"))
-                .WithFooter(Username, AvatarUrl);
+            _embed.BuildSimpleEmbed(
+                "🎰  Slot Machine",
+                $"╔══════════════╗\n" +
+                $"║  {a}  {b}  {c}  ║\n" +
+                $"╚══════════════╝\n\n" +
+                (label ?? "*Spinning…*"),
+                ColourInfo, footer: Username, footerIconUrl: AvatarUrl, timestamp: false);
 
         var msg = await FollowupAsync(embed: SpinFrame(
             CreditHelper.SpinReelRandom(), CreditHelper.SpinReelRandom(), CreditHelper.SpinReelRandom()).Build());
@@ -135,21 +136,18 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
         await Task.Delay(700);
         await msg.ModifyAsync(m =>
         {
-            m.Embed = new EmbedBuilder()
-                .WithTitle("🎰  Slot Machine")
-                .WithColor(payout >= (decimal)bet ? ColourWin : payout > 0m ? ColourPush : ColourLoss)
-                .WithDescription(
-                    $"╔══════════════╗\n" +
-                    $"║  {r1}  {r2}  {r3}  ║\n" +
-                    $"╚══════════════╝\n\n" +
-                    $"**{result}**" +
-                    (pjWon ? $"\n\n🎰 **PASSIVE JACKPOT!** You hit the server pool for **{CreditHelper.Format(pjAmount)}**!" : ""))
-                .AddField("Bet", CreditHelper.Format((decimal)bet), inline: true)
-                .AddField("Payout", CreditHelper.Format(payout), inline: true)
-                .AddField("Balance", CreditHelper.Format(newBalance), inline: true)
-                .WithFooter(Username, AvatarUrl)
-                .WithCurrentTimestamp()
-                .Build();
+            m.Embed = _embed.BuildSimpleEmbed(
+                "🎰  Slot Machine",
+                $"╔══════════════╗\n" +
+                $"║  {r1}  {r2}  {r3}  ║\n" +
+                $"╚══════════════╝\n\n" +
+                $"**{result}**" +
+                (pjWon ? $"\n\n🎰 **PASSIVE JACKPOT!** You hit the server pool for **{CreditHelper.Format(pjAmount)}**!" : ""),
+                payout >= (decimal)bet ? ColourWin : payout > 0m ? ColourPush : ColourLoss,
+                footer: Username, footerIconUrl: AvatarUrl,
+                fields: [("Bet", CreditHelper.Format((decimal)bet), true),
+                         ("Payout", CreditHelper.Format(payout), true),
+                         ("Balance", CreditHelper.Format(newBalance), true)]).Build();
             decimal netWin = payout - (decimal)bet;
             if (!pjWon && netWin > 0m)
                 m.Components = OfferDon(netWin);
@@ -159,6 +157,7 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
 
     [SlashCommand("coinflip", "Flip a coin and bet on the outcome!")]
     [CommandContextType(InteractionContextType.Guild)]
+    /// <summary>Flips a coin with an animated reveal and pays out if the guessed side matches.</summary>
     public async Task HandleCoinflipAsync(
         [Choice("Heads", "heads"),
          Choice("Tails", "tails")]
@@ -183,11 +182,9 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
         decimal netWinCf = payout - (decimal)bet;
 
         EmbedBuilder CoinFrame(string display, string label) =>
-            new EmbedBuilder()
-                .WithTitle("🪙  Coin Flip")
-                .WithColor(ColourInfo)
-                .WithDescription($"{display}  *{label}*")
-                .WithFooter(Username, AvatarUrl);
+            _embed.BuildSimpleEmbed(
+                "🪙  Coin Flip", $"{display}  *{label}*",
+                ColourInfo, footer: Username, footerIconUrl: AvatarUrl, timestamp: false);
 
         var msg = await FollowupAsync(embed: CoinFrame("🪙", "Flipping…").Build());
         await Task.Delay(450);
@@ -198,19 +195,16 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
 
         await msg.ModifyAsync(m =>
         {
-            m.Embed = new EmbedBuilder()
-                .WithTitle($"{coinEmoji}  Coin Flip — {char.ToUpper(result[0])}{result[1..]}")
-                .WithColor(won ? ColourWin : ColourLoss)
-                .WithDescription(
-                    won
-                        ? $"You called **{side}** — correct! {CreditHelper.FormatDelta(payout - (decimal)bet)}"
-                        : $"You called **{side}** — it was **{result}**. {CreditHelper.FormatDelta(-(decimal)bet)}")
-                .AddField("Bet", CreditHelper.Format((decimal)bet), inline: true)
-                .AddField("Payout", CreditHelper.Format(payout), inline: true)
-                .AddField("Balance", CreditHelper.Format(newBalance), inline: true)
-                .WithFooter(Username, AvatarUrl)
-                .WithCurrentTimestamp()
-                .Build();
+            m.Embed = _embed.BuildSimpleEmbed(
+                $"{coinEmoji}  Coin Flip — {char.ToUpper(result[0])}{result[1..]}",
+                won
+                    ? $"You called **{side}** — correct! {CreditHelper.FormatDelta(payout - (decimal)bet)}"
+                    : $"You called **{side}** — it was **{result}**. {CreditHelper.FormatDelta(-(decimal)bet)}",
+                won ? ColourWin : ColourLoss,
+                footer: Username, footerIconUrl: AvatarUrl,
+                fields: [("Bet", CreditHelper.Format((decimal)bet), true),
+                         ("Payout", CreditHelper.Format(payout), true),
+                         ("Balance", CreditHelper.Format(newBalance), true)]).Build();
             if (won) m.Components = OfferDon(netWinCf);
         });
     }
@@ -218,6 +212,7 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
 
     [SlashCommand("dice", "Roll two dice and bet on the total!")]
     [CommandContextType(InteractionContextType.Guild)]
+    /// <summary>Rolls two dice with an animated reveal and pays out based on the chosen bet type (over/under/seven/doubles).</summary>
     public async Task HandleDiceAsync(
         [Choice("Over 7",    "over"),
          Choice("Under 7",   "under"),
@@ -259,11 +254,9 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
         static string DieFace(int n) => n switch { 1 => "⚀", 2 => "⚁", 3 => "⚂", 4 => "⚃", 5 => "⚄", _ => "⚅" };
 
         EmbedBuilder DiceFrame(int a, int b, string label) =>
-            new EmbedBuilder()
-                .WithTitle("🎲  Dice Roll")
-                .WithColor(ColourInfo)
-                .WithDescription($"{DieFace(a)}  {DieFace(b)}\n*{label}*")
-                .WithFooter(Username, AvatarUrl);
+            _embed.BuildSimpleEmbed(
+                "🎲  Dice Roll", $"{DieFace(a)}  {DieFace(b)}\n*{label}*",
+                ColourInfo, footer: Username, footerIconUrl: AvatarUrl, timestamp: false);
 
         var msg = await FollowupAsync(embed: DiceFrame(
             Random.Shared.Next(1, 7), Random.Shared.Next(1, 7), "Rolling…").Build());
@@ -274,16 +267,14 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
 
         await msg.ModifyAsync(m =>
         {
-            m.Embed = new EmbedBuilder()
-                .WithTitle($"🎲  Dice Roll — {d1} + {d2} = **{total}**{(d1 == d2 ? " (doubles!)" : "")}")
-                .WithColor(won ? ColourWin : ColourLoss)
-                .WithDescription($"{DieFace(d1)}  {DieFace(d2)}\n\n{outcomeText}")
-                .AddField("Bet", CreditHelper.Format((decimal)bet), inline: true)
-                .AddField("Payout", CreditHelper.Format(payout), inline: true)
-                .AddField("Balance", CreditHelper.Format(newBalance), inline: true)
-                .WithFooter(Username, AvatarUrl)
-                .WithCurrentTimestamp()
-                .Build();
+            m.Embed = _embed.BuildSimpleEmbed(
+                $"🎲  Dice Roll — {d1} + {d2} = **{total}**{(d1 == d2 ? " (doubles!)" : "")}",
+                $"{DieFace(d1)}  {DieFace(d2)}\n\n{outcomeText}",
+                won ? ColourWin : ColourLoss,
+                footer: Username, footerIconUrl: AvatarUrl,
+                fields: [("Bet", CreditHelper.Format((decimal)bet), true),
+                         ("Payout", CreditHelper.Format(payout), true),
+                         ("Balance", CreditHelper.Format(newBalance), true)]).Build();
             if (won) m.Components = OfferDon(payout - (decimal)bet);
         });
     }
@@ -291,6 +282,7 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
 
     [SlashCommand("roulette", "Spin the roulette wheel!")]
     [CommandContextType(InteractionContextType.Guild)]
+    /// <summary>Spins the roulette wheel with an animated reveal and pays out based on the chosen bet type.</summary>
     public async Task HandleRouletteAsync(
         [Choice("Red",    "red"),
          Choice("Black",  "black"),
@@ -328,34 +320,25 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
             ? $"Bet on **{number}** — {result}"
             : $"Bet on **{betType}** — {result}";
 
-        var msg = await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle("🎡  Roulette — Spinning…")
-            .WithColor(ColourInfo)
-            .WithDescription("🔵 *The ball is flying around the wheel…*")
-            .WithFooter(Username, AvatarUrl)
-            .Build());
+        var msg = await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            "🎡  Roulette — Spinning…", "🔵 *The ball is flying around the wheel…*",
+            ColourInfo, footer: Username, footerIconUrl: AvatarUrl, timestamp: false).Build());
 
         await Task.Delay(900);
-        await msg.ModifyAsync(m => m.Embed = new EmbedBuilder()
-            .WithTitle("🎡  Roulette — Slowing…")
-            .WithColor(ColourInfo)
-            .WithDescription("🔵 *The ball is losing speed…*")
-            .WithFooter(Username, AvatarUrl)
-            .Build());
+        await msg.ModifyAsync(m => m.Embed = _embed.BuildSimpleEmbed(
+            "🎡  Roulette — Slowing…", "🔵 *The ball is losing speed…*",
+            ColourInfo, footer: Username, footerIconUrl: AvatarUrl, timestamp: false).Build());
 
         await Task.Delay(1000);
         await msg.ModifyAsync(m =>
         {
-            m.Embed = new EmbedBuilder()
-                .WithTitle($"🎡  Roulette — {spinTitle}")
-                .WithColor(won ? ColourWin : spin == 0 ? ColourPush : ColourLoss)
-                .WithDescription(betDesc)
-                .AddField("Bet", CreditHelper.Format((decimal)bet), inline: true)
-                .AddField("Payout", CreditHelper.Format(payout), inline: true)
-                .AddField("Balance", CreditHelper.Format(newBalance), inline: true)
-                .WithFooter(Username, AvatarUrl)
-                .WithCurrentTimestamp()
-                .Build();
+            m.Embed = _embed.BuildSimpleEmbed(
+                $"🎡  Roulette — {spinTitle}", betDesc,
+                won ? ColourWin : spin == 0 ? ColourPush : ColourLoss,
+                footer: Username, footerIconUrl: AvatarUrl,
+                fields: [("Bet", CreditHelper.Format((decimal)bet), true),
+                         ("Payout", CreditHelper.Format(payout), true),
+                         ("Balance", CreditHelper.Format(newBalance), true)]).Build();
             if (won) m.Components = OfferDon(payout - (decimal)bet);
         });
     }
@@ -363,6 +346,7 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
 
     [SlashCommand("scratchcard", "Buy and scratch a card for instant prizes!")]
     [CommandContextType(InteractionContextType.Guild)]
+    /// <summary>Buys and reveals a scratch card one symbol at a time, then pays out per the matched prize tier (or checks the passive jackpot).</summary>
     public async Task HandleScratchCardAsync()
     {
         await DeferAsync();
@@ -401,29 +385,20 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
     $"```";
 
         // ── Phase 1: Unscratched card ──────────────────────────────────────────
-        var msg = await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle("🎟️  Scratch Card")
-            .WithColor(ColourInfo)
-            .WithDescription(Card("❓", "❓", "❓") + "\n*Scratching…*")
-            .WithFooter(Username, AvatarUrl)
-            .Build());
+        var msg = await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            "🎟️  Scratch Card", Card("❓", "❓", "❓") + "\n*Scratching…*",
+            ColourInfo, footer: Username, footerIconUrl: AvatarUrl, timestamp: false).Build());
 
         // ── Phase 2: Reveal one symbol at a time ──────────────────────────────
         await Task.Delay(700);
-        await msg.ModifyAsync(m => m.Embed = new EmbedBuilder()
-            .WithTitle("🎟️  Scratch Card")
-            .WithColor(ColourInfo)
-            .WithDescription(Card(s1, "❓", "❓") + "\n*Scratching…*")
-            .WithFooter(Username, AvatarUrl)
-            .Build());
+        await msg.ModifyAsync(m => m.Embed = _embed.BuildSimpleEmbed(
+            "🎟️  Scratch Card", Card(s1, "❓", "❓") + "\n*Scratching…*",
+            ColourInfo, footer: Username, footerIconUrl: AvatarUrl, timestamp: false).Build());
 
         await Task.Delay(700);
-        await msg.ModifyAsync(m => m.Embed = new EmbedBuilder()
-            .WithTitle("🎟️  Scratch Card")
-            .WithColor(ColourInfo)
-            .WithDescription(Card(s1, s2, "❓") + $"\n{(s1 == s2 ? "*Match so far… 👀*" : "*No match yet…*")}")
-            .WithFooter(Username, AvatarUrl)
-            .Build());
+        await msg.ModifyAsync(m => m.Embed = _embed.BuildSimpleEmbed(
+            "🎟️  Scratch Card", Card(s1, s2, "❓") + $"\n{(s1 == s2 ? "*Match so far… 👀*" : "*No match yet…*")}",
+            ColourInfo, footer: Username, footerIconUrl: AvatarUrl, timestamp: false).Build());
 
         await Task.Delay(900);
 
@@ -450,16 +425,14 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
 
         await msg.ModifyAsync(m =>
         {
-            m.Embed = new EmbedBuilder()
-                .WithTitle(pjWon ? "🎰  PASSIVE JACKPOT!" : won ? (jackpot ? "💰  JACKPOT!" : "🎉  Winner!") : "🎟️  No Match")
-                .WithColor(pjWon ? ColourGold : colour)
-                .WithDescription(Card(s1, s2, s3) + $"\n{resultLine}{pjNote}\n\n{nextCastNote}")
-                .AddField("Cost", CreditHelper.Format(CreditHelper.ScratchCardCost), inline: true)
-                .AddField("Payout", CreditHelper.Format(payout), inline: true)
-                .AddField("Balance", CreditHelper.Format(newBalance), inline: true)
-                .WithFooter(Username, AvatarUrl)
-                .WithCurrentTimestamp()
-                .Build();
+            m.Embed = _embed.BuildSimpleEmbed(
+                pjWon ? "🎰  PASSIVE JACKPOT!" : won ? (jackpot ? "💰  JACKPOT!" : "🎉  Winner!") : "🎟️  No Match",
+                Card(s1, s2, s3) + $"\n{resultLine}{pjNote}\n\n{nextCastNote}",
+                pjWon ? ColourGold : colour,
+                footer: Username, footerIconUrl: AvatarUrl,
+                fields: [("Cost", CreditHelper.Format(CreditHelper.ScratchCardCost), true),
+                         ("Payout", CreditHelper.Format(payout), true),
+                         ("Balance", CreditHelper.Format(newBalance), true)]).Build();
             if (won && !pjWon) m.Components = OfferDon(payout - CreditHelper.ScratchCardCost);
         });
     }
@@ -467,6 +440,7 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
 
     [SlashCommand("horses", "Bet on a horse race!")]
     [CommandContextType(InteractionContextType.Guild)]
+    /// <summary>Runs an animated horse race across 3 frames and pays out at the picked horse's odds if it wins.</summary>
     public async Task HandleHorsesAsync(
     [Choice("Thunderbolt (favourite, 2×)",  "0"),
      Choice("Silver Wind (2.5×)",           "1"),
@@ -535,30 +509,21 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
         string footer = $"You backed: {horse.emoji} {horse.name} ({horse.odds}×)";
 
         // ── Frame 1 ────────────────────────────────────────────────────────────
-        var msg = await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle("🏇  And they're off!")
-            .WithColor(ColourInfo)
-            .WithDescription(TrackFrame(Frame(0.1, 0.3), false) + "*The gates fly open!*")
-            .WithFooter(footer, AvatarUrl)
-            .Build());
+        var msg = await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            "🏇  And they're off!", TrackFrame(Frame(0.1, 0.3), false) + "*The gates fly open!*",
+            ColourInfo, footer: footer, footerIconUrl: AvatarUrl, timestamp: false).Build());
 
         // ── Frame 2 ────────────────────────────────────────────────────────────
         await Task.Delay(1200);
-        await msg.ModifyAsync(m => m.Embed = new EmbedBuilder()
-            .WithTitle("🏇  Rounding the bend…")
-            .WithColor(ColourInfo)
-            .WithDescription(TrackFrame(Frame(0.35, 0.6), false) + "*Jostling for position!*")
-            .WithFooter(footer, AvatarUrl)
-            .Build());
+        await msg.ModifyAsync(m => m.Embed = _embed.BuildSimpleEmbed(
+            "🏇  Rounding the bend…", TrackFrame(Frame(0.35, 0.6), false) + "*Jostling for position!*",
+            ColourInfo, footer: footer, footerIconUrl: AvatarUrl, timestamp: false).Build());
 
         // ── Frame 3 ────────────────────────────────────────────────────────────
         await Task.Delay(1200);
-        await msg.ModifyAsync(m => m.Embed = new EmbedBuilder()
-            .WithTitle("🏇  Final straight!")
-            .WithColor(ColourInfo)
-            .WithDescription(TrackFrame(Frame(0.65, 0.88), false) + "*It's neck and neck!*")
-            .WithFooter(footer, AvatarUrl)
-            .Build());
+        await msg.ModifyAsync(m => m.Embed = _embed.BuildSimpleEmbed(
+            "🏇  Final straight!", TrackFrame(Frame(0.65, 0.88), false) + "*It's neck and neck!*",
+            ColourInfo, footer: footer, footerIconUrl: AvatarUrl, timestamp: false).Build());
 
         // ── Final result ───────────────────────────────────────────────────────
         await Task.Delay(1200);
@@ -569,16 +534,14 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
 
         await msg.ModifyAsync(m =>
         {
-            m.Embed = new EmbedBuilder()
-                .WithTitle($"🏆  {winHorse.emoji} {winHorse.name} wins the race!")
-                .WithColor(won ? ColourWin : ColourLoss)
-                .WithDescription(TrackFrame(finalProg, true) + $"\n{result}")
-                .AddField("Bet", CreditHelper.Format((decimal)bet), inline: true)
-                .AddField("Payout", CreditHelper.Format(payout), inline: true)
-                .AddField("Balance", CreditHelper.Format(newBalance), inline: true)
-                .WithFooter(Username, AvatarUrl)
-                .WithCurrentTimestamp()
-                .Build();
+            m.Embed = _embed.BuildSimpleEmbed(
+                $"🏆  {winHorse.emoji} {winHorse.name} wins the race!",
+                TrackFrame(finalProg, true) + $"\n{result}",
+                won ? ColourWin : ColourLoss,
+                footer: Username, footerIconUrl: AvatarUrl,
+                fields: [("Bet", CreditHelper.Format((decimal)bet), true),
+                         ("Payout", CreditHelper.Format(payout), true),
+                         ("Balance", CreditHelper.Format(newBalance), true)]).Build();
             if (won) m.Components = OfferDon(payout - (decimal)bet);
         });
     }
@@ -586,6 +549,7 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
 
     [SlashCommand("rps", "Play Rock Paper Scissors against the bot with a credit bet!")]
     [CommandContextType(InteractionContextType.Guild)]
+    /// <summary>Plays Rock-Paper-Scissors against the bot with an animated countdown; draws refund the bet without counting as a win/loss.</summary>
     public async Task HandleRpsAsync(
         [Choice("🪨 Rock",     "rock"),
          Choice("📄 Paper",    "paper"),
@@ -627,11 +591,9 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
         Color colour = draw ? ColourPush : won ? ColourWin : ColourLoss;
 
         EmbedBuilder RpsFrame(string count) =>
-            new EmbedBuilder()
-                .WithTitle("✊  Rock Paper Scissors")
-                .WithColor(ColourInfo)
-                .WithDescription($"**{count}**")
-                .WithFooter(Username, AvatarUrl);
+            _embed.BuildSimpleEmbed(
+                "✊  Rock Paper Scissors", $"**{count}**",
+                ColourInfo, footer: Username, footerIconUrl: AvatarUrl, timestamp: false);
 
         var msg = await FollowupAsync(embed: RpsFrame("3️⃣").Build());
         await Task.Delay(600);
@@ -642,16 +604,14 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
 
         await msg.ModifyAsync(m =>
         {
-            m.Embed = new EmbedBuilder()
-                .WithTitle($"✊  Rock Paper Scissors — {outcome}")
-                .WithColor(colour)
-                .WithDescription($"You: **{pickEmoji} {pick}** vs Bot: **{botEmoji} {botPick}**\n\n{CreditHelper.FormatDelta(net)}")
-                .AddField("Bet", CreditHelper.Format((decimal)bet), inline: true)
-                .AddField("Payout", CreditHelper.Format(payout), inline: true)
-                .AddField("Balance", CreditHelper.Format(newBalance), inline: true)
-                .WithFooter(Username, AvatarUrl)
-                .WithCurrentTimestamp()
-                .Build();
+            m.Embed = _embed.BuildSimpleEmbed(
+                $"✊  Rock Paper Scissors — {outcome}",
+                $"You: **{pickEmoji} {pick}** vs Bot: **{botEmoji} {botPick}**\n\n{CreditHelper.FormatDelta(net)}",
+                colour,
+                footer: Username, footerIconUrl: AvatarUrl,
+                fields: [("Bet", CreditHelper.Format((decimal)bet), true),
+                         ("Payout", CreditHelper.Format(payout), true),
+                         ("Balance", CreditHelper.Format(newBalance), true)]).Build();
             if (won) m.Components = OfferDon(payout - (decimal)bet);
         });
     }
@@ -659,6 +619,7 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
 
     [SlashCommand("highlow", "Draw a card — guess if the next one is higher or lower!")]
     [CommandContextType(InteractionContextType.Guild)]
+    /// <summary>Draws two cards and pays out if the guess (higher/lower) about the second card versus the first is correct; a tie pushes the bet back.</summary>
     public async Task HandleHighLowAsync(
         [Choice("Higher", "higher"),
          Choice("Lower",  "lower")]
@@ -702,34 +663,28 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
                 : $"❌ **Wrong!** {card1Display} → {card2Display} {CreditHelper.FormatDelta(net)}";
 
         // Phase 1: show first card, second card hidden
-        var msg = await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle("🃏  High-Low")
-            .WithColor(ColourInfo)
-            .WithDescription(
-                $"**First card:** `{card1Display}`\n" +
-                $"**Second card:** `🂠`\n\n" +
-                $"You guessed **{guess}** — drawing second card…")
-            .WithFooter(Username, AvatarUrl)
-            .Build());
+        var msg = await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            "🃏  High-Low",
+            $"**First card:** `{card1Display}`\n" +
+            $"**Second card:** `🂠`\n\n" +
+            $"You guessed **{guess}** — drawing second card…",
+            ColourInfo, footer: Username, footerIconUrl: AvatarUrl, timestamp: false).Build());
 
         await Task.Delay(1400);
 
         // Phase 2: reveal second card and result
         await msg.ModifyAsync(m =>
         {
-            m.Embed = new EmbedBuilder()
-                .WithTitle($"🃏  High-Low — {(tie ? "Push" : won ? "You Win!" : "You Lose!")}")
-                .WithColor(tie ? ColourPush : won ? ColourWin : ColourLoss)
-                .WithDescription(
-                    $"**First card:** `{card1Display}`\n" +
-                    $"**Second card:** `{card2Display}`\n\n" +
-                    $"You guessed **{guess}** — {outcomeText}")
-                .AddField("Bet", CreditHelper.Format((decimal)bet), inline: true)
-                .AddField("Payout", CreditHelper.Format(payout), inline: true)
-                .AddField("Balance", CreditHelper.Format(newBalance), inline: true)
-                .WithFooter(Username, AvatarUrl)
-                .WithCurrentTimestamp()
-                .Build();
+            m.Embed = _embed.BuildSimpleEmbed(
+                $"🃏  High-Low — {(tie ? "Push" : won ? "You Win!" : "You Lose!")}",
+                $"**First card:** `{card1Display}`\n" +
+                $"**Second card:** `{card2Display}`\n\n" +
+                $"You guessed **{guess}** — {outcomeText}",
+                tie ? ColourPush : won ? ColourWin : ColourLoss,
+                footer: Username, footerIconUrl: AvatarUrl,
+                fields: [("Bet", CreditHelper.Format((decimal)bet), true),
+                         ("Payout", CreditHelper.Format(payout), true),
+                         ("Balance", CreditHelper.Format(newBalance), true)]).Build();
             if (won) m.Components = OfferDon(payout - (decimal)bet);
         });
     }
@@ -737,6 +692,7 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
 
     [SlashCommand("jackpot", "View jackpot pools or contribute to the entry jackpot.")]
     [CommandContextType(InteractionContextType.Guild)]
+    /// <summary>With no amount, shows both jackpot pools' current totals; with an amount, contributes it to the entry jackpot's weighted hourly draw.</summary>
     public async Task HandleJackpotAsync([MinValue(10)] long? amount = null)
     {
         await DeferAsync();
@@ -761,22 +717,19 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
         // ── View-only (no amount given) ────────────────────────────────────────
         if (amount is null)
         {
-            await FollowupAsync(embed: new EmbedBuilder()
-                .WithTitle("🎰  Server Jackpots")
-                .WithColor(ColourGold)
-                .WithDescription(
-                    $"There are two jackpot pools running in this server.\n\n" +
-                    $"**🎟️ Entry Jackpot** — enter via `/jackpot <amount>`\n" +
-                    $"Weighted draw every hour. More you put in, better your odds.\n\n" +
-                    $"**🌊 Passive Jackpot** — earned automatically\n" +
-                    $"1% of every bet feeds this pool.\n" +
-                    $"0.5% chance to win the entire pool on slots or scratch card.")
-                .AddField("🎟️ Entry Pot", CreditHelper.Format(entryPot), inline: true)
-                .AddField("🎟️ Entries", $"{entries}", inline: true)
-                .AddField("🌊 Passive Pot", CreditHelper.Format(passivePot), inline: true)
-                .WithFooter("Use /jackpot <amount> to enter the hourly draw!", AvatarUrl)
-                .WithCurrentTimestamp()
-                .Build());
+            await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+                "🎰  Server Jackpots",
+                $"There are two jackpot pools running in this server.\n\n" +
+                $"**🎟️ Entry Jackpot** — enter via `/jackpot <amount>`\n" +
+                $"Weighted draw every hour. More you put in, better your odds.\n\n" +
+                $"**🌊 Passive Jackpot** — earned automatically\n" +
+                $"1% of every bet feeds this pool.\n" +
+                $"0.5% chance to win the entire pool on slots or scratch card.",
+                ColourGold,
+                footer: "Use /jackpot <amount> to enter the hourly draw!", footerIconUrl: AvatarUrl,
+                fields: [("🎟️ Entry Pot", CreditHelper.Format(entryPot), true),
+                         ("🎟️ Entries", $"{entries}", true),
+                         ("🌊 Passive Pot", CreditHelper.Format(passivePot), true)]).Build());
             return;
         }
 
@@ -803,21 +756,19 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
         entryPot = potDt.Rows.Count > 0 ? decimal.Parse(potDt.Rows[0]["Total"].ToString()!) : (decimal)amount;
         entries = potDt.Rows.Count > 0 ? int.Parse(potDt.Rows[0]["Entries"].ToString()!) : 1;
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle("🎟️  Jackpot Entry Confirmed!")
-            .WithColor(ColourGold)
-            .WithDescription(
-                $"{Context.User.Mention} entered **{CreditHelper.Format((decimal)amount)}** into the hourly jackpot!\n\n" +
-                $"🎟️ **Entry Pot:** {CreditHelper.Format(entryPot)} across {entries} entr{(entries == 1 ? "y" : "ies")}\n" +
-                $"🌊 **Passive Pot:** {CreditHelper.Format(passivePot)} *(win via slots or scratch card)*\n\n" +
-                $"*Winner drawn every hour — weighted by contribution.*")
-            .WithFooter("More entries = better odds!", AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            "🎟️  Jackpot Entry Confirmed!",
+            $"{Context.User.Mention} entered **{CreditHelper.Format((decimal)amount)}** into the hourly jackpot!\n\n" +
+            $"🎟️ **Entry Pot:** {CreditHelper.Format(entryPot)} across {entries} entr{(entries == 1 ? "y" : "ies")}\n" +
+            $"🌊 **Passive Pot:** {CreditHelper.Format(passivePot)} *(win via slots or scratch card)*\n\n" +
+            $"*Winner drawn every hour — weighted by contribution.*",
+            ColourGold,
+            footer: "More entries = better odds!", footerIconUrl: AvatarUrl).Build());
     }
 
     [SlashCommand("gamblestats", "View your gambling statistics.")]
     [CommandContextType(InteractionContextType.Guild)]
+    /// <summary>Shows aggregated gambling statistics (wagered, net P&amp;L, win rate, per-game breakdown) for yourself or another member.</summary>
     public async Task HandleGambleStatsAsync(IUser? user = null)
     {
         await DeferAsync();
@@ -834,13 +785,10 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
 
         if (dt.Rows.Count == 0)
         {
-            await FollowupAsync(embed: new EmbedBuilder()
-                .WithTitle($"📊  {target.Username}'s Gambling Stats")
-                .WithColor(ColourInfo)
-                .WithDescription("No gambling history yet! Try `/slots` or `/coinflip`.")
-                .WithFooter(Username, AvatarUrl)
-                .WithCurrentTimestamp()
-                .Build());
+            await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+                $"📊  {target.Username}'s Gambling Stats",
+                "No gambling history yet! Try `/slots` or `/coinflip`.",
+                ColourInfo, footer: Username, footerIconUrl: AvatarUrl).Build());
             return;
         }
 
@@ -900,6 +848,7 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
 
     [SlashCommand("fish", "Cast your line and see what you catch!")]
     [CommandContextType(InteractionContextType.Guild)]
+    /// <summary>Casts a line with a multi-stage animated sequence (cast/wait/bite/reel) and reveals a weighted-random catch with its credit reward.</summary>
     public async Task HandleFishAsync()
     {
         await DeferAsync();
@@ -982,79 +931,55 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
         }
 
         // ── Phase 1: Casting ───────────────────────────────────────────────────
-        var msg = await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle("🎣  Casting…")
-            .WithColor(ColourInfo)
-            .WithDescription(Scene(0, false, false, false) + "\n*Winding up…*")
-            .WithFooter(Username, AvatarUrl)
-            .Build());
+        var msg = await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            "🎣  Casting…", Scene(0, false, false, false) + "\n*Winding up…*",
+            ColourInfo, footer: Username, footerIconUrl: AvatarUrl, timestamp: false).Build());
 
         await Task.Delay(600);
-        await msg.ModifyAsync(m => m.Embed = new EmbedBuilder()
-            .WithTitle("🎣  Casting…")
-            .WithColor(ColourInfo)
-            .WithDescription(Scene(5, false, false, false) + "\n*Line flying…*")
-            .WithFooter(Username, AvatarUrl)
-            .Build());
+        await msg.ModifyAsync(m => m.Embed = _embed.BuildSimpleEmbed(
+            "🎣  Casting…", Scene(5, false, false, false) + "\n*Line flying…*",
+            ColourInfo, footer: Username, footerIconUrl: AvatarUrl, timestamp: false).Build());
 
         await Task.Delay(600);
-        await msg.ModifyAsync(m => m.Embed = new EmbedBuilder()
-            .WithTitle("🎣  Casting…")
-            .WithColor(ColourInfo)
-            .WithDescription(Scene(10, false, false, false) + "\n*Splash! Bobber is out.*")
-            .WithFooter(Username, AvatarUrl)
-            .Build());
+        await msg.ModifyAsync(m => m.Embed = _embed.BuildSimpleEmbed(
+            "🎣  Casting…", Scene(10, false, false, false) + "\n*Splash! Bobber is out.*",
+            ColourInfo, footer: Username, footerIconUrl: AvatarUrl, timestamp: false).Build());
 
         // ── Phase 2: Waiting / bobbing ─────────────────────────────────────────
         foreach (var waitLine in new[] { "*Waiting for a bite…*", "*The water is calm…*", "*Something stirs below…*" })
         {
             await Task.Delay(900);
-            await msg.ModifyAsync(m => m.Embed = new EmbedBuilder()
-                .WithTitle("🎣  Waiting…")
-                .WithColor(ColourInfo)
-                .WithDescription(Scene(10, true, false, false) + $"\n{waitLine}")
-                .WithFooter(Username, AvatarUrl)
-                .Build());
+            await msg.ModifyAsync(m => m.Embed = _embed.BuildSimpleEmbed(
+                "🎣  Waiting…", Scene(10, true, false, false) + $"\n{waitLine}",
+                ColourInfo, footer: Username, footerIconUrl: AvatarUrl, timestamp: false).Build());
         }
 
         // ── Phase 3: Bite / reel ───────────────────────────────────────────────
         if (credits > 0m)
         {
             await Task.Delay(500);
-            await msg.ModifyAsync(m => m.Embed = new EmbedBuilder()
-                .WithTitle("❗  Bite detected!")
-                .WithColor(new Color(255, 165, 0))
-                .WithDescription(Scene(10, false, true, false) + "\n*Something grabbed the line!*")
-                .WithFooter(Username, AvatarUrl)
-                .Build());
+            await msg.ModifyAsync(m => m.Embed = _embed.BuildSimpleEmbed(
+                "❗  Bite detected!", Scene(10, false, true, false) + "\n*Something grabbed the line!*",
+                new Color(255, 165, 0), footer: Username, footerIconUrl: AvatarUrl, timestamp: false).Build());
 
             await Task.Delay(700);
-            await msg.ModifyAsync(m => m.Embed = new EmbedBuilder()
-                .WithTitle("🎣  Reeling in…!")
-                .WithColor(new Color(255, 165, 0))
-                .WithDescription(Scene(6, false, false, true) + "\n*Reel it in! Reel it in!*")
-                .WithFooter(Username, AvatarUrl)
-                .Build());
+            await msg.ModifyAsync(m => m.Embed = _embed.BuildSimpleEmbed(
+                "🎣  Reeling in…!", Scene(6, false, false, true) + "\n*Reel it in! Reel it in!*",
+                new Color(255, 165, 0), footer: Username, footerIconUrl: AvatarUrl, timestamp: false).Build());
 
             await Task.Delay(700);
-            await msg.ModifyAsync(m => m.Embed = new EmbedBuilder()
-                .WithTitle("🎣  Almost there…!")
-                .WithColor(new Color(255, 165, 0))
-                .WithDescription(Scene(2, false, false, true) + "\n*So close…!*")
-                .WithFooter(Username, AvatarUrl)
-                .Build());
+            await msg.ModifyAsync(m => m.Embed = _embed.BuildSimpleEmbed(
+                "🎣  Almost there…!", Scene(2, false, false, true) + "\n*So close…!*",
+                new Color(255, 165, 0), footer: Username, footerIconUrl: AvatarUrl, timestamp: false).Build());
 
             await Task.Delay(600);
         }
         else
         {
             await Task.Delay(800);
-            await msg.ModifyAsync(m => m.Embed = new EmbedBuilder()
-                .WithTitle("🎣  Reeling in…")
-                .WithColor(new Color(128, 128, 128))
-                .WithDescription(Scene(6, false, false, false) + "\n*Something is on the line… feels heavy and weird.*")
-                .WithFooter(Username, AvatarUrl)
-                .Build());
+            await msg.ModifyAsync(m => m.Embed = _embed.BuildSimpleEmbed(
+                "🎣  Reeling in…", Scene(6, false, false, false) + "\n*Something is on the line… feels heavy and weird.*",
+                new Color(128, 128, 128), footer: Username, footerIconUrl: AvatarUrl, timestamp: false).Build());
             await Task.Delay(700);
         }
 
@@ -1122,6 +1047,7 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
 
     [SlashCommand("bigwheel", "Spin the Big Wheel and multiply your bet!")]
     [CommandContextType(InteractionContextType.Guild)]
+    /// <summary>Spins the Big Wheel with a decelerating multi-frame animation and pays out at the landed segment's multiplier.</summary>
     public async Task HandleBigWheelAsync(string betStr)
     {
         await DeferAsync();
@@ -1211,13 +1137,11 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
         ]);
 
         EmbedBuilder SpinFrame(int pos, string status) =>
-            new EmbedBuilder()
-                .WithTitle("🎡  Big Wheel — Spinning!")
-                .WithColor(ColourInfo)
-                .WithDescription(
-                    CreditHelper.BuildWheelDisplay(((pos % total) + total) % total) +
-                    $"\n*{status}*")
-                .WithFooter($"Bet: {CreditHelper.Format((decimal)bet)} • {Username}", AvatarUrl);
+            _embed.BuildSimpleEmbed(
+                "🎡  Big Wheel — Spinning!",
+                CreditHelper.BuildWheelDisplay(((pos % total) + total) % total) + $"\n*{status}*",
+                ColourInfo, footer: $"Bet: {CreditHelper.Format((decimal)bet)} • {Username}",
+                footerIconUrl: AvatarUrl, timestamp: false);
 
         var (firstOffset, _, firstStatus) = frameList[0];
         var msg = await FollowupAsync(embed: SpinFrame(overshoot + firstOffset, firstStatus).Build());
@@ -1234,16 +1158,13 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
             ? wheelDisplay + "\n\n" + string.Join("\n", new[] { chaosNote, shieldNote, insuranceNote }.Where(n => n is not null)!)
             : wheelDisplay;
 
-        var resultEmbed = new EmbedBuilder()
-            .WithTitle($"🎡  {wEmoji}  {wLabel}!")
-            .WithColor(final)
-            .WithDescription(resultDesc)
-            .AddField("Bet", CreditHelper.Format((decimal)bet), inline: true)
-            .AddField("Multiplier", wLabel, inline: true)
-            .AddField("Payout", CreditHelper.Format(payout), inline: true)
-            .AddField("Balance", CreditHelper.Format(newBalance), inline: true)
-            .WithFooter(Username, AvatarUrl)
-            .WithCurrentTimestamp();
+        var resultEmbed = _embed.BuildSimpleEmbed(
+            $"🎡  {wEmoji}  {wLabel}!", resultDesc, final,
+            footer: Username, footerIconUrl: AvatarUrl,
+            fields: [("Bet", CreditHelper.Format((decimal)bet), true),
+                     ("Multiplier", wLabel, true),
+                     ("Payout", CreditHelper.Format(payout), true),
+                     ("Balance", CreditHelper.Format(newBalance), true)]);
 
         await Task.Delay(1100);
         await msg.ModifyAsync(m =>
@@ -1256,6 +1177,7 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
 
     [SlashCommand("invest", "Lock away credits for 24 hours — collect your return when they mature.")]
     [CommandContextType(InteractionContextType.Guild)]
+    /// <summary>Locks credits into a 24h investment (if none pending), or collects the matured payout if the previous investment is ready.</summary>
     public async Task HandleInvestAsync([MinValue(100)] long amount = 0)
     {
         await DeferAsync();
@@ -1298,35 +1220,28 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
                     _ => ColourLoss
                 };
 
-                await FollowupAsync(embed: new EmbedBuilder()
-                    .WithTitle($"{outcomeEmoji}  Investment Matured!")
-                    .WithColor(final)
-                    .WithDescription(
-                        $"{label}\n\n" +
-                        $"Your {CreditHelper.Format(invAmt)} investment returned **{mult:0.00}×**.")
-                    .AddField("Invested", CreditHelper.Format(invAmt), inline: true)
-                    .AddField("Return", CreditHelper.Format(payout), inline: true)
-                    .AddField("Profit", CreditHelper.FormatDelta(profit), inline: true)
-                    .AddField("Balance", CreditHelper.Format(newBalance), inline: true)
-                    .WithFooter(Username, AvatarUrl)
-                    .WithCurrentTimestamp()
-                    .Build());
+                await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+                    $"{outcomeEmoji}  Investment Matured!",
+                    $"{label}\n\n" +
+                    $"Your {CreditHelper.Format(invAmt)} investment returned **{mult:0.00}×**.",
+                    final,
+                    footer: Username, footerIconUrl: AvatarUrl,
+                    fields: [("Invested", CreditHelper.Format(invAmt), true),
+                             ("Return", CreditHelper.Format(payout), true),
+                             ("Profit", CreditHelper.FormatDelta(profit), true),
+                             ("Balance", CreditHelper.Format(newBalance), true)]).Build());
                 return;
             }
 
             var timeLeft = returnsAt - DateTime.UtcNow;
             string tlStr = $"{(int)timeLeft.TotalHours}h {timeLeft.Minutes}m";
 
-            await FollowupAsync(embed: new EmbedBuilder()
-                .WithTitle("💼  Investment Pending")
-                .WithColor(ColourInfo)
-                .WithDescription(
-                    $"Your investment of {CreditHelper.Format(invAmt)} is still maturing.\n\n" +
-                    $"⏳ Returns in **{tlStr}**\n\n" +
-                    $"Run `/invest` again when it's ready to collect!")
-                .WithFooter(Username, AvatarUrl)
-                .WithCurrentTimestamp()
-                .Build());
+            await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+                "💼  Investment Pending",
+                $"Your investment of {CreditHelper.Format(invAmt)} is still maturing.\n\n" +
+                $"⏳ Returns in **{tlStr}**\n\n" +
+                $"Run `/invest` again when it's ready to collect!",
+                ColourInfo, footer: Username, footerIconUrl: AvatarUrl).Build());
             return;
         }
 
@@ -1359,19 +1274,16 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
 
         decimal remaining2 = _eco.GetBalance(UserId, ServerId);
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle("💼  Investment Locked In!")
-            .WithColor(ColourGold)
-            .WithDescription(
-                $"You've invested {CreditHelper.Format((decimal)amount)} — the market will do its thing.\n\n" +
-                $"⏳ Returns in **24 hours** — run `/invest` to collect.\n" +
-                $"*(Your return is sealed but hidden until you collect.)*")
-            .AddField("Invested", CreditHelper.Format((decimal)amount), inline: true)
-            .AddField("Matures", $"<t:{new DateTimeOffset(returnsAt2).ToUnixTimeSeconds()}:R>", inline: true)
-            .AddField("Balance", CreditHelper.Format(remaining2), inline: true)
-            .WithFooter(Username, AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            "💼  Investment Locked In!",
+            $"You've invested {CreditHelper.Format((decimal)amount)} — the market will do its thing.\n\n" +
+            $"⏳ Returns in **24 hours** — run `/invest` to collect.\n" +
+            $"*(Your return is sealed but hidden until you collect.)*",
+            ColourGold,
+            footer: Username, footerIconUrl: AvatarUrl,
+            fields: [("Invested", CreditHelper.Format((decimal)amount), true),
+                     ("Matures", $"<t:{new DateTimeOffset(returnsAt2).ToUnixTimeSeconds()}:R>", true),
+                     ("Balance", CreditHelper.Format(remaining2), true)]).Build());
     }
 
 
@@ -1547,6 +1459,11 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
     // Returns (won, amount) — caller appends a note to the result embed if won.
     private const decimal PassiveJackpotOdds = 0.005m; // 0.5% chance per eligible play
 
+    /// <summary>
+    /// Rolls for the passive jackpot (0.5% chance) and, on a hit, atomically claims and
+    /// resets the server's pool, credits the winner, and announces it in the guild's
+    /// announcement channel (falling back to the current channel).
+    /// </summary>
     private async Task<(bool won, decimal amount)> TryClaimPassiveJackpotAsync()
     {
         if (Random.Shared.NextDouble() > (double)PassiveJackpotOdds) return (false, 0m);
@@ -1602,14 +1519,11 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
 
                 if (channel is not null)
                 {
-                    await channel.SendMessageAsync(embed: new EmbedBuilder()
-                        .WithTitle("🎰  PASSIVE JACKPOT WINNER!")
-                        .WithColor(new Color(255, 215, 0))
-                        .WithDescription(
-                            $"🎉 {Context.User.Mention} just hit the **server passive jackpot** and won **{CreditHelper.Format(claimed)}**!\n\n" +
-                            $"*The pool has been reset. Every gambling loss feeds it back up — good luck!*")
-                        .WithCurrentTimestamp()
-                        .Build());
+                    await channel.SendMessageAsync(embed: _embed.BuildSimpleEmbed(
+                        "🎰  PASSIVE JACKPOT WINNER!",
+                        $"🎉 {Context.User.Mention} just hit the **server passive jackpot** and won **{CreditHelper.Format(claimed)}**!\n\n" +
+                        $"*The pool has been reset. Every gambling loss feeds it back up — good luck!*",
+                        new Color(255, 215, 0)).Build());
                 }
             }
             catch { /* non-fatal — don't block credit award on channel failure */ }
@@ -1622,6 +1536,7 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
     // ── Double-or-Nothing button handlers ─────────────────────────────────────
 
     [ComponentInteraction(BtnDonAccept)]
+    /// <summary>Flips a 50/50 coin for a pending double-or-nothing offer: doubles the net win, or claws it back on a loss.</summary>
     public async Task OnDonAcceptAsync()
     {
         await DeferAsync();
@@ -1660,17 +1575,14 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
 
             await ModifyOriginalResponseAsync(m =>
             {
-                m.Embed = new EmbedBuilder()
-                    .WithTitle("⚡  Double-or-Nothing — WIN!")
-                    .WithColor(ColourGold)
-                    .WithDescription(
-                        $"🪙 The coin landed in your favour!\n\n" +
-                        $"**{CreditHelper.Format(offer.amount)}** → **{CreditHelper.Format(prize)}** 🎉")
-                    .AddField("Payout", CreditHelper.Format(prize), inline: true)
-                    .AddField("Balance", CreditHelper.Format(balance), inline: true)
-                    .WithFooter(Username, AvatarUrl)
-                    .WithCurrentTimestamp()
-                    .Build();
+                m.Embed = _embed.BuildSimpleEmbed(
+                    "⚡  Double-or-Nothing — WIN!",
+                    $"🪙 The coin landed in your favour!\n\n" +
+                    $"**{CreditHelper.Format(offer.amount)}** → **{CreditHelper.Format(prize)}** 🎉",
+                    ColourGold,
+                    footer: Username, footerIconUrl: AvatarUrl,
+                    fields: [("Payout", CreditHelper.Format(prize), true),
+                             ("Balance", CreditHelper.Format(balance), true)]).Build();
                 m.Components = new ComponentBuilder().Build();
             });
         }
@@ -1682,23 +1594,21 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
 
             await ModifyOriginalResponseAsync(m =>
             {
-                m.Embed = new EmbedBuilder()
-                    .WithTitle("⚡  Double-or-Nothing — LOSS")
-                    .WithColor(ColourLoss)
-                    .WithDescription(
-                        $"💸 The coin wasn't kind.\n\n" +
-                        $"You lost **{CreditHelper.Format(offer.amount)}** back.")
-                    .AddField("Lost", CreditHelper.Format(offer.amount), inline: true)
-                    .AddField("Balance", CreditHelper.Format(balance), inline: true)
-                    .WithFooter(Username, AvatarUrl)
-                    .WithCurrentTimestamp()
-                    .Build();
+                m.Embed = _embed.BuildSimpleEmbed(
+                    "⚡  Double-or-Nothing — LOSS",
+                    $"💸 The coin wasn't kind.\n\n" +
+                    $"You lost **{CreditHelper.Format(offer.amount)}** back.",
+                    ColourLoss,
+                    footer: Username, footerIconUrl: AvatarUrl,
+                    fields: [("Lost", CreditHelper.Format(offer.amount), true),
+                             ("Balance", CreditHelper.Format(balance), true)]).Build();
                 m.Components = new ComponentBuilder().Build();
             });
         }
     }
 
     [ComponentInteraction(BtnDonDecline)]
+    /// <summary>Declines a pending double-or-nothing offer, keeping the original winnings as-is.</summary>
     public async Task OnDonDeclineAsync()
     {
         await DeferAsync();
@@ -1725,6 +1635,7 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
 
     [SlashCommand("lucky", "Toggle lucky mode for this server (owner only).")]
     [CommandContextType(InteractionContextType.Guild)]
+    /// <summary>Owner-only toggle for "lucky mode" on this server, which re-rolls losing gambles at 60% win / 40% loss.</summary>
     public async Task HandleLuckyAsync()
     {
         await DeferAsync(ephemeral: true);
@@ -1739,26 +1650,20 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
         {
             _luckyServers.Remove(ServerId);
             await FollowupAsync(
-                embed: new EmbedBuilder()
-                    .WithTitle("Lucky Mode — OFF")
-                    .WithColor(ColourLoss)
-                    .WithDescription($"Lucky mode **disabled** for **{Context.Guild.Name}**.\nOdds have returned to normal.")
-                    .WithFooter(Username, AvatarUrl)
-                    .WithCurrentTimestamp()
-                    .Build(),
+                embed: _embed.BuildSimpleEmbed(
+                    "Lucky Mode — OFF",
+                    $"Lucky mode **disabled** for **{Context.Guild.Name}**.\nOdds have returned to normal.",
+                    ColourLoss, footer: Username, footerIconUrl: AvatarUrl).Build(),
                 ephemeral: true);
         }
         else
         {
             _luckyServers.Add(ServerId);
             await FollowupAsync(
-                embed: new EmbedBuilder()
-                    .WithTitle("Lucky Mode — ON")
-                    .WithColor(ColourGold)
-                    .WithDescription($"Lucky mode **enabled** for **{Context.Guild.Name}**.\nAll gambling losses are re-rolled at **60% win / 40% loss**.")
-                    .WithFooter(Username, AvatarUrl)
-                    .WithCurrentTimestamp()
-                    .Build(),
+                embed: _embed.BuildSimpleEmbed(
+                    "Lucky Mode — ON",
+                    $"Lucky mode **enabled** for **{Context.Guild.Name}**.\nAll gambling losses are re-rolled at **60% win / 40% loss**.",
+                    ColourGold, footer: Username, footerIconUrl: AvatarUrl).Build(),
                 ephemeral: true);
         }
     }
@@ -1795,12 +1700,14 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
         catch { /* log failure is non-fatal */ }
     }
 
+    /// <summary>Posts a standard "you're on cooldown" error with the remaining time.</summary>
     private async Task CooldownAsync(TimeSpan remaining) =>
         await FollowupAsync(embed: _embed.BuildErrorEmbed(
             "Gambling",
             $"Slow down! Try again in **{remaining.Seconds}s**.",
             Username).Build(), ephemeral: true);
 
+    /// <summary>Posts a standard Gambling-branded error embed.</summary>
     private async Task ErrorAsync(string message) =>
         await FollowupAsync(embed: _embed.BuildErrorEmbed("Gambling", message, Username).Build());
 }

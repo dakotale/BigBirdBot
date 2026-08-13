@@ -11,6 +11,7 @@ namespace DiscordBot.SlashCommands;
 /// </summary>
 public class BreedAutocompleteHandler : AutocompleteHandler
 {
+    /// <summary>Returns up to 25 breed suggestions for the already-selected species, filtered by the user's partial input.</summary>
     public override Task<AutocompletionResult> GenerateSuggestionsAsync(
         IInteractionContext context,
         IAutocompleteInteraction autocompleteInteraction,

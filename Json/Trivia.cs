@@ -2,6 +2,10 @@
 
 namespace DiscordBot.Json
 {
+    /// <summary>
+    /// A single trivia question, deserialized from the Open Trivia DB API's raw JSON response.
+    /// Used by the /trivia command to post a question and score reaction-based answers.
+    /// </summary>
     public class Trivia
     {
         public string CategoryName { get; set; } = null;
@@ -17,6 +21,7 @@ namespace DiscordBot.Json
         public List<string> IncorrectAnswers { get; set; } = null;
         public Trivia() { }
 
+        /// <summary>Parses the first result out of a raw Open Trivia DB JSON response, HTML-decoding the text fields.</summary>
         public Trivia(string trivia)
         {
             var obj = JObject.Parse(trivia);
@@ -53,6 +58,7 @@ namespace DiscordBot.Json
             }
         }
 
+        /// <summary>Wraps a raw JSON response into a single-item list of parsed Trivia objects (empty if the JSON has no content).</summary>
         public List<Trivia> GetTriviaDetails(string trivia)
         {
             List<Trivia> triviaDetails = new List<Trivia>();

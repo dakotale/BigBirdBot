@@ -34,6 +34,7 @@ public sealed class SpotifyService(IHttpClientFactory httpClientFactory) : ISpot
     }
 
 
+    /// <summary>Returns a cached OAuth token if still valid, otherwise requests a fresh one via the Client Credentials flow.</summary>
     private async Task<string?> GetTokenAsync()
     {
         if (_cachedToken is not null && DateTime.UtcNow < _tokenExpiry)
@@ -73,6 +74,7 @@ public sealed class SpotifyService(IHttpClientFactory httpClientFactory) : ISpot
     }
 
 
+    /// <summary>Searches Spotify at a random result-page offset for the mood, then returns one randomly-chosen track from that page.</summary>
     private async Task<SpotifyTrack?> FetchRandomTrackAsync(string token, string mood)
     {
         using var client = httpClientFactory.CreateClient();
@@ -106,6 +108,7 @@ public sealed class SpotifyService(IHttpClientFactory httpClientFactory) : ISpot
         }
     }
 
+    /// <summary>Maps one Spotify search-result JSON element into a <see cref="SpotifyTrack"/>, or null if required fields are missing/malformed.</summary>
     private static SpotifyTrack? ParseTrack(JsonElement item)
     {
         try

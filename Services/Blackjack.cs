@@ -38,6 +38,11 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
 
     // ── Command ───────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Starts a new hand: deducts the optional bet, deals two cards each, and resolves
+    /// immediately on a natural Blackjack for either side; otherwise saves the game and
+    /// waits for a Hit/Stand/Double button press.
+    /// </summary>
     [SlashCommand("blackjack", "Play a hand of blackjack against the dealer!")]
     [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
     public async Task HandleBlackjackAsync([MinValue(0)] long bet = 0)
@@ -145,6 +150,7 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
 
     // ── Button: Hit ───────────────────────────────────────────────────────────
 
+    /// <summary>Draws one card for the player; ends the game on a bust, auto-stands on exactly 21, otherwise saves and waits for the next action.</summary>
     [ComponentInteraction(BtnHit)]
     public async Task OnHitAsync()
     {
@@ -195,6 +201,7 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
 
     // ── Button: Stand ─────────────────────────────────────────────────────────
 
+    /// <summary>Player stands — hands off to the dealer's draw-to-17 resolution.</summary>
     [ComponentInteraction(BtnStand)]
     public async Task OnStandAsync()
     {
@@ -214,6 +221,7 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
 
     // ── Button: Double Down ───────────────────────────────────────────────────
 
+    /// <summary>Doubles the bet (if affordable — otherwise treated as a stand), draws exactly one card, then stands automatically.</summary>
     [ComponentInteraction(BtnDouble)]
     public async Task OnDoubleAsync()
     {
@@ -265,6 +273,7 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
 
     // ── Button: Play Again ────────────────────────────────────────────────────
 
+    /// <summary>Clears the finished game and deals a fresh hand in-place on the same message.</summary>
     [ComponentInteraction(BtnPlayAgain)]
     public async Task OnPlayAgainAsync()
     {
@@ -325,6 +334,10 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
 
     // ── Dealer resolution ─────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Reveals the dealer's hole card, draws for the dealer one card at a time (animating
+    /// each draw) until they reach 17+ or bust, then settles the bet and ends the game.
+    /// </summary>
     private async Task ResolveStandAsync(
         List<string> player, List<string> dealer, List<string> deck, string userId, long bet)
     {
@@ -414,6 +427,7 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
 
     // ── Deck helpers ──────────────────────────────────────────────────────────
 
+    /// <summary>Builds a full 52-card deck (as "rank|suit" strings) and shuffles it via Fisher-Yates.</summary>
     private static List<string> BuildDeck()
     {
         var deck = (from suit in Suits
@@ -429,6 +443,7 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
         return deck;
     }
 
+    /// <summary>Removes and returns the top card of the deck.</summary>
     private static string Deal(List<string> deck)
     {
         string card = deck[0];
@@ -436,6 +451,7 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
         return card;
     }
 
+    /// <summary>Computes a hand's best blackjack total, counting Aces as 11 and dropping them to 1 one at a time if that would otherwise bust.</summary>
     private static int HandValue(IEnumerable<string> hand)
     {
         int total = 0;
@@ -459,6 +475,7 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
         return total;
     }
 
+    /// <summary>Formats a hand for display, optionally hiding the dealer's second (hole) card while the player is still acting.</summary>
     private static string FormatHand(List<string> hand, bool hideSecond = false)
     {
         var cards = hand.Select((c, i) =>
@@ -474,18 +491,17 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
 
     // ── Embed / component builders ────────────────────────────────────────────
 
+    /// <summary>Builds the standard game-state embed: both hands plus a status line, with the dealer's hole card hidden until reveal.</summary>
     private EmbedBuilder BuildEmbed(
         List<string> player, List<string> dealer,
         string status, Color colour, bool revealDealer) =>
-        new EmbedBuilder()
-            .WithTitle("🃏  Blackjack")
-            .WithColor(colour)
-            .AddField("Dealer", FormatHand(dealer, hideSecond: !revealDealer), inline: false)
-            .AddField($"{Username}'s Hand", FormatHand(player), inline: false)
-            .WithDescription($"**{status}**")
-            .WithFooter($"Player: {Username}", AvatarUrl)
-            .WithCurrentTimestamp();
+        _embed.BuildSimpleEmbed(
+            "🃏  Blackjack", $"**{status}**", colour,
+            footer: $"Player: {Username}", footerIconUrl: AvatarUrl,
+            fields: [("Dealer", FormatHand(dealer, hideSecond: !revealDealer), false),
+                     ($"{Username}'s Hand", FormatHand(player), false)]);
 
+    /// <summary>Builds the Hit/Stand/Double button row; Double is disabled once the player has already hit.</summary>
     private static MessageComponent GameButtons(bool canDouble) =>
         new ComponentBuilder()
             .WithButton("Hit", BtnHit, ButtonStyle.Success, new Emoji("👊"), row: 0)
@@ -494,6 +510,7 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
                         disabled: !canDouble)
             .Build();
 
+    /// <summary>Builds the single "Play Again" button shown once a hand finishes.</summary>
     private static MessageComponent PlayAgainButton() =>
         new ComponentBuilder()
             .WithButton("Play Again", BtnPlayAgain, ButtonStyle.Success, new Emoji("🔄"))
@@ -501,6 +518,7 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
 
     // ── DB helpers ────────────────────────────────────────────────────────────
 
+    /// <summary>Loads the calling user's in-progress game from the DB, or a tuple of nulls if they have none active.</summary>
     private (List<string>? player, List<string>? dealer, List<string>? deck,
              bool doubled, string userId, long bet) LoadGame()
     {
@@ -520,6 +538,7 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
         return (player, dealer, deck, doubled, userId, bet);
     }
 
+    /// <summary>Persists the current hand/deck state so the player can act on it via a later button press.</summary>
     private void SaveGame(string userId, List<string> deck,
                           List<string> player, List<string> dealer, bool doubled, long bet) =>
         _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "UpdateBlackjackGame",
@@ -532,6 +551,7 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
             new SqlParameter("@Bet",     bet)
         ]);
 
+    /// <summary>Deletes the user's saved game row once a hand is finished.</summary>
     private void EndGame(string userId) =>
         _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "DeleteBlackjackGame",
             [new SqlParameter("@UserID", userId)]);

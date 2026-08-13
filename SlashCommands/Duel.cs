@@ -521,6 +521,11 @@ public class Duel : InteractionModuleBase<SocketInteractionContext>
 
     // ── /duel ──────────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Issues a themed duel challenge with Accept/Decline buttons. Registers a 30-second
+    /// pending challenge keyed by server+target, and auto-expires it (editing the message
+    /// to show an expiry line) if nobody responds in time.
+    /// </summary>
     [SlashCommand("duel", "Challenge another player to a 1v1 for a cut of their credits!")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleDuelAsync(
@@ -536,21 +541,17 @@ public class Duel : InteractionModuleBase<SocketInteractionContext>
 
         if (target.Id == Context.User.Id)
         {
-            await FollowupAsync(embed: new EmbedBuilder()
-                .WithTitle("❌  Invalid Target")
-                .WithColor(ColourRed)
-                .WithDescription("You can't challenge yourself.")
-                .Build(), ephemeral: true);
+            await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+                "❌  Invalid Target", "You can't challenge yourself.",
+                ColourRed, timestamp: false).Build(), ephemeral: true);
             return;
         }
 
         if (target.IsBot)
         {
-            await FollowupAsync(embed: new EmbedBuilder()
-                .WithTitle("❌  Invalid Target")
-                .WithColor(ColourRed)
-                .WithDescription("Bots don't carry credits.")
-                .Build(), ephemeral: true);
+            await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+                "❌  Invalid Target", "Bots don't carry credits.",
+                ColourRed, timestamp: false).Build(), ephemeral: true);
             return;
         }
 
@@ -558,11 +559,9 @@ public class Duel : InteractionModuleBase<SocketInteractionContext>
 
         if (_pending.ContainsKey(challengeKey))
         {
-            await FollowupAsync(embed: new EmbedBuilder()
-                .WithTitle("⚠️  Already Queued")
-                .WithColor(ColourRed)
-                .WithDescription($"{target.Mention} already has a pending challenge. Wait for it to resolve.")
-                .Build(), ephemeral: true);
+            await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+                "⚠️  Already Queued", $"{target.Mention} already has a pending challenge. Wait for it to resolve.",
+                ColourRed, timestamp: false).Build(), ephemeral: true);
             return;
         }
 
@@ -580,17 +579,13 @@ public class Duel : InteractionModuleBase<SocketInteractionContext>
             .WithButton("Decline", $"duel:decline:{Context.User.Id}", ButtonStyle.Secondary, new Emoji("🏳️"))
             .Build();
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle(t.ChallengeTitle)
-            .WithColor(t.AccentColor)
-            .WithDescription(
-                $"**{Username}** ({challengerChar}) {challengeLine}\n\n" +
-                $"{target.Mention} ({targetChar}), do you accept?\n\n" +
-                $"The winner takes **a random cut** of the loser's credits.\n\n" +
-                $"⏳ You have **30 seconds** to respond.")
-            .WithThumbnailUrl(AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build(), components: buttons);
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            t.ChallengeTitle,
+            $"**{Username}** ({challengerChar}) {challengeLine}\n\n" +
+            $"{target.Mention} ({targetChar}), do you accept?\n\n" +
+            $"The winner takes **a random cut** of the loser's credits.\n\n" +
+            $"⏳ You have **30 seconds** to respond.",
+            t.AccentColor).WithThumbnailUrl(AvatarUrl).Build(), components: buttons);
 
         _ = Task.Run(async () =>
         {
@@ -604,12 +599,9 @@ public class Duel : InteractionModuleBase<SocketInteractionContext>
                     var original = await Context.Interaction.GetOriginalResponseAsync();
                     await original.ModifyAsync(m =>
                     {
-                        m.Embed = new EmbedBuilder()
-                            .WithTitle("💤  Challenge Expired")
-                            .WithColor(ColourGrey)
-                            .WithDescription($"{expireLine}\n\n{target.Mention} is no longer queued.")
-                            .WithCurrentTimestamp()
-                            .Build();
+                        m.Embed = _embed.BuildSimpleEmbed(
+                            "💤  Challenge Expired", $"{expireLine}\n\n{target.Mention} is no longer queued.",
+                            ColourGrey).Build();
                         m.Components = new ComponentBuilder().Build();
                     });
                 }
@@ -620,6 +612,10 @@ public class Duel : InteractionModuleBase<SocketInteractionContext>
 
     // ── Button: accept ─────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Accepts a pending challenge: plays the theme's animated buildup sequence, then rolls
+    /// a winner and transfers a random percentage of the loser's balance to the winner.
+    /// </summary>
     [ComponentInteraction("duel:accept:*")]
     public async Task HandleAcceptAsync(string challengerIdStr)
     {
@@ -629,33 +625,27 @@ public class Duel : InteractionModuleBase<SocketInteractionContext>
 
         if (!_pending.TryRemove(challengeKey, out var challenge))
         {
-            await FollowupAsync(embed: new EmbedBuilder()
-                .WithTitle("❌  No Active Challenge")
-                .WithColor(ColourRed)
-                .WithDescription("This challenge has already been resolved or expired.")
-                .Build(), ephemeral: true);
+            await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+                "❌  No Active Challenge", "This challenge has already been resolved or expired.",
+                ColourRed, timestamp: false).Build(), ephemeral: true);
             return;
         }
 
         if (challenge.ChallengerId != challengerIdStr)
         {
             _pending[challengeKey] = challenge;
-            await FollowupAsync(embed: new EmbedBuilder()
-                .WithTitle("❌  Not Your Challenge")
-                .WithColor(ColourRed)
-                .WithDescription("Only the challenged player can accept.")
-                .Build(), ephemeral: true);
+            await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+                "❌  Not Your Challenge", "Only the challenged player can accept.",
+                ColourRed, timestamp: false).Build(), ephemeral: true);
             return;
         }
 
         if (Context.User.Id.ToString() == challengerIdStr)
         {
             _pending[challengeKey] = challenge;
-            await FollowupAsync(embed: new EmbedBuilder()
-                .WithTitle("❌  Not Your Challenge")
-                .WithColor(ColourRed)
-                .WithDescription("You issued this challenge — you can't accept your own.")
-                .Build(), ephemeral: true);
+            await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+                "❌  Not Your Challenge", "You issued this challenge — you can't accept your own.",
+                ColourRed, timestamp: false).Build(), ephemeral: true);
             return;
         }
 
@@ -668,22 +658,14 @@ public class Duel : InteractionModuleBase<SocketInteractionContext>
         // ── Animated build-up ─────────────────────────────────────────────────
         string[] sequence = t.BuildupSequences[Random.Shared.Next(t.BuildupSequences.Length)];
 
-        var buildupMsg = await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle(t.AcceptTitle)
-            .WithColor(t.AccentColor)
-            .WithDescription(sequence[0])
-            .WithCurrentTimestamp()
-            .Build());
+        var buildupMsg = await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            t.AcceptTitle, sequence[0], t.AccentColor).Build());
 
         foreach (var frame in sequence[1..])
         {
             await Task.Delay(1400);
-            await buildupMsg.ModifyAsync(m => m.Embed = new EmbedBuilder()
-                .WithTitle(t.AcceptTitle)
-                .WithColor(t.AccentColor)
-                .WithDescription(frame)
-                .WithCurrentTimestamp()
-                .Build());
+            await buildupMsg.ModifyAsync(m => m.Embed = _embed.BuildSimpleEmbed(
+                t.AcceptTitle, frame, t.AccentColor).Build());
         }
 
         await Task.Delay(900);
@@ -717,19 +699,17 @@ public class Duel : InteractionModuleBase<SocketInteractionContext>
             .Replace("{winner}", winnerMention)
             .Replace("{loser}",  loserMention);
 
-        await buildupMsg.ModifyAsync(m => m.Embed = new EmbedBuilder()
-            .WithTitle(t.WinTitle)
-            .WithColor(ColourGreen)
-            .WithDescription(
-                $"{winLine}\n\n" +
-                $"💸 {loserMention} hands over **{CreditHelper.Format(prize)}** ({pctDisplay}% of their balance).\n" +
-                $"💰 {winnerMention} walks away with the bag.")
-            .WithCurrentTimestamp()
-            .Build());
+        await buildupMsg.ModifyAsync(m => m.Embed = _embed.BuildSimpleEmbed(
+            t.WinTitle,
+            $"{winLine}\n\n" +
+            $"💸 {loserMention} hands over **{CreditHelper.Format(prize)}** ({pctDisplay}% of their balance).\n" +
+            $"💰 {winnerMention} walks away with the bag.",
+            ColourGreen).Build());
     }
 
     // ── Button: decline ────────────────────────────────────────────────────────
 
+    /// <summary>Declines a pending challenge — no credits change hands.</summary>
     [ComponentInteraction("duel:decline:*")]
     public async Task HandleDeclineAsync(string challengerIdStr)
     {
@@ -739,11 +719,9 @@ public class Duel : InteractionModuleBase<SocketInteractionContext>
 
         if (!_pending.TryRemove(challengeKey, out var challenge))
         {
-            await FollowupAsync(embed: new EmbedBuilder()
-                .WithTitle("❌  No Active Challenge")
-                .WithColor(ColourRed)
-                .WithDescription("This challenge has already been resolved or expired.")
-                .Build(), ephemeral: true);
+            await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+                "❌  No Active Challenge", "This challenge has already been resolved or expired.",
+                ColourRed, timestamp: false).Build(), ephemeral: true);
             return;
         }
 
@@ -754,12 +732,9 @@ public class Duel : InteractionModuleBase<SocketInteractionContext>
 
         await Context.Interaction.ModifyOriginalResponseAsync(m =>
         {
-            m.Embed = new EmbedBuilder()
-                .WithTitle("🏳️  Challenge Declined")
-                .WithColor(ColourGrey)
-                .WithDescription($"{Context.User.Mention} {declineLine}\n\nNo credits were exchanged.")
-                .WithCurrentTimestamp()
-                .Build();
+            m.Embed = _embed.BuildSimpleEmbed(
+                "🏳️  Challenge Declined", $"{Context.User.Mention} {declineLine}\n\nNo credits were exchanged.",
+                ColourGrey).Build();
             m.Components = new ComponentBuilder().Build();
         });
     }

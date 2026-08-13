@@ -122,6 +122,7 @@ public static class PetHelper
         ]
     };
 
+    /// <summary>True if <paramref name="breed"/> is a recognized breed for the given species.</summary>
     public static bool IsValidBreed(string species, string breed) =>
         Breeds.TryGetValue(species.ToLower(), out var breeds) &&
         breeds.Contains(breed, StringComparer.OrdinalIgnoreCase);
@@ -164,6 +165,10 @@ public static class PetHelper
     }
 
 
+    /// <summary>
+    /// Picks the display emoji for a pet based on its current state: hibernating and hungry
+    /// take priority over mood, and evolved (level 100) pets get a distinct emoji when happy.
+    /// </summary>
     public static string PetEmoji(string species, int happiness, int hunger,
                                    bool hibernating, bool evolved)
     {
@@ -212,6 +217,7 @@ public static class PetHelper
         return NormalEmoji(species, evolved);
     }
 
+    /// <summary>Emoji for a species at high happiness, not evolved.</summary>
     private static string HappyEmoji(string species) => species.ToLower() switch
     {
         "cat" => "😺",
@@ -232,6 +238,7 @@ public static class PetHelper
         _ => "🐾"
     };
 
+    /// <summary>Emoji for a species at ordinary mood/hunger — the default look, evolved or not.</summary>
     private static string NormalEmoji(string species, bool evolved) => species.ToLower() switch
     {
         "cat" => evolved ? "🦁" : "🐱",
@@ -252,6 +259,7 @@ public static class PetHelper
         _ => "🐾"
     };
 
+    /// <summary>Emoji for a species at high happiness and evolved (level 100) — the "final form" look.</summary>
     private static string EvolvedEmoji(string species) => species.ToLower() switch
     {
         "cat" => "🦁",
@@ -273,6 +281,7 @@ public static class PetHelper
     };
 
 
+    /// <summary>Returns the flavour display name a species takes on once evolved (level 100), e.g. "cat" → "Maine Coon".</summary>
     public static string EvolvedName(string species) => species.ToLower() switch
     {
         "cat" => "Maine Coon",
@@ -294,6 +303,7 @@ public static class PetHelper
     };
 
 
+    /// <summary>Renders a 10-block filled/empty bar for a 0-100 stat value.</summary>
     public static string StatBar(int value)
     {
         int filled = Math.Clamp(value, 0, 100) / 10;
@@ -304,6 +314,7 @@ public static class PetHelper
         });
     }
 
+    /// <summary>Renders a stat bar with a colour-coded emoji indicator (green/yellow/orange/red by value range).</summary>
     public static string StatDisplay(string label, int value)
     {
         string bar = StatBar(value);
@@ -335,6 +346,7 @@ public static class PetHelper
     public const int PlayCooldownMinutes = 15;
 
 
+    /// <summary>Returns the unlock announcement text for a level milestone, or null if this level doesn't unlock anything.</summary>
     public static string? LevelUpUnlock(int level) => level switch
     {
         5 => "🎪 **Unlocked:** `/trick` slot 1 — your pet can now show off!",
@@ -349,6 +361,7 @@ public static class PetHelper
     };
 
 
+    /// <summary>Returns the flavour-text description for a species performing the trick unlocked at the given slot (1-4, gated by level).</summary>
     public static string PerformTrick(string species, int slot) =>
         (species.ToLower(), slot) switch
         {
@@ -474,6 +487,7 @@ public static class PetHelper
         ("Phoenix Feather Tea","🪶",50, 55, 50),
     ];
 
+    /// <summary>Lists every food item unlocked at or below the pet's current level, one per line.</summary>
     public static string ListFoods(int petLevel) => string.Join("\n", Foods.Where(f => f.minLevel <= petLevel).Select(f => $"{f.emoji} **{f.name}** — +{f.hungerRestore} hunger, +{f.happyBonus} happiness"));
 
 
@@ -565,6 +579,7 @@ public static class PetHelper
     }
 
 
+    /// <summary>Returns a species-flavoured departure line shown when a pet sets off on /explore.</summary>
     public static string ExploreDeparture(string species) => species.ToLower() switch
     {
         "cat" => "🐱 *fixes you with one long, evaluating look, then slips through a gap in the door that was definitely not big enough for them, and is simply gone*",
@@ -585,6 +600,7 @@ public static class PetHelper
         _ => "*heads off on an adventure*"
     };
 
+    /// <summary>Returns a random species-flavoured narrative line describing what the pet got up to while exploring.</summary>
     public static string ExploreNarrative(string species, string rewardKey) =>
         species.ToLower() switch
         {
@@ -954,6 +970,7 @@ public static class PetHelper
     ];
 
 
+    /// <summary>Maps a pet journal event type (feed, hug, explore, etc.) to its display emoji.</summary>
     public static string JournalEventEmoji(string eventType) => eventType.ToLower() switch
     {
         "feed" => "🍽️",
@@ -1113,6 +1130,7 @@ public static class PetHelper
             _ => genericDescription
         };
 
+    /// <summary>Returns the pool of flavour move names a species can draw from in a pet battle round.</summary>
     private static string[] BattleMoves(string species) => species.ToLower() switch
     {
         "cat" =>

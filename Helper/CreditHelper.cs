@@ -31,6 +31,7 @@ public static class CreditHelper
         (1_000_000_000_000m,  "🚀 Mythic"),
     ];
 
+    /// <summary>Returns the highest prestige rank whose threshold the user's lifetime earnings have reached.</summary>
     public static string PrestigeRank(decimal lifetimeEarned)
     {
         var tier = PrestigeTiers[0];
@@ -80,6 +81,7 @@ public static class CreditHelper
     public const decimal MaxBet = 100_000_000_000m;
     public const decimal DailyLossLimit = 100_000_000_000m; // max credits losable per 24h
 
+    /// <summary>Validates a bet against the min/max bet limits and the user's balance, returning an error message if invalid.</summary>
     public static bool IsValidBet(decimal bet, decimal balance, out string error)
     {
         if (bet < MinBet) { error = $"Minimum bet is {Format(MinBet)}."; return false; }
@@ -90,6 +92,7 @@ public static class CreditHelper
     }
 
 
+    /// <summary>Picks a random index into <paramref name="weights"/>, biased so each index's chance is proportional to its weight.</summary>
     private static int WeightedIndex(int[] weights)
     {
         int total = weights.Sum();
@@ -106,6 +109,7 @@ public static class CreditHelper
     /// <summary>Random symbols for the spinning animation frames (not weighted — pure visual).</summary>
     public static readonly string[] SlotSpinSymbols = ["💎", "7️⃣", "🍀", "⭐", "🔔", "🍇", "🍊", "🍋", "🍒"];
 
+    /// <summary>Picks a purely random slot symbol for animation frames — not weighted, since it's never the final result.</summary>
     public static string SpinReelRandom() =>
         SlotSpinSymbols[Random.Shared.Next(SlotSpinSymbols.Length)];
 
@@ -122,9 +126,11 @@ public static class CreditHelper
         ("🍒", "Cherry",    16,   1.0),  // any cherry = small win
     ];
 
+    /// <summary>Spins one slot reel, weighted by each symbol's configured rarity.</summary>
     public static string SpinReel() =>
         SlotSymbols[WeightedIndex(SlotSymbols.Select(s => s.weight).ToArray())].symbol;
 
+    /// <summary>Scores a completed 3-reel slot spin: three-of-a-kind, two-of-a-kind, cherry consolation, or no match.</summary>
     public static (decimal payout, string result) CalculateSlotPayout(
         string r1, string r2, string r3, decimal bet)
     {
@@ -157,8 +163,10 @@ public static class CreditHelper
     public static readonly string[] RedNumbers = ["1", "3", "5", "7", "9", "12", "14", "16", "18", "19", "21", "23", "25", "27", "30", "32", "34", "36"];
     public static readonly string[] BlackNumbers = ["2", "4", "6", "8", "10", "11", "13", "15", "17", "20", "22", "24", "26", "28", "29", "31", "33", "35"];
 
+    /// <summary>Spins the roulette wheel, uniformly at random across 0–36.</summary>
     public static int SpinRoulette() => Random.Shared.Next(0, 37); // 0–36
 
+    /// <summary>Scores a roulette bet (red/black/even/odd/low/high/exact number) against the spun result.</summary>
     public static (decimal payout, string result) CalculateRoulettePayout(
         int spin, string bet, decimal amount)
     {
@@ -206,6 +214,7 @@ public static class CreditHelper
         ("Miracle Run",  "✨", 2,  50.0),
     ];
 
+    /// <summary>Picks the winning horse, weighted by each horse's configured odds (favourites win more often).</summary>
     public static int RunRace() =>
         WeightedIndex(Horses.Select(h => h.weight).ToArray());
 
@@ -237,6 +246,7 @@ public static class CreditHelper
     private static readonly string[] ScratchPool =
         ["💎", "7️⃣", "⭐", "🔔", "🍀", "💰", "🎁", "❌", "❌", "❌", "❌", "❌"];
 
+    /// <summary>Scratches a standard card: rolls for one of the fixed prize tiers, or three non-matching symbols on a miss.</summary>
     public static (string s1, string s2, string s3, decimal payout, string label) ScratchCard(decimal cost)
     {
         // Small chance to award a prize
@@ -320,6 +330,7 @@ public static class CreditHelper
     public static readonly string[] CardRanks = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"];
     public static readonly string[] CardSuits = ["♠", "♥", "♦", "♣"];
 
+    /// <summary>Draws a uniformly random playing card for High-Low; value is the rank index (0=2 ... 12=A) for comparison.</summary>
     public static (string display, int value) DrawCard()
     {
         int rankIdx = Random.Shared.Next(CardRanks.Length);
@@ -328,6 +339,7 @@ public static class CreditHelper
     }
 
 
+    /// <summary>Returns a random flavour-text line for the /work command's payout, purely cosmetic.</summary>
     public static string WorkMessage(decimal earned) => Random.Shared.Next(10) switch
     {
         0 => $"You fixed a production bug at 2am. Compensation: {Format(earned)}",
@@ -367,6 +379,7 @@ public static class CreditHelper
         ("Legendary Carp",  "👑",  120_000, 250_000, 1,  "A LEGENDARY CARP. Witnesses gather. Someone starts clapping."),
     ];
 
+    /// <summary>Rolls a fishing catch, weighted by each fish's rarity, with a random reward within that fish's credit range.</summary>
     public static (string name, string emoji, decimal credits, string flavour) CastLine()
     {
         var (name, emoji, min, max, _, flavour) = FishTable[WeightedIndex(FishTable.Select(f => f.weight).ToArray())];
@@ -394,6 +407,7 @@ public static class CreditHelper
         ("100×",   100.0,    2, "🚀"),
     ];
 
+    /// <summary>Spins the Big Wheel, weighted by each segment's configured rarity.</summary>
     public static int SpinWheel() =>
         WeightedIndex(WheelSegments.Select(s => s.weight).ToArray());
 
@@ -474,6 +488,7 @@ public static class CreditHelper
         (PokerHand.HighCard,        0m, "No Win"),
     ];
 
+    /// <summary>Classifies a 5-card hand (each card formatted "rank|suit") into its best-matching poker hand rank.</summary>
     public static PokerHand EvaluatePokerHand(List<string> hand)
     {
         var ranks = hand.Select(c => Array.IndexOf(CardRanks, c.Split('|')[0])).OrderBy(r => r).ToArray();
@@ -503,15 +518,18 @@ public static class CreditHelper
         return PokerHand.HighCard;
     }
 
+    /// <summary>Converts a poker hand rank and bet into its credit payout.</summary>
     public static decimal PokerPayout(PokerHand hand, decimal bet)
     {
         var entry = PokerPayouts.First(p => p.hand == hand);
         return bet * entry.multiplier;
     }
 
+    /// <summary>Returns the display label for a poker hand rank, e.g. "Full House".</summary>
     public static string PokerHandLabel(PokerHand hand) =>
         PokerPayouts.First(p => p.hand == hand).label;
 
+    /// <summary>Formats a "rank|suit" card for display, bracketing it if the player is holding it (video poker draw).</summary>
     public static string FormatPokerCard(string card, bool held)
     {
         var parts = card.Split('|');
@@ -519,6 +537,7 @@ public static class CreditHelper
         return held ? $"[**{display}**]" : display;
     }
 
+    /// <summary>Builds a full 52-card deck (as "rank|suit" strings) and shuffles it via Fisher-Yates.</summary>
     public static List<string> BuildPokerDeck()
     {
         var deck = (from suit in CardSuits
@@ -547,6 +566,7 @@ public static class CreditHelper
         (5.00m,  1,  "Jackpot investment!"),
     ];
 
+    /// <summary>Rolls a 24h investment outcome, weighted by each tier's configured rarity.</summary>
     public static (decimal multiplier, string label) RollInvestment()
     {
         var o = InvestOutcomes[WeightedIndex(InvestOutcomes.Select(o => o.weight).ToArray())];
@@ -556,11 +576,17 @@ public static class CreditHelper
 
     public const string PokerBotId = "BOT";
 
+    /// <summary>Formats a single Texas Hold'em card face-up (never held/bracketed).</summary>
     public static string ShowCard(string card) => FormatPokerCard(card, held: false);
 
+    /// <summary>Formats a full hand of cards, space-separated.</summary>
     public static string ShowHand(IEnumerable<string> cards) =>
         string.Join("  ", cards.Select(ShowCard));
 
+    /// <summary>
+    /// Finds the best possible 5-card poker hand out of 7 cards (2 hole + 5 community) by
+    /// trying every 5-card subset and keeping the highest-ranking one.
+    /// </summary>
     public static (PokerHand hand, string name) BestHandType(List<string> sevenCards)
     {
         PokerHand best = PokerHand.HighCard;
@@ -574,6 +600,10 @@ public static class CreditHelper
         return (best, PokerHandLabel(best));
     }
 
+    /// <summary>
+    /// Numeric score for comparing two 7-card hands: hand rank dominates (multiplied way up),
+    /// with the sum of card ranks as a tiebreaker within the same hand rank.
+    /// </summary>
     public static int HandScore(List<string> sevenCards)
     {
         var (hand, _) = BestHandType(sevenCards);

@@ -28,6 +28,7 @@ public class ServerCommands : InteractionModuleBase<SocketInteractionContext>
     ];
 
 
+    /// <summary>Shows a member's (or the caller's) avatar at full resolution.</summary>
     [SlashCommand("avatar", "Display your avatar or another member's in full resolution.")]
     [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
     public async Task HandleAvatarAsync(SocketGuildUser? user = null)
@@ -35,16 +36,14 @@ public class ServerCommands : InteractionModuleBase<SocketInteractionContext>
         await DeferAsync();
         var target = user ?? (SocketGuildUser)Context.User;
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"{target.DisplayName}'s Avatar")
-            .WithColor(Color.Blue)
-            .WithImageUrl(target.GetDisplayAvatarUrl(size: 1024) ?? target.GetDefaultAvatarUrl())
-            .WithFooter($"Requested by {Username}", AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"{target.DisplayName}'s Avatar", "", Color.Blue,
+            footer: $"Requested by {Username}", footerIconUrl: AvatarUrl)
+            .WithImageUrl(target.GetDisplayAvatarUrl(size: 1024) ?? target.GetDefaultAvatarUrl()).Build());
     }
 
 
+    /// <summary>Shows a member's (or the caller's) username, nickname, account/join dates, and roles.</summary>
     [SlashCommand("userinfo", "Show information about yourself or another member.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleUserInfoAsync(SocketGuildUser? user = null)
@@ -59,22 +58,20 @@ public class ServerCommands : InteractionModuleBase<SocketInteractionContext>
 
         if (string.IsNullOrEmpty(roleList)) roleList = "*None*";
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"👤  {target.DisplayName}")
-            .WithColor(target.Roles.MaxBy(r => r.Position)?.Color ?? Color.Default)
-            .WithThumbnailUrl(target.GetDisplayAvatarUrl(size: 256) ?? target.GetDefaultAvatarUrl())
-            .AddField("Username", target.Username, inline: true)
-            .AddField("Nickname", target.Nickname ?? "*None*", inline: true)
-            .AddField("Bot", target.IsBot ? "Yes" : "No", inline: true)
-            .AddField("Account Created", target.CreatedAt.UtcDateTime.ToString("MMM dd, yyyy"), inline: true)
-            .AddField("Joined Server", target.JoinedAt?.UtcDateTime.ToString("MMM dd, yyyy") ?? "*Unknown*", inline: true)
-            .AddField("Roles", roleList, inline: false)
-            .WithFooter($"ID: {target.Id}  •  Requested by {Username}", AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"👤  {target.DisplayName}", "", target.Roles.MaxBy(r => r.Position)?.Color ?? Color.Default,
+            footer: $"ID: {target.Id}  •  Requested by {Username}", footerIconUrl: AvatarUrl,
+            fields: [("Username", target.Username, true),
+                     ("Nickname", target.Nickname ?? "*None*", true),
+                     ("Bot", target.IsBot ? "Yes" : "No", true),
+                     ("Account Created", target.CreatedAt.UtcDateTime.ToString("MMM dd, yyyy"), true),
+                     ("Joined Server", target.JoinedAt?.UtcDateTime.ToString("MMM dd, yyyy") ?? "*Unknown*", true),
+                     ("Roles", roleList, false)])
+            .WithThumbnailUrl(target.GetDisplayAvatarUrl(size: 256) ?? target.GetDefaultAvatarUrl()).Build());
     }
 
 
+    /// <summary>Shows the current server's owner, member/channel/role counts, boost level, and creation date.</summary>
     [SlashCommand("serverinfo", "Show information about this server.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleServerInfoAsync()
@@ -82,24 +79,22 @@ public class ServerCommands : InteractionModuleBase<SocketInteractionContext>
         await DeferAsync();
         var guild = Context.Guild;
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"🏰  {guild.Name}")
-            .WithColor(Color.Blue)
-            .WithThumbnailUrl(guild.IconUrl)
-            .AddField("Owner", guild.Owner.DisplayName, inline: true)
-            .AddField("Members", guild.MemberCount.ToString(), inline: true)
-            .AddField("Boost Level", $"Level {(int)guild.PremiumTier}", inline: true)
-            .AddField("Boosts", guild.PremiumSubscriptionCount.ToString(), inline: true)
-            .AddField("Text Channels", guild.TextChannels.Count.ToString(), inline: true)
-            .AddField("Voice Channels", guild.VoiceChannels.Count.ToString(), inline: true)
-            .AddField("Roles", guild.Roles.Count.ToString(), inline: true)
-            .AddField("Created", guild.CreatedAt.UtcDateTime.ToString("MMM dd, yyyy"), inline: true)
-            .WithFooter($"ID: {guild.Id}  •  Requested by {Username}", AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"🏰  {guild.Name}", "", Color.Blue,
+            footer: $"ID: {guild.Id}  •  Requested by {Username}", footerIconUrl: AvatarUrl,
+            fields: [("Owner", guild.Owner.DisplayName, true),
+                     ("Members", guild.MemberCount.ToString(), true),
+                     ("Boost Level", $"Level {(int)guild.PremiumTier}", true),
+                     ("Boosts", guild.PremiumSubscriptionCount.ToString(), true),
+                     ("Text Channels", guild.TextChannels.Count.ToString(), true),
+                     ("Voice Channels", guild.VoiceChannels.Count.ToString(), true),
+                     ("Roles", guild.Roles.Count.ToString(), true),
+                     ("Created", guild.CreatedAt.UtcDateTime.ToString("MMM dd, yyyy"), true)])
+            .WithThumbnailUrl(guild.IconUrl).Build());
     }
 
 
+    /// <summary>Records a member's birthday for future celebration, creating (and backfilling) a "birthday" role on the server if one doesn't already exist.</summary>
     [SlashCommand("addbirthday", "Add a member's birthday so the bot can celebrate it.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleBirthdayAsync(
@@ -157,6 +152,7 @@ public class ServerCommands : InteractionModuleBase<SocketInteractionContext>
     }
 
 
+    /// <summary>Sets a member's personal name-role to the given hex color, creating the role positioned just below the bot's role if it doesn't already exist.</summary>
     [SlashCommand("setrolecolor", "Set the colour of your role by hex code.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleColorAsync(
@@ -202,6 +198,7 @@ public class ServerCommands : InteractionModuleBase<SocketInteractionContext>
     }
 
 
+    /// <summary>Posts a reaction poll for the next 7 calendar days so members can vote on the best day for a given user's D&amp;D session.</summary>
     [SlashCommand("polldnd", "Reaction poll for D&D weekly scheduling (next 7 days).")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandlePollDndAsync(SocketGuildUser user)
@@ -227,6 +224,7 @@ public class ServerCommands : InteractionModuleBase<SocketInteractionContext>
     }
 
 
+    /// <summary>Forwards a user-submitted bug report to the bot owner's fixed log channel.</summary>
     [SlashCommand("reportbug", "Found a bug with the bot? Report it here.")]
     [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
     public async Task HandleBugReportAsync(
@@ -324,15 +322,12 @@ public class ServerCommands : InteractionModuleBase<SocketInteractionContext>
             ? $"Use /balance, /petcard, and /gamblestats for full details"
             : $"Requested by {Username}";
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"🪪  {target.DisplayName}'s Profile")
-            .WithColor(target.Roles.MaxBy(r => r.Position)?.Color ?? Color.Blue)
-            .WithThumbnailUrl(target.GetDisplayAvatarUrl(size: 256) ?? target.GetDefaultAvatarUrl())
-            .AddField($"{CreditHelper.CurrencyEmoji} Credits", creditsField, inline: false)
-            .AddField("🐾 Active Pet", petField, inline: false)
-            .AddField("🎰 Gambling", gambleField, inline: false)
-            .WithFooter(footer, AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"🪪  {target.DisplayName}'s Profile", "", target.Roles.MaxBy(r => r.Position)?.Color ?? Color.Blue,
+            footer: footer, footerIconUrl: AvatarUrl,
+            fields: [($"{CreditHelper.CurrencyEmoji} Credits", creditsField, false),
+                     ("🐾 Active Pet", petField, false),
+                     ("🎰 Gambling", gambleField, false)])
+            .WithThumbnailUrl(target.GetDisplayAvatarUrl(size: 256) ?? target.GetDefaultAvatarUrl()).Build());
     }
 }

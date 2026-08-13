@@ -9,10 +9,12 @@ using DiscordBot.Helper;
 
 namespace DiscordBot.SlashCommands
 {
+    /// <summary>Bot-owner-only maintenance commands: cross-server announcements, schedule/connection listings, user table backfill, and manual keyword-image cleanup.</summary>
     // GuildModule decoration limits these commands to only show by the guild below.
     [GuildModule(880569055856185354)]
     public class OwnerCommands : InteractionModuleBase<SocketInteractionContext>
     {
+        /// <summary>Broadcasts a message (with optional attachment) to every server's default channel where the bot has permission to post, reporting which servers were skipped.</summary>
         [SlashCommand("announcement", "Broadcast a message to all servers.")]
         [CommandContextType(InteractionContextType.Guild)]
         [Discord.Interactions.RequireOwner]
@@ -70,6 +72,7 @@ namespace DiscordBot.SlashCommands
             }
         }
 
+        /// <summary>Lists every user with a scheduled keyword delivery, along with their table and scheduled time.</summary>
         [SlashCommand("schedulelist", "Get list of all users scheduled times.")]
         [CommandContextType(InteractionContextType.Guild)]
         [Discord.Interactions.RequireOwner]
@@ -89,6 +92,7 @@ namespace DiscordBot.SlashCommands
             await FollowupAsync(embed: embedHelper.BuildMessageEmbed("Scheduled List", description, "", Context.User.Username, Discord.Color.Blue).Build(), ephemeral: true).ConfigureAwait(false);
         }
 
+        /// <summary>Lists every server where the music player is currently connected to a voice channel.</summary>
         [SlashCommand("connplayers", "List of all connected players in voice channels.")]
         [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
         [Discord.Interactions.RequireOwner]
@@ -121,6 +125,7 @@ namespace DiscordBot.SlashCommands
             }
         }
 
+        /// <summary>Backfills the user table with every non-bot member of every known server — a manual re-sync tool for when the DB falls out of date.</summary>
         [SlashCommand("populateallusers", "Populate users into the DB.")]
         [CommandContextType(InteractionContextType.Guild)]
         [Discord.Interactions.RequireOwner]
@@ -167,6 +172,7 @@ namespace DiscordBot.SlashCommands
             }
         }
 
+        /// <summary>Removes one specific image file's DB entry from a keyword (companion to Keyword.UrlCommands.HandleDeleteAsync for local files).</summary>
         [SlashCommand("delmultiimage", "Deletes a multi-keyword image with a given path")]
         [CommandContextType(InteractionContextType.Guild)]
         [RequireOwner]

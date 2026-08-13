@@ -30,6 +30,7 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
 
     // ── /stock market ─────────────────────────────────────────────────────────
 
+    /// <summary>Shows a monospace table of every stock's current price and change since the last tick.</summary>
     [SlashCommand("market", "View all stocks and current prices.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleMarketAsync()
@@ -67,16 +68,13 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
         sb.AppendLine("```");
         sb.AppendLine($"-# Prices update every {StockHelper.TickIntervalMinutes} minutes.");
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle("📊  Big Bird Stock Exchange")
-            .WithColor(ColourMarket)
-            .WithDescription(sb.ToString())
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            "📊  Big Bird Stock Exchange", sb.ToString(), ColourMarket).Build());
     }
 
     // ── /stock info ───────────────────────────────────────────────────────────
 
+    /// <summary>Shows one ticker's company/sector, current price, 24h high/low, and a sparkline of recent price history.</summary>
     [SlashCommand("info", "Detailed info and price history for a stock.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleInfoAsync(
@@ -122,26 +120,24 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
         string sEmoji = StockHelper.SectorEmoji(sector);
         Color colour = price >= prev ? ColourGreen : ColourRed;
 
-        var eb = new EmbedBuilder()
-            .WithTitle($"{sEmoji}  {company} ({ticker})")
-            .WithColor(colour)
-            .AddField("Price", StockHelper.FormatPrice(price), inline: true)
-            .AddField("Change", $"{arrow} {change}", inline: true)
-            .AddField("Sector", $"{sEmoji} {sector}", inline: true)
-            .AddField("24h High", StockHelper.FormatPrice(high), inline: true)
-            .AddField("24h Low", StockHelper.FormatPrice(low), inline: true);
+        var eb = _embed.BuildSimpleEmbed(
+            $"{sEmoji}  {company} ({ticker})", "", colour,
+            footer: $"Ticker: {ticker} • Updates every {StockHelper.TickIntervalMinutes}min",
+            fields: [("Price", StockHelper.FormatPrice(price), true),
+                     ("Change", $"{arrow} {change}", true),
+                     ("Sector", $"{sEmoji} {sector}", true),
+                     ("24h High", StockHelper.FormatPrice(high), true),
+                     ("24h Low", StockHelper.FormatPrice(low), true)]);
 
         if (!string.IsNullOrEmpty(spark))
             eb.AddField("Price History", $"`{spark}`", inline: false);
-
-        eb.WithFooter($"Ticker: {ticker} • Updates every {StockHelper.TickIntervalMinutes}min")
-          .WithCurrentTimestamp();
 
         await FollowupAsync(embed: eb.Build());
     }
 
     // ── /stock buy ────────────────────────────────────────────────────────────
 
+    /// <summary>Buys shares of a ticker at its current price (if the user can afford it), updating their average buy price.</summary>
     [SlashCommand("buy", "Buy shares in a company.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleBuyAsync(
@@ -201,22 +197,19 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
 
         string company = stockRow["CompanyName"].ToString()!;
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"📈  Bought {ticker}")
-            .WithColor(ColourGreen)
-            .WithDescription($"Purchased **{shares:N0} share{(shares == 1 ? "" : "s")}** of **{company}**.")
-            .AddField("Price Each", StockHelper.FormatPrice(priceEach), inline: true)
-            .AddField("Total Cost", CreditHelper.Format(totalCost), inline: true)
-            .AddField("Total Shares", $"{totalShares:N0}", inline: true)
-            .AddField("Avg Buy Price", StockHelper.FormatPrice(avgBuy), inline: true)
-            .AddField("Balance Left", CreditHelper.Format(newBalance), inline: true)
-            .WithFooter(Username, AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"📈  Bought {ticker}", $"Purchased **{shares:N0} share{(shares == 1 ? "" : "s")}** of **{company}**.",
+            ColourGreen, footer: Username, footerIconUrl: AvatarUrl,
+            fields: [("Price Each", StockHelper.FormatPrice(priceEach), true),
+                     ("Total Cost", CreditHelper.Format(totalCost), true),
+                     ("Total Shares", $"{totalShares:N0}", true),
+                     ("Avg Buy Price", StockHelper.FormatPrice(avgBuy), true),
+                     ("Balance Left", CreditHelper.Format(newBalance), true)]).Build());
     }
 
     // ── /stock sell ───────────────────────────────────────────────────────────
 
+    /// <summary>Sells a quantity of shares (or the whole position via <paramref name="sellAll"/>) at the current price and credits the proceeds, reporting the realized P&amp;L.</summary>
     [SlashCommand("sell", "Sell shares you own.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleSellAsync(
@@ -280,24 +273,24 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
 
         int remain = owned - qty;
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle(sellAll ? $"📉  Sold all {ticker}" : $"📉  Sold {ticker}")
-            .WithColor(pnl >= 0 ? ColourGreen : ColourRed)
-            .WithDescription(sellAll
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            sellAll ? $"📉  Sold all {ticker}" : $"📉  Sold {ticker}",
+            sellAll
                 ? $"Sold your entire position of **{qty:N0} share{(qty == 1 ? "" : "s")}** in **{company}**."
-                : $"Sold **{qty:N0} share{(qty == 1 ? "" : "s")}** of **{company}**.")
-            .AddField("Sale Price", StockHelper.FormatPrice(priceEach), inline: true)
-            .AddField("Total Gained", CreditHelper.Format(totalGain), inline: true)
-            .AddField("P&L", StockHelper.FormatPnL(pnl), inline: true)
-            .AddField("Shares Left", $"{remain:N0}", inline: true)
-            .AddField("New Balance", CreditHelper.Format(newBalance), inline: true)
-            .WithFooter(Username, AvatarUrl)
-            .WithCurrentTimestamp()
+                : $"Sold **{qty:N0} share{(qty == 1 ? "" : "s")}** of **{company}**.",
+            pnl >= 0 ? ColourGreen : ColourRed,
+            footer: Username, footerIconUrl: AvatarUrl,
+            fields: [("Sale Price", StockHelper.FormatPrice(priceEach), true),
+                     ("Total Gained", CreditHelper.Format(totalGain), true),
+                     ("P&L", StockHelper.FormatPnL(pnl), true),
+                     ("Shares Left", $"{remain:N0}", true),
+                     ("New Balance", CreditHelper.Format(newBalance), true)])
             .Build());
     }
 
     // ── /stock portfolio ──────────────────────────────────────────────────────
 
+    /// <summary>Shows a member's (or the caller's) full stock portfolio as a monospace table with per-holding and total unrealized P&amp;L.</summary>
     [SlashCommand("portfolio", "View your stock holdings and unrealized P&L.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandlePortfolioAsync(IUser? user = null)
@@ -315,12 +308,9 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
 
         if (dt.Rows.Count == 0)
         {
-            await FollowupAsync(embed: new EmbedBuilder()
-                .WithTitle("📂  Portfolio")
-                .WithColor(ColourMarket)
-                .WithDescription($"**{target.Username}** owns no stocks. Use `/stock buy` to invest!")
-                .WithCurrentTimestamp()
-                .Build());
+            await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+                "📂  Portfolio", $"**{target.Username}** owns no stocks. Use `/stock buy` to invest!",
+                ColourMarket).Build());
             return;
         }
 
@@ -383,21 +373,19 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
         int losers = dt.Rows.Cast<System.Data.DataRow>()
             .Count(r => decimal.Parse(r["UnrealizedPnL"].ToString()!) < 0);
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"📂  {target.Username}'s Portfolio")
-            .WithColor(colour)
-            .WithDescription(sb.ToString())
-            .AddField("Value", StockHelper.FormatPrice(totalValue), inline: true)
-            .AddField("Unrealized P&L", StockHelper.FormatPnL(totalPnL), inline: true)
-            .AddField("Holdings", $"📈 {winners} up  ·  📉 {losers} down", inline: true)
-            .WithThumbnailUrl(target.GetAvatarUrl())
-            .WithFooter(isSelf ? "P&L = unrealized gain/loss vs avg buy price" : $"Requested by {Username}", AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"📂  {target.Username}'s Portfolio", sb.ToString(), colour,
+            footer: isSelf ? "P&L = unrealized gain/loss vs avg buy price" : $"Requested by {Username}",
+            footerIconUrl: AvatarUrl,
+            fields: [("Value", StockHelper.FormatPrice(totalValue), true),
+                     ("Unrealized P&L", StockHelper.FormatPnL(totalPnL), true),
+                     ("Holdings", $"📈 {winners} up  ·  📉 {losers} down", true)])
+            .WithThumbnailUrl(target.GetAvatarUrl()).Build());
     }
 
     // ── /stock history ────────────────────────────────────────────────────────
 
+    /// <summary>Shows the user's most recent buy/sell stock transactions as a monospace table.</summary>
     [SlashCommand("history", "View your recent stock transactions.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleHistoryAsync()
@@ -412,12 +400,8 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
 
         if (dt.Rows.Count == 0)
         {
-            await FollowupAsync(embed: new EmbedBuilder()
-                .WithTitle("🧾  Transaction History")
-                .WithColor(ColourMarket)
-                .WithDescription("No transactions yet.")
-                .WithCurrentTimestamp()
-                .Build());
+            await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+                "🧾  Transaction History", "No transactions yet.", ColourMarket).Build());
             return;
         }
 
@@ -443,17 +427,14 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
 
         sb.AppendLine("```");
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle("🧾  Transaction History")
-            .WithColor(ColourMarket)
-            .WithDescription(sb.ToString())
-            .WithFooter($"Last 10 transactions • {Username}", AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            "🧾  Transaction History", sb.ToString(), ColourMarket,
+            footer: $"Last 10 transactions • {Username}", footerIconUrl: AvatarUrl).Build());
     }
 
     // ── Error helper ──────────────────────────────────────────────────────────
 
+    /// <summary>Posts a standard stock market error embed as the interaction followup.</summary>
     private async Task ErrorAsync(string message) =>
         await FollowupAsync(embed: _embed.BuildErrorEmbed("Stock Market", message, Username).Build());
 }

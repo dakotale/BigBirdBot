@@ -29,6 +29,7 @@ public class Economy : InteractionModuleBase<SocketInteractionContext>
 
     // ── /balance ──────────────────────────────────────────────────────────────
 
+    /// <summary>Shows a balance card (balance, total earned/spent, prestige, lifetime, daily streak) for yourself or another member.</summary>
     [SlashCommand("balance", "Check your credit balance.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleBalanceAsync(IUser? user = null)
@@ -63,23 +64,21 @@ public class Economy : InteractionModuleBase<SocketInteractionContext>
 
         bool isSelf = target.Id == Context.User.Id;
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"{CreditHelper.CurrencyEmoji}  {target.Username}'s Balance")
-            .WithColor(ColourGold)
-            .WithThumbnailUrl(target.GetAvatarUrl())
-            .AddField("Balance", CreditHelper.Format(balance), inline: true)
-            .AddField("Total Earned", CreditHelper.Format(totalEarned), inline: true)
-            .AddField("Total Spent", CreditHelper.Format(totalSpent), inline: true)
-            .AddField("🏅 Prestige", prestigeRank, inline: true)
-            .AddField("⭐ Lifetime", CreditHelper.Format(lifetimeEarned), inline: true)
-            .AddField("🔥 Daily Streak", streakDisplay, inline: true)
-            .WithFooter(isSelf ? "Use /daily and /work to earn more!" : Username, AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"{CreditHelper.CurrencyEmoji}  {target.Username}'s Balance", "", ColourGold,
+            footer: isSelf ? "Use /daily and /work to earn more!" : Username, footerIconUrl: AvatarUrl,
+            fields: [("Balance", CreditHelper.Format(balance), true),
+                     ("Total Earned", CreditHelper.Format(totalEarned), true),
+                     ("Total Spent", CreditHelper.Format(totalSpent), true),
+                     ("🏅 Prestige", prestigeRank, true),
+                     ("⭐ Lifetime", CreditHelper.Format(lifetimeEarned), true),
+                     ("🔥 Daily Streak", streakDisplay, true)])
+            .WithThumbnailUrl(target.GetAvatarUrl()).Build());
     }
 
     // ── /daily ────────────────────────────────────────────────────────────────
 
+    /// <summary>Claims the once-per-24h daily credit reward, scaled up by the user's consecutive-day streak multiplier.</summary>
     [SlashCommand("daily", "Claim your daily credits!")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleDailyAsync()
@@ -112,18 +111,14 @@ public class Economy : InteractionModuleBase<SocketInteractionContext>
                     : 0;
                 var (_, streakLabel) = CreditHelper.StreakMultiplier(currentStreak);
 
-                await FollowupAsync(embed: new EmbedBuilder()
-                    .WithTitle("⏳  Daily Already Claimed")
-                    .WithColor(ColourRed)
-                    .WithDescription(
-                        $"Come back in **{(int)remaining.TotalHours}h {remaining.Minutes}m**." +
-                        (currentStreak > 0
-                            ? $"\n\n🔥 Current streak: **{currentStreak} day{(currentStreak == 1 ? "" : "s")}**" +
-                              (streakLabel != "" ? $" — {streakLabel}" : "")
-                            : ""))
-                    .WithFooter(Username, AvatarUrl)
-                    .WithCurrentTimestamp()
-                    .Build());
+                await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+                    "⏳  Daily Already Claimed",
+                    $"Come back in **{(int)remaining.TotalHours}h {remaining.Minutes}m**." +
+                    (currentStreak > 0
+                        ? $"\n\n🔥 Current streak: **{currentStreak} day{(currentStreak == 1 ? "" : "s")}**" +
+                          (streakLabel != "" ? $" — {streakLabel}" : "")
+                        : ""),
+                    ColourRed, footer: Username, footerIconUrl: AvatarUrl).Build());
                 return;
             }
         }
@@ -220,21 +215,18 @@ public class Economy : InteractionModuleBase<SocketInteractionContext>
         if (nextMilestone > newStreak)
             descLines.AppendLine($"-# Reach day {nextMilestone} for **{nextMult}×** daily rewards.");
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle("🎁  Daily Claimed!")
-            .WithColor(multiplier >= 5m ? ColourGold :
-                       multiplier >= 2m ? new Color(255, 165, 0) : ColourGreen)
-            .WithDescription(descLines.ToString())
-            .AddField("Payout", CreditHelper.Format(finalPayout), inline: true)
-            .AddField("Multiplier", $"{multiplier}×", inline: true)
-            .AddField("Balance", CreditHelper.Format(newBalance), inline: true)
-            .WithFooter($"{Username} • Come back in 24 hours!", AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            "🎁  Daily Claimed!", descLines.ToString(),
+            multiplier >= 5m ? ColourGold : multiplier >= 2m ? new Color(255, 165, 0) : ColourGreen,
+            footer: $"{Username} • Come back in 24 hours!", footerIconUrl: AvatarUrl,
+            fields: [("Payout", CreditHelper.Format(finalPayout), true),
+                     ("Multiplier", $"{multiplier}×", true),
+                     ("Balance", CreditHelper.Format(newBalance), true)]).Build());
     }
 
     // ── /work ─────────────────────────────────────────────────────────────────
 
+    /// <summary>Claims the once-per-hour /work reward: a random credit amount with a flavour-text message.</summary>
     [SlashCommand("work", "Do some work to earn credits!")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleWorkAsync()
@@ -255,13 +247,9 @@ public class Economy : InteractionModuleBase<SocketInteractionContext>
             var remaining = lastWork.AddMinutes(CreditHelper.WorkCooldownMinutes) - DateTime.UtcNow;
             if (remaining > TimeSpan.Zero)
             {
-                await FollowupAsync(embed: new EmbedBuilder()
-                    .WithTitle("⏳  Still Working")
-                    .WithColor(ColourRed)
-                    .WithDescription($"You're still on shift! Clock back in **{remaining.Minutes}m {remaining.Seconds}s**.")
-                    .WithFooter(Username, AvatarUrl)
-                    .WithCurrentTimestamp()
-                    .Build());
+                await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+                    "⏳  Still Working", $"You're still on shift! Clock back in **{remaining.Minutes}m {remaining.Seconds}s**.",
+                    ColourRed, footer: Username, footerIconUrl: AvatarUrl).Build());
                 return;
             }
         }
@@ -282,17 +270,14 @@ public class Economy : InteractionModuleBase<SocketInteractionContext>
             earned *= 2m;
         decimal newBalance = AddCredits(UserId, earned, "work");
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle("💼  You Worked!")
-            .WithColor(ColourGreen)
-            .WithDescription(
-                CreditHelper.WorkMessage(earned) + (hasWorkBoost ? " 💼 *(Work Boost!)*" : "") + "\n\n" +
-                $"Balance: {CreditHelper.Format(newBalance)}")
-            .WithFooter($"{Username} • Come back in 1 hour!", AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            "💼  You Worked!",
+            CreditHelper.WorkMessage(earned) + (hasWorkBoost ? " 💼 *(Work Boost!)*" : "") + "\n\n" +
+            $"Balance: {CreditHelper.Format(newBalance)}",
+            ColourGreen, footer: $"{Username} • Come back in 1 hour!", footerIconUrl: AvatarUrl).Build());
     }
 
+    /// <summary>Transfers credits from the caller directly to another member, notifying the recipient in-channel.</summary>
     [SlashCommand("transfer", "Send credits to another user.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleTransferAsync(
@@ -335,30 +320,24 @@ public class Economy : InteractionModuleBase<SocketInteractionContext>
         decimal newSenderBalance    = DeductCredits(UserId, transferAmount, "transfer_out");
         decimal newRecipientBalance = AddCredits(recipientId, ServerId, transferAmount, "transfer_in");
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"{CreditHelper.CurrencyEmoji}  Transfer Complete")
-            .WithColor(ColourGreen)
-            .WithDescription(
-                $"Sent {CreditHelper.Format(transferAmount)} to {recipient.Mention}.\n\n" +
-                $"Your new balance: {CreditHelper.Format(newSenderBalance)}")
-            .WithFooter(Username, AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build(), ephemeral: true);
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"{CreditHelper.CurrencyEmoji}  Transfer Complete",
+            $"Sent {CreditHelper.Format(transferAmount)} to {recipient.Mention}.\n\n" +
+            $"Your new balance: {CreditHelper.Format(newSenderBalance)}",
+            ColourGreen, footer: Username, footerIconUrl: AvatarUrl).Build(), ephemeral: true);
 
         // Notify recipient via the channel
-        await Context.Channel.SendMessageAsync(embed: new EmbedBuilder()
-            .WithTitle($"{CreditHelper.CurrencyEmoji}  Credits Received!")
-            .WithColor(ColourGold)
-            .WithDescription(
-                $"{Context.User.Mention} sent {CreditHelper.Format(transferAmount)} to {recipient.Mention}!\n" +
-                $"{recipient.DisplayName}'s new balance: {CreditHelper.Format(newRecipientBalance)}")
-            .WithCurrentTimestamp()
-            .Build());
+        await Context.Channel.SendMessageAsync(embed: _embed.BuildSimpleEmbed(
+            $"{CreditHelper.CurrencyEmoji}  Credits Received!",
+            $"{Context.User.Mention} sent {CreditHelper.Format(transferAmount)} to {recipient.Mention}!\n" +
+            $"{recipient.DisplayName}'s new balance: {CreditHelper.Format(newRecipientBalance)}",
+            ColourGold).Build());
     }
 
 
     // ── /donate ───────────────────────────────────────────────────────────────
 
+    /// <summary>Splits a donated amount equally across every server member who has a credit account.</summary>
     [SlashCommand("donate", "Spread your credits equally among all server members who have a balance.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleDonateAsync(
@@ -419,20 +398,17 @@ public class Economy : InteractionModuleBase<SocketInteractionContext>
             AddCredits(recipientId, ServerId, share, "donate_in");
         }
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"{CreditHelper.CurrencyEmoji}  Donation Complete!")
-            .WithColor(ColourGreen)
-            .WithDescription(
-                $"**{CreditHelper.Format(totalDistributed)}** spread equally across **{recipients.Count}** member{(recipients.Count == 1 ? "" : "s")}.\n\n" +
-                $"Each member received: {CreditHelper.Format(share)}\n" +
-                $"Your new balance: {CreditHelper.Format(newBalance)}")
-            .WithFooter(Username, AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"{CreditHelper.CurrencyEmoji}  Donation Complete!",
+            $"**{CreditHelper.Format(totalDistributed)}** spread equally across **{recipients.Count}** member{(recipients.Count == 1 ? "" : "s")}.\n\n" +
+            $"Each member received: {CreditHelper.Format(share)}\n" +
+            $"Your new balance: {CreditHelper.Format(newBalance)}",
+            ColourGreen, footer: Username, footerIconUrl: AvatarUrl).Build());
     }
 
     // ── /creditleaderboard ────────────────────────────────────────────────────
 
+    /// <summary>Shows the top credit balances in this server.</summary>
     [SlashCommand("creditleaderboard", "Show the richest users in this server.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleLeaderboardAsync()
@@ -460,16 +436,13 @@ public class Economy : InteractionModuleBase<SocketInteractionContext>
             sb.AppendLine($"{medal} **{userName}** — {CreditHelper.Format(bal)}");
         }
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"💰  Credit Leaderboard — {Context.Guild.Name}")
-            .WithColor(ColourGold)
-            .WithDescription(sb.ToString())
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"💰  Credit Leaderboard — {Context.Guild.Name}", sb.ToString(), ColourGold).Build());
     }
 
     // ── /prestige ─────────────────────────────────────────────────────────────
 
+    /// <summary>Shows a member's prestige rank (based on lifetime earnings), progress to the next rank, and the full rank ladder.</summary>
     [SlashCommand("prestige", "View your prestige rank and progress.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandlePrestigeAsync(IUser? user = null)
@@ -546,26 +519,25 @@ public class Economy : InteractionModuleBase<SocketInteractionContext>
 
         var (streakMult, _) = CreditHelper.StreakMultiplier(dailyStreak);
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"🏅  {target.Username}'s Prestige")
-            .WithColor(currentIdx >= 6 ? ColourGold :
-                       currentIdx >= 4 ? new Color(88, 101, 242) : ColourGreen)
-            .WithThumbnailUrl(target.GetAvatarUrl())
-            .AddField("Current Rank", current.rank, inline: true)
-            .AddField("Lifetime Earned", CreditHelper.Format(lifetimeEarned), inline: true)
-            .AddField("Daily Multiplier", $"{streakMult}× (day {dailyStreak})", inline: true)
-            .AddField("Progress to Next Rank", progressSection, inline: false)
-            .AddField("Rank Ladder", ladder.ToString(), inline: false)
-            .WithFooter($"{target.Username} • Earn credits to climb the ranks", AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"🏅  {target.Username}'s Prestige", "",
+            currentIdx >= 6 ? ColourGold : currentIdx >= 4 ? new Color(88, 101, 242) : ColourGreen,
+            footer: $"{target.Username} • Earn credits to climb the ranks", footerIconUrl: AvatarUrl,
+            fields: [("Current Rank", current.rank, true),
+                     ("Lifetime Earned", CreditHelper.Format(lifetimeEarned), true),
+                     ("Daily Multiplier", $"{streakMult}× (day {dailyStreak})", true),
+                     ("Progress to Next Rank", progressSection, false),
+                     ("Rank Ladder", ladder.ToString(), false)])
+            .WithThumbnailUrl(target.GetAvatarUrl()).Build());
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
 
+    /// <summary>Ensures a credit account row exists for the user (slash command context).</summary>
     private void EnsureAccount(string userId) =>
         EnsureAccount(userId, ServerId);
 
+    /// <summary>Ensures a credit account row exists for the user in the given server, creating one with a zero balance if missing.</summary>
     private void EnsureAccount(string userId, string serverId) =>
         _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "EnsureCreditAccount",
         [
@@ -636,6 +608,7 @@ public class Economy : InteractionModuleBase<SocketInteractionContext>
         return dt.Rows.Count > 0 ? decimal.Parse(dt.Rows[0]["Balance"].ToString()!) : 0m;
     }
 
+    /// <summary>Posts a standard Economy-branded error embed.</summary>
     private async Task ErrorAsync(string message) =>
         await FollowupAsync(embed: _embed.BuildErrorEmbed("Economy", message, Username).Build());
 }

@@ -40,6 +40,7 @@ public partial class Games
     private const int TimeoutSeconds = 45;
 
 
+    /// <summary>Starts a word-scramble game in the channel (one at a time) at the chosen difficulty, and schedules a background task to expire and reveal the answer if nobody solves it in time.</summary>
     [SlashCommand("scramble", "Unscramble the word before time runs out!")]
     [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
     public async Task HandleScrambleAsync(
@@ -78,16 +79,12 @@ public partial class Games
             _ => (Color.Orange, "Medium", "🟠")
         };
 
-        var msg = await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"🔤  Word Scramble  {style.emoji} {style.label}")
-            .WithColor(style.colour)
-            .WithDescription(
-                $"## `{scrambled.ToUpperInvariant()}`\n\n" +
-                $"Type the unscrambled word in this channel to win!\n" +
-                $"⏱️ You have **{TimeoutSeconds} seconds**.")
-            .WithFooter($"Started by {Username}")
-            .WithCurrentTimestamp()
-            .Build());
+        var msg = await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"🔤  Word Scramble  {style.emoji} {style.label}",
+            $"## `{scrambled.ToUpperInvariant()}`\n\n" +
+            $"Type the unscrambled word in this channel to win!\n" +
+            $"⏱️ You have **{TimeoutSeconds} seconds**.",
+            style.colour, footer: $"Started by {Username}").Build());
 
         _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "AddScrambleGame",
         [
@@ -126,20 +123,15 @@ public partial class Games
             {
                 if (client.GetChannel(channelId) is IMessageChannel ch)
                 {
-                    await ch.SendMessageAsync(embed: new EmbedBuilder()
-                        .WithTitle("⏰  Time's Up!")
-                        .WithColor(Color.Red)
-                        .WithDescription($"Nobody solved it! The word was **{word}**.")
-                        .WithCurrentTimestamp()
-                        .Build());
+                    await ch.SendMessageAsync(embed: _embed.BuildSimpleEmbed(
+                        "⏰  Time's Up!", $"Nobody solved it! The word was **{word}**.", Color.Red).Build());
 
                     // Strike-through the original scramble embed to signal it's over.
                     if (await ch.GetMessageAsync(messageId) is IUserMessage original)
-                        await original.ModifyAsync(m => m.Embed = new EmbedBuilder()
-                            .WithTitle("🔤  Word Scramble — Expired")
-                            .WithColor(Color.DarkGrey)
-                            .WithDescription($"~~`{scrambled.ToUpperInvariant()}`~~\n\nNobody got it in time.")
-                            .Build());
+                        await original.ModifyAsync(m => m.Embed = _embed.BuildSimpleEmbed(
+                            "🔤  Word Scramble — Expired",
+                            $"~~`{scrambled.ToUpperInvariant()}`~~\n\nNobody got it in time.",
+                            Color.DarkGrey, timestamp: false).Build());
                 }
             }
             catch { /* channel may be unavailable */ }
@@ -147,6 +139,7 @@ public partial class Games
     }
 
 
+    /// <summary>Picks a random word from the word list matching the given difficulty (defaults to Medium for an unrecognized value).</summary>
     private static string PickWord(string difficulty) => difficulty switch
     {
         "easy" => Easy[Random.Shared.Next(Easy.Length)],

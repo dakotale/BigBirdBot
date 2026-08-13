@@ -1,5 +1,6 @@
 namespace DiscordBot.Helper;
 
+/// <summary>Static helper for the daily journaling feature — supplies writing prompts for reminders and the /journal command.</summary>
 internal static class JournalHelper
 {
     internal static readonly string[] Prompts =
@@ -36,8 +37,10 @@ internal static class JournalHelper
         "What are you holding onto that you could let go of?",
     ];
 
+    /// <summary>Returns one random journaling prompt, used for the daily reminder DM.</summary>
     internal static string GetRandomPrompt() => Prompts[Random.Shared.Next(Prompts.Length)];
 
+    /// <summary>Returns <paramref name="count"/> distinct random prompts (shuffles the full list, then takes the first N).</summary>
     internal static string[] GetRandomPrompts(int count) =>
         Prompts.OrderBy(_ => Random.Shared.Next()).Take(count).ToArray();
 }

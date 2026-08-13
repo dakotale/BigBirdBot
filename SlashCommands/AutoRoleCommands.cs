@@ -7,6 +7,7 @@ using Microsoft.Data.SqlClient;
 
 namespace DiscordBot.SlashCommands
 {
+    /// <summary>/autorole subcommands — configure, clear, or check the role auto-assigned to new members (applied by BotHost.AssignAutoRoleAsync).</summary>
     [Group("autorole", "Configure the role automatically assigned to new members.")]
     [CommandContextType(InteractionContextType.Guild)]
     [RequireUserPermission(GuildPermission.ManageRoles)]
@@ -17,6 +18,7 @@ namespace DiscordBot.SlashCommands
 
         private string Username => Context.User.Username;
 
+        /// <summary>Sets (or replaces) the guild's auto-role.</summary>
         [SlashCommand("set", "Set the role to assign when a new member joins.")]
         public async Task HandleSetAsync(
             [Summary("role", "The role to assign on join.")] IRole role)
@@ -35,6 +37,7 @@ namespace DiscordBot.SlashCommands
                 "", Username, EmbedColors.Green).Build(), ephemeral: true);
         }
 
+        /// <summary>Removes the guild's auto-role configuration entirely.</summary>
         [SlashCommand("clear", "Remove the auto-role setting for this server.")]
         public async Task HandleClearAsync()
         {
@@ -51,6 +54,7 @@ namespace DiscordBot.SlashCommands
                 "", Username, EmbedColors.Grey).Build(), ephemeral: true);
         }
 
+        /// <summary>Shows the currently configured auto-role, if any (noting if the role has since been deleted).</summary>
         [SlashCommand("status", "Show the current auto-role configuration.")]
         public async Task HandleStatusAsync()
         {

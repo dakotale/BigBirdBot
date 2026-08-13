@@ -26,6 +26,7 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
     private string Username => Context.User.Username;
 
 
+    /// <summary>Registers a new chat keyword and creates its backing storage directory.</summary>
     [SlashCommand("add", "Add a keyword that maps to one or more bot actions.")]
     [CommandContextType(InteractionContextType.Guild)]
     [RequireUserPermission(ChannelPermission.ManageMessages)]
@@ -64,6 +65,7 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
     }
 
 
+    /// <summary>Permanently deletes a keyword and every entry mapped to it.</summary>
     [SlashCommand("delete", "Permanently remove a keyword and all its mappings.")]
     [CommandContextType(InteractionContextType.Guild)]
     [RequireUserPermission(ChannelPermission.ManageMessages)]
@@ -84,6 +86,7 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
     }
 
 
+    /// <summary>Renames a keyword in the database and moves its on-disk storage directory to match.</summary>
     [SlashCommand("rename", "Rename an existing keyword and its directory.")]
     [CommandContextType(InteractionContextType.Guild)]
     [RequireUserPermission(ChannelPermission.ManageMessages)]
@@ -128,6 +131,7 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
     // /keyword alias [subcommand]
     // ══════════════════════════════════════════════════════════════════════════
 
+    /// <summary>/keyword alias subcommands — extra trigger words that serve entries from an existing keyword.</summary>
     [Group("alias", "Manage keyword aliases.")]
     public class AliasCommands : InteractionModuleBase<SocketInteractionContext>
     {
@@ -137,6 +141,7 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
         private string Username => Context.User.Username;
 
 
+        /// <summary>Creates an alias trigger word that serves the same entries as an existing keyword.</summary>
         [SlashCommand("add", "Create a trigger word that serves entries from an existing keyword.")]
         [CommandContextType(InteractionContextType.Guild)]
         [RequireUserPermission(ChannelPermission.ManageMessages)]
@@ -182,6 +187,7 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
         }
 
 
+        /// <summary>Removes an alias trigger word.</summary>
         [SlashCommand("delete", "Remove a keyword alias.")]
         [CommandContextType(InteractionContextType.Guild)]
         [RequireUserPermission(ChannelPermission.ManageMessages)]
@@ -206,6 +212,7 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
         }
 
 
+        /// <summary>Lists every alias currently pointing at a keyword.</summary>
         [SlashCommand("list", "List all aliases pointing to a keyword.")]
         [CommandContextType(InteractionContextType.Guild)]
         [RequireUserPermission(ChannelPermission.ManageMessages)]
@@ -242,6 +249,7 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
     }
 
 
+    /// <summary>Shows a keyword's total entry count, creator, and up to 5 most recent entries.</summary>
     [SlashCommand("info", "Show stats and recent entries for a keyword.")]
     [CommandContextType(InteractionContextType.Guild)]
     [RequireUserPermission(ChannelPermission.ManageMessages)]
@@ -278,18 +286,16 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
             }))
             : "*No entries yet*";
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"🗂️  Keyword Info — {keyword}")
-            .WithColor(Color.Blue)
-            .AddField("Total Entries", count, inline: true)
-            .AddField("Created By", created, inline: true)
-            .AddField("Recent Entries (up to 5)", recentStr, inline: false)
-            .WithFooter($"Requested by {Username}", Context.User.GetAvatarUrl())
-            .WithCurrentTimestamp()
-            .Build(), ephemeral: true);
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"🗂️  Keyword Info — {keyword}", "", Color.Blue,
+            footer: $"Requested by {Username}", footerIconUrl: Context.User.GetAvatarUrl(),
+            fields: [("Total Entries", count, true),
+                     ("Created By", created, true),
+                     ("Recent Entries (up to 5)", recentStr, false)]).Build(), ephemeral: true);
     }
 
 
+    /// <summary>Lists every keyword registered in this server, paginated 15 per message.</summary>
     [SlashCommand("list", "List all keywords registered in this server.")]
     [CommandContextType(InteractionContextType.Guild)]
     [RequireUserPermission(ChannelPermission.ManageMessages)]
@@ -313,11 +319,10 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
 
         for (int page = 0; page < (int)Math.Ceiling(rows.Count / (double)pageSize); page++)
         {
-            var builder = new EmbedBuilder()
-                .WithTitle($"📋  Registered Keywords — Page {page + 1}")
-                .WithColor(Color.Blue)
-                .WithFooter($"{rows.Count} keyword(s) total  •  Requested by {Username}", Context.User.GetAvatarUrl())
-                .WithCurrentTimestamp();
+            var builder = _embed.BuildSimpleEmbed(
+                $"📋  Registered Keywords — Page {page + 1}", "", Color.Blue,
+                footer: $"{rows.Count} keyword(s) total  •  Requested by {Username}",
+                footerIconUrl: Context.User.GetAvatarUrl());
 
             foreach (var r in rows.Skip(page * pageSize).Take(pageSize))
             {
@@ -335,6 +340,7 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
     // /keyword attachment [subcommand]
     // ══════════════════════════════════════════════════════════════════════════
 
+    /// <summary>/keyword attachment subcommands — bulk-upload files as keyword entries.</summary>
     [Group("attachment", "Bulk-upload attachments to one or more keywords.")]
     public class AttachmentCommands : InteractionModuleBase<SocketInteractionContext>
     {
@@ -478,6 +484,7 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
     // /keyword url [subcommand]
     // ══════════════════════════════════════════════════════════════════════════
 
+    /// <summary>/keyword url subcommands — manage individual URL entries attached to a keyword.</summary>
     [Group("url", "Manage URLs attached to keywords.")]
     public class UrlCommands : InteractionModuleBase<SocketInteractionContext>
     {
@@ -487,6 +494,7 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
         private string Username => Context.User.Username;
 
 
+        /// <summary>Removes one specific URL entry from a keyword.</summary>
         [SlashCommand("delete", "Remove a specific URL from a keyword table.")]
         [CommandContextType(InteractionContextType.Guild)]
         [RequireUserPermission(ChannelPermission.ManageMessages)]
@@ -516,6 +524,7 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
     // /keyword schedule [subcommand]
     // ══════════════════════════════════════════════════════════════════════════
 
+    /// <summary>/keyword schedule subcommands — configure recurring DM deliveries of a keyword's entries to a specific user (sent by BotHost.RunScheduledKeywordsAsync).</summary>
     [Group("schedule", "Manage scheduled keyword deliveries for users.")]
     public class ScheduleCommands : InteractionModuleBase<SocketInteractionContext>
     {
@@ -525,6 +534,7 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
         private string Username => Context.User.Username;
 
 
+        /// <summary>Schedules a recurring keyword delivery DM for a user.</summary>
         [SlashCommand("add", "Schedule a recurring keyword delivery for a user.")]
         [CommandContextType(InteractionContextType.Guild)]
         [RequireUserPermission(ChannelPermission.ManageMessages)]
@@ -571,6 +581,7 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
         }
 
 
+        /// <summary>Cancels a scheduled keyword delivery for a user.</summary>
         [SlashCommand("remove", "Remove a scheduled keyword delivery for a user.")]
         [CommandContextType(InteractionContextType.Guild)]
         [RequireUserPermission(ChannelPermission.ManageMessages)]
@@ -593,6 +604,7 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
         }
 
 
+        /// <summary>Lists every scheduled keyword delivery configured for a user, with delivery times.</summary>
         [SlashCommand("list", "List the scheduled keyword deliveries for a user.")]
         [CommandContextType(InteractionContextType.Guild)]
         [RequireUserPermission(ChannelPermission.ManageMessages)]
@@ -612,12 +624,10 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
                 return;
             }
 
-            var builder = new EmbedBuilder()
-                .WithTitle($"📅  Schedule — {user.DisplayName}")
-                .WithColor(Color.Blue)
-                .WithThumbnailUrl(user.GetDisplayAvatarUrl() ?? user.GetDefaultAvatarUrl())
-                .WithFooter($"Requested by {Username}", Context.User.GetAvatarUrl())
-                .WithCurrentTimestamp();
+            var builder = _embed.BuildSimpleEmbed(
+                $"📅  Schedule — {user.DisplayName}", "", Color.Blue,
+                footer: $"Requested by {Username}", footerIconUrl: Context.User.GetAvatarUrl())
+                .WithThumbnailUrl(user.GetDisplayAvatarUrl() ?? user.GetDefaultAvatarUrl());
 
             foreach (DataRow row in dt.Rows)
             {
@@ -631,6 +641,7 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
         }
 
 
+        /// <summary>Owner-only: manually requeues a user's scheduled keyword delivery, e.g. after a failed send.</summary>
         [SlashCommand("requeue", "Requeue a user's scheduled keyword event after a delivery failure.")]
         [CommandContextType(InteractionContextType.Guild)]
         [RequireOwner]

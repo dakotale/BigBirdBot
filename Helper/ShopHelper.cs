@@ -277,14 +277,17 @@ public static class ShopHelper
 
     // ── Lookup helpers ────────────────────────────────────────────────────────
 
+    /// <summary>Looks up a catalog item by its key, case-insensitively.</summary>
     public static ShopItem? Find(string key) =>
         Items.FirstOrDefault(i => i.Key.Equals(key, StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>Returns every item in the given category, or the full catalog for <see cref="ShopCategory.All"/>.</summary>
     public static IEnumerable<ShopItem> ByCategory(ShopCategory cat) =>
         cat == ShopCategory.All ? Items : Items.Where(i => i.Category == cat);
 
     // ── Category display ──────────────────────────────────────────────────────
 
+    /// <summary>Display emoji for a shop category, used in browse headers.</summary>
     public static string CategoryEmoji(ShopCategory cat) => cat switch
     {
         ShopCategory.PetConsumable => "🐾",
@@ -295,6 +298,7 @@ public static class ShopHelper
         _ => "🛒"
     };
 
+    /// <summary>Display name for a shop category, used in browse headers.</summary>
     public static string CategoryLabel(ShopCategory cat) => cat switch
     {
         ShopCategory.PetConsumable => "Pet Consumables",
@@ -305,6 +309,7 @@ public static class ShopHelper
         _ => "All Items"
     };
 
+    /// <summary>Subtitle text shown under a category's header in /shop browse.</summary>
     public static string CategoryDescription(ShopCategory cat) => cat switch
     {
         ShopCategory.PetConsumable => "Restore and boost your pet's stats.",

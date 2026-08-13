@@ -4,10 +4,12 @@ using System.Text;
 
 namespace DiscordBot.Services;
 
+/// <summary>Anthropic-backed implementation of <see cref="IAIChatService"/>, used by the /ai chat commands.</summary>
 public sealed class AIChatService : IAIChatService
 {
     private readonly AnthropicClient _client = new() { ApiKey = Constants.Constants.anthropicApiKey };
 
+    /// <summary>Streams a completion from Claude using the given persona as the system prompt, then returns the assembled text.</summary>
     public async Task<string> GetResponseAsync(string persona, IEnumerable<(string Role, string Text)> history, string userMessage)
     {
         var messages = history

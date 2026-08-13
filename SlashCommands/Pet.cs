@@ -37,6 +37,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
     private const int BattleCooldownSeconds = 300;
 
 
+    /// <summary>Adopts a new pet of the given species/breed with a chosen name (up to 100 per user), auto-marking it active if it's the user's first.</summary>
     [SlashCommand("adopt", "Adopt a new pet and give it a name!")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleAdoptAsync(
@@ -94,22 +95,19 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
 
         string emoji = PetHelper.PetEmoji(species, 100, 100, false, false);
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"{emoji}  Welcome, {name}!")
-            .WithColor(ColourSuccess)
-            .WithDescription(
-                $"You adopted a **{breed}** named **{name}**! 🎉\n\n" +
-                $"Take good care of them — feed them, play with them, and keep them happy.\n\n" +
-                $"Use `/pet card` to see their stats, and `/pet feed` when they get hungry!")
-            .WithFooter($"Adopted by {Username}", AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"{emoji}  Welcome, {name}!",
+            $"You adopted a **{breed}** named **{name}**! 🎉\n\n" +
+            $"Take good care of them — feed them, play with them, and keep them happy.\n\n" +
+            $"Use `/pet card` to see their stats, and `/pet feed` when they get hungry!",
+            ColourSuccess, footer: $"Adopted by {Username}", footerIconUrl: AvatarUrl).Build());
     }
 
 
     internal const int PetsPerPage = 5;
     internal static readonly Color PetAccentColor = EmbedColors.Peach;
 
+    /// <summary>Lists all of the user's pets as a paginated embed with Prev/Next buttons.</summary>
     [SlashCommand("list", "List all your pets.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandlePetsAsync()
@@ -132,6 +130,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
     }
 
 
+    /// <summary>Shows the active pet's full detailed stat card, including its last journal activity and any equipped title/aura cosmetics.</summary>
     [SlashCommand("card", "Show your active pet's full stat card.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandlePetCardAsync()
@@ -177,6 +176,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
     }
 
 
+    /// <summary>Feeds the active pet a chosen food item (subject to level lock and cooldown), restoring hunger/happiness, waking it from hibernation if needed, and granting XP.</summary>
     [SlashCommand("feed", "Feed your active pet.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleFeedAsync(
@@ -257,21 +257,18 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
 
         var (_, levelUp) = CheckLevelUp(oldXp, newXp);
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"{foodItem.emoji}  Fed {petName}!")
-            .WithColor(ColourSuccess)
-            .WithDescription(
-                $"You fed **{petName}** some **{food}**! {foodItem.emoji}\n\n" +
-                (wasHibernating ? "🌅 **Your pet woke up from hibernation!**\n\n" : "") +
-                $"🍽️ Hunger: {PetHelper.StatBar(hunger)} **{hunger}/100**\n" +
-                $"😊 Happiness: {PetHelper.StatBar(happiness)} **{happiness}/100**" +
-                (levelUp is not null ? $"\n\n{levelUp}" : ""))
-            .WithFooter($"{Username} • +{PetHelper.XpFeed} XP", AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"{foodItem.emoji}  Fed {petName}!",
+            $"You fed **{petName}** some **{food}**! {foodItem.emoji}\n\n" +
+            (wasHibernating ? "🌅 **Your pet woke up from hibernation!**\n\n" : "") +
+            $"🍽️ Hunger: {PetHelper.StatBar(hunger)} **{hunger}/100**\n" +
+            $"😊 Happiness: {PetHelper.StatBar(happiness)} **{happiness}/100**" +
+            (levelUp is not null ? $"\n\n{levelUp}" : ""),
+            ColourSuccess, footer: $"{Username} • +{PetHelper.XpFeed} XP", footerIconUrl: AvatarUrl).Build());
     }
 
 
+    /// <summary>Pets the active pet for a happiness boost and XP, replying with a species-specific flavor reaction.</summary>
     [SlashCommand("pat", "Pet your active pet to boost their happiness!")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandlePetPetAsync()
@@ -475,19 +472,16 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
         string reaction = reactions[Random.Shared.Next(reactions.Length)];
         var (_, levelUp) = CheckLevelUp(oldXp, newXp);
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"🤗  Petted {petName}!")
-            .WithColor(ColourPet)
-            .WithDescription(
-                $"**{petName}** {reaction}\n\n" +
-                $"😊 Happiness: {PetHelper.StatBar(happiness)} **{happiness}/100**" +
-                (levelUp is not null ? $"\n\n{levelUp}" : ""))
-            .WithFooter($"{Username} • +{PetHelper.XpPet} XP", AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"🤗  Petted {petName}!",
+            $"**{petName}** {reaction}\n\n" +
+            $"😊 Happiness: {PetHelper.StatBar(happiness)} **{happiness}/100**" +
+            (levelUp is not null ? $"\n\n{levelUp}" : ""),
+            ColourPet, footer: $"{Username} • +{PetHelper.XpPet} XP", footerIconUrl: AvatarUrl).Build());
     }
 
 
+    /// <summary>Grooms the active pet to restore hygiene (and a little happiness), with a species-specific flavor verb and journal entry.</summary>
     [SlashCommand("groom", "Groom your active pet to boost their hygiene!")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleGroomAsync()
@@ -563,20 +557,17 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
 
         var (_, levelUp) = CheckLevelUp(oldXp, newXp);
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"🛁  Groomed {petName}!")
-            .WithColor(ColourSuccess)
-            .WithDescription(
-                $"You {groomVerb} **{petName}**! They're squeaky clean! ✨\n\n" +
-                $"🧼 Hygiene: {PetHelper.StatBar(hygiene)} **{hygiene}/100**\n" +
-                $"😊 Happiness: {PetHelper.StatBar(happy)} **{happy}/100**" +
-                (levelUp is not null ? $"\n\n{levelUp}" : ""))
-            .WithFooter($"{Username} • +{PetHelper.XpGroom} XP", AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"🛁  Groomed {petName}!",
+            $"You {groomVerb} **{petName}**! They're squeaky clean! ✨\n\n" +
+            $"🧼 Hygiene: {PetHelper.StatBar(hygiene)} **{hygiene}/100**\n" +
+            $"😊 Happiness: {PetHelper.StatBar(happy)} **{happy}/100**" +
+            (levelUp is not null ? $"\n\n{levelUp}" : ""),
+            ColourSuccess, footer: $"{Username} • +{PetHelper.XpGroom} XP", footerIconUrl: AvatarUrl).Build());
     }
 
 
+    /// <summary>Plays with the active pet (unless hibernating) to boost happiness at the cost of energy/hunger, replying with a species-specific activity and journal entry.</summary>
     [SlashCommand("play", "Play with your active pet!")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandlePlayWithAsync()
@@ -794,21 +785,18 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
             new SqlParameter("@Details", $"{petName} {activity}! 🎮")
         ]);
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"🎮  Playtime with {petName}!")
-            .WithColor(ColourPet)
-            .WithDescription(
-                $"**{petName}** {activity}! 🎉\n\n" +
-                $"😊 Happiness: {PetHelper.StatBar(happiness)} **{happiness}/100**\n" +
-                $"⚡ Energy: {PetHelper.StatBar(energy)} **{energy}/100**\n" +
-                $"🍽️ Hunger: {PetHelper.StatBar(hunger)} **{hunger}/100**" +
-                (levelUp is not null ? $"\n\n{levelUp}" : ""))
-            .WithFooter($"{Username} • +{PetHelper.XpPlay} XP", AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"🎮  Playtime with {petName}!",
+            $"**{petName}** {activity}! 🎉\n\n" +
+            $"😊 Happiness: {PetHelper.StatBar(happiness)} **{happiness}/100**\n" +
+            $"⚡ Energy: {PetHelper.StatBar(energy)} **{energy}/100**\n" +
+            $"🍽️ Hunger: {PetHelper.StatBar(hunger)} **{hunger}/100**" +
+            (levelUp is not null ? $"\n\n{levelUp}" : ""),
+            ColourPet, footer: $"{Username} • +{PetHelper.XpPlay} XP", footerIconUrl: AvatarUrl).Build());
     }
 
 
+    /// <summary>Puts the active pet to sleep to restore energy — only available once energy drops below the sleep threshold.</summary>
     [SlashCommand("sleep", "Put your pet to sleep to restore their energy.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandlePetSleepAsync()
@@ -860,18 +848,15 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
             new SqlParameter("@Details", $"{petName} took a nap and restored some energy. 💤")
         ]);
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"💤  {petName} is napping!")
-            .WithColor(ColourInfo)
-            .WithDescription(
-                $"**{petName}** curled up for a nap. 😴\n\n" +
-                $"⚡ Energy: {PetHelper.StatBar(energy)} **{energy}/100**")
-            .WithFooter(Username, AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"💤  {petName} is napping!",
+            $"**{petName}** curled up for a nap. 😴\n\n" +
+            $"⚡ Energy: {PetHelper.StatBar(energy)} **{energy}/100**",
+            ColourInfo, footer: Username, footerIconUrl: AvatarUrl).Build());
     }
 
 
+    /// <summary>Gives the active pet a low-cooldown, XP-free happiness nudge with a species-specific flavor reaction.</summary>
     [SlashCommand("hug", "Give your pet a warm hug! Small happiness boost, no XP.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandlePetHugAsync()
@@ -1082,16 +1067,14 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
 
         string reaction = hugReactions[Random.Shared.Next(hugReactions.Length)];
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"🤗  Hugged {petName}!")
-            .WithColor(ColourPet)
-            .WithDescription($"**{petName}** {reaction}\n\n😊 Happiness: {PetHelper.StatBar(happiness)} **{happiness}/100**")
-            .WithFooter(Username, AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"🤗  Hugged {petName}!",
+            $"**{petName}** {reaction}\n\n😊 Happiness: {PetHelper.StatBar(happiness)} **{happiness}/100**",
+            ColourPet, footer: Username, footerIconUrl: AvatarUrl).Build());
     }
 
 
+    /// <summary>Shows the active pet's most recent journal entries (feed/play/battle/etc. history) as a timestamped log.</summary>
     [SlashCommand("journal", "View the recent activity log for your active pet.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandlePetJournalAsync()
@@ -1114,13 +1097,9 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
 
         if (entries.Rows.Count == 0)
         {
-            await FollowupAsync(embed: new EmbedBuilder()
-                .WithTitle($"📓  {petName}'s Journal")
-                .WithColor(ColourInfo)
-                .WithDescription("No journal entries yet — go interact with your pet!")
-                .WithFooter(Username, AvatarUrl)
-                .WithCurrentTimestamp()
-                .Build());
+            await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+                $"📓  {petName}'s Journal", "No journal entries yet — go interact with your pet!",
+                ColourInfo, footer: Username, footerIconUrl: AvatarUrl).Build());
             return;
         }
 
@@ -1138,16 +1117,13 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
             sb.AppendLine($"{eventEmoji} {details} {timestamp}");
         }
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"📓  {emoji} {petName}'s Journal")
-            .WithColor(ColourInfo)
-            .WithDescription(sb.ToString())
-            .WithFooter($"Last 20 entries • {Username}", AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"📓  {emoji} {petName}'s Journal", sb.ToString(),
+            ColourInfo, footer: $"Last 20 entries • {Username}", footerIconUrl: AvatarUrl).Build());
     }
 
 
+    /// <summary>Makes the active pet perform one of 4 level-gated tricks.</summary>
     [SlashCommand("trick", "Make your pet perform a trick!")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleTrickAsync(
@@ -1173,16 +1149,13 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
         string species = row["Species"].ToString()!;
         string trick = PetHelper.PerformTrick(species, int.Parse(slot));
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"🎪  {petName} performs a trick!")
-            .WithColor(ColourPet)
-            .WithDescription($"**{petName}** {trick}")
-            .WithFooter(Username, AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"🎪  {petName} performs a trick!", $"**{petName}** {trick}",
+            ColourPet, footer: Username, footerIconUrl: AvatarUrl).Build());
     }
 
 
+    /// <summary>Equips an accessory (hat or collar/outfit) to the active pet's level-gated accessory slot.</summary>
     [SlashCommand("accessory", "Equip an accessory to your active pet. (Unlocks at level 10)")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleAccessoryAsync(
@@ -1213,16 +1186,13 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
 
         string petName = row["Name"].ToString()!;
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle("👗  Accessory Equipped!")
-            .WithColor(ColourSuccess)
-            .WithDescription($"**{petName}** is now wearing **{item.Trim()}**! Looking good! ✨")
-            .WithFooter(Username, AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            "👗  Accessory Equipped!", $"**{petName}** is now wearing **{item.Trim()}**! Looking good! ✨",
+            ColourSuccess, footer: Username, footerIconUrl: AvatarUrl).Build());
     }
 
 
+    /// <summary>Switches which of the user's pets is currently active.</summary>
     [SlashCommand("setactive", "Switch which pet is currently active.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleSetActiveAsync([MinValue(1)] int petId)
@@ -1247,16 +1217,13 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
         string species = dt.Rows[0]["Species"].ToString()!;
         string emoji = PetHelper.PetEmoji(species, 50, 50, false, false);
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"{emoji}  Active pet changed!")
-            .WithColor(ColourInfo)
-            .WithDescription($"**{name}** is now your active pet.")
-            .WithFooter(Username, AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"{emoji}  Active pet changed!", $"**{name}** is now your active pet.",
+            ColourInfo, footer: Username, footerIconUrl: AvatarUrl).Build());
     }
 
 
+    /// <summary>Renames the active pet.</summary>
     [SlashCommand("rename", "Rename your active pet.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleRenameAsync([MinLength(1), MaxLength(32)] string newName)
@@ -1275,16 +1242,13 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
             new SqlParameter("@Name",  newName.Trim())
         ]);
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle("✏️  Pet Renamed!")
-            .WithColor(ColourInfo)
-            .WithDescription($"**{oldName}** is now known as **{newName.Trim()}**!")
-            .WithFooter(Username, AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            "✏️  Pet Renamed!", $"**{oldName}** is now known as **{newName.Trim()}**!",
+            ColourInfo, footer: Username, footerIconUrl: AvatarUrl).Build());
     }
 
 
+    /// <summary>Prompts for confirmation before permanently releasing one of the user's pets (deletion itself is handled by <see cref="PetComponentHandlers.OnReleaseConfirmAsync"/>).</summary>
     [SlashCommand("release", "Release one of your pets. This cannot be undone!")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleReleaseAsync([MinValue(1)] int petId)
@@ -1309,20 +1273,17 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
             .WithButton("Cancel", "release:cancel", ButtonStyle.Secondary, new Emoji("✖️"))
             .Build();
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"⚠️  Release {name}?")
-            .WithColor(ColourError)
-            .WithDescription(
-                $"{emoji} **{name}** is a level **{level}** {species}.\n\n" +
-                "Releasing a pet is **permanent** and cannot be undone.\nAre you sure?")
-            .WithFooter(Username, AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build(), components: components);
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"⚠️  Release {name}?",
+            $"{emoji} **{name}** is a level **{level}** {species}.\n\n" +
+            "Releasing a pet is **permanent** and cannot be undone.\nAre you sure?",
+            ColourError, footer: Username, footerIconUrl: AvatarUrl).Build(), components: components);
     }
 
     // release:confirm and release:cancel are in PetComponentHandlers below (outside [Group])
 
 
+    /// <summary>Shows the server's top pets ranked by level, with medal emoji for the top 3.</summary>
     [SlashCommand("leaderboard", "Show the top pets in this server by level.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleLeaderboardAsync()
@@ -1359,15 +1320,12 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
             rank++;
         }
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"🏆  Pet Leaderboard — {Context.Guild.Name}")
-            .WithColor(ColourVeteran)
-            .WithDescription(sb.ToString())
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"🏆  Pet Leaderboard — {Context.Guild.Name}", sb.ToString(), ColourVeteran).Build());
     }
 
 
+    /// <summary>Lists food items available at the active pet's current level.</summary>
     [SlashCommand("foodlist", "Show all available food items for your pet.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleFoodListAsync()
@@ -1379,16 +1337,13 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
 
         int level = PetHelper.LevelFromXp(int.Parse(row["XP"].ToString()!));
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle("🍽️  Available Food")
-            .WithColor(ColourPet)
-            .WithDescription(PetHelper.ListFoods(level))
-            .WithFooter($"Your pet is level {level}", AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            "🍽️  Available Food", PetHelper.ListFoods(level),
+            ColourPet, footer: $"Your pet is level {level}", footerIconUrl: AvatarUrl).Build());
     }
 
 
+    /// <summary>Sends the active pet exploring for a level-scaled duration, or — if already out — claims the reward once the return time has passed (applying any active XP/explore boost).</summary>
     [SlashCommand("explore", "Send your pet on an adventure! Come back later to collect the reward.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleExploreAsync()
@@ -1467,20 +1422,17 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
                 string opener = PetHelper.ExploreReturnOpener(petName);
                 string? picUrl = row["PictureUrl"] as string;
 
-                var eb = new EmbedBuilder()
-                    .WithTitle($"{reward.emoji}  {petName} returned from their adventure!")
-                    .WithColor(ColourSuccess)
-                    .WithDescription(
-                        $"{opener}\n\n" +
-                        $"{adventure}\n\n" +
-                        $"**Reward:** {reward.emoji} {rewardDesc}\n\n" +
-                        (hasXpBoost ? $"✨ **+{reward.xp + bonusXp} XP** *(XP Boost! +{bonusXp} bonus)*\n" : $"✨ **+{reward.xp} XP**\n") +
-                        $"😊 Happiness: {PetHelper.StatBar(happiness)} **{happiness}/100**\n" +
-                        $"⚡ Energy: {PetHelper.StatBar(energy)} **{energy}/100**\n" +
-                        $"🍽️ Hunger: {PetHelper.StatBar(hunger)} **{hunger}/100**" +
-                        (levelUp is not null ? $"\n\n{levelUp}" : ""))
-                    .WithFooter($"{Username} • +{reward.xp} XP", AvatarUrl)
-                    .WithCurrentTimestamp();
+                var eb = _embed.BuildSimpleEmbed(
+                    $"{reward.emoji}  {petName} returned from their adventure!",
+                    $"{opener}\n\n" +
+                    $"{adventure}\n\n" +
+                    $"**Reward:** {reward.emoji} {rewardDesc}\n\n" +
+                    (hasXpBoost ? $"✨ **+{reward.xp + bonusXp} XP** *(XP Boost! +{bonusXp} bonus)*\n" : $"✨ **+{reward.xp} XP**\n") +
+                    $"😊 Happiness: {PetHelper.StatBar(happiness)} **{happiness}/100**\n" +
+                    $"⚡ Energy: {PetHelper.StatBar(energy)} **{energy}/100**\n" +
+                    $"🍽️ Hunger: {PetHelper.StatBar(hunger)} **{hunger}/100**" +
+                    (levelUp is not null ? $"\n\n{levelUp}" : ""),
+                    ColourSuccess, footer: $"{Username} • +{reward.xp} XP", footerIconUrl: AvatarUrl);
 
                 if (picUrl is not null) eb.WithThumbnailUrl(picUrl);
 
@@ -1494,15 +1446,11 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
                 ? $"{remaining.Seconds}s"
                 : $"{(int)remaining.TotalMinutes}m {remaining.Seconds}s";
 
-            await FollowupAsync(embed: new EmbedBuilder()
-                .WithTitle($"🗺️  {petName} is still exploring!")
-                .WithColor(ColourInfo)
-                .WithDescription(
-                    $"**{petName}** is out on an adventure and hasn't returned yet.\n\n" +
-                    $"⏳ Returns in **{timeLeft}** — come back to collect their reward!")
-                .WithFooter(Username, AvatarUrl)
-                .WithCurrentTimestamp()
-                .Build());
+            await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+                $"🗺️  {petName} is still exploring!",
+                $"**{petName}** is out on an adventure and hasn't returned yet.\n\n" +
+                $"⏳ Returns in **{timeLeft}** — come back to collect their reward!",
+                ColourInfo, footer: Username, footerIconUrl: AvatarUrl).Build());
             return;
         }
 
@@ -1534,19 +1482,16 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
 
         string departureMsg = PetHelper.ExploreDeparture(species);
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"🗺️  {petName} set off on an adventure!")
-            .WithColor(ColourPet)
-            .WithDescription(
-                $"{departureMsg}\n\n" +
-                $"⏳ They'll be back in **{durationMinutes} minutes**.\n" +
-                $"Use `/explore` again to collect their reward when they return!")
-            .WithFooter(Username, AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"🗺️  {petName} set off on an adventure!",
+            $"{departureMsg}\n\n" +
+            $"⏳ They'll be back in **{durationMinutes} minutes**.\n" +
+            $"Use `/explore` again to collect their reward when they return!",
+            ColourPet, footer: Username, footerIconUrl: AvatarUrl).Build());
     }
 
 
+    /// <summary>Challenges another user's active pet to a power-score battle (rate-limited per user), animating the result across 3 message edits and granting XP to both pets.</summary>
     [SlashCommand("battle", "Challenge another user's active pet to a battle!")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandlePetBattleAsync(IUser opponent)
@@ -1751,15 +1696,13 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
 
 
         // Pre-battle tease
-        var preBattleEmbed = new EmbedBuilder()
-            .WithTitle($"⚔️  {cLabel} vs {oLabel}")
-            .WithColor(ColourInfo)
-            .WithDescription("*Two pets step onto the field…*")
-            .AddField($"{cLabel} (Lv.{challengerLevel})", $"Power: **{challengerPower}**", inline: true)
-            .AddField("vs", "⚔️", inline: true)
-            .AddField($"{oLabel} (Lv.{opponentLevel})", $"Power: **{opponentPower}**", inline: true)
-            .AddField("Battle Log", "*Sizing each other up…*", inline: false)
-            .WithFooter($"{Username} challenged {opponent.Username}").WithCurrentTimestamp();
+        var preBattleEmbed = _embed.BuildSimpleEmbed(
+            $"⚔️  {cLabel} vs {oLabel}", "*Two pets step onto the field…*", ColourInfo,
+            footer: $"{Username} challenged {opponent.Username}",
+            fields: [($"{cLabel} (Lv.{challengerLevel})", $"Power: **{challengerPower}**", true),
+                     ("vs", "⚔️", true),
+                     ($"{oLabel} (Lv.{opponentLevel})", $"Power: **{opponentPower}**", true),
+                     ("Battle Log", "*Sizing each other up…*", false)]);
 
         string? prePic = challengerPic ?? opponentPic;
         if (prePic is not null) preBattleEmbed.WithThumbnailUrl(prePic);
@@ -1775,6 +1718,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
     }
 
 
+    /// <summary>Sets (or shows) a custom picture for the active pet from an image attachment, used as a thumbnail in its embeds.</summary>
     [SlashCommand("picture", "Upload a photo of your active pet — it will appear in all their embeds.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandlePetPictureAsync(
@@ -1796,30 +1740,23 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
             string? current = row["PictureUrl"] as string;
             if (!string.IsNullOrWhiteSpace(current))
             {
-                await FollowupAsync(embed: new EmbedBuilder()
-                    .WithTitle($"🖼️  {petName}'s Picture")
-                    .WithColor(ColourPet)
-                    .WithDescription(
-                        $"**{petName}** already has a picture set.\n\n" +
-                        $"Upload a new image with `/pet picture [image]` to replace it, " +
-                        $"or use `/pet pictureclear` to remove it.")
+                await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+                    $"🖼️  {petName}'s Picture",
+                    $"**{petName}** already has a picture set.\n\n" +
+                    $"Upload a new image with `/pet picture [image]` to replace it, " +
+                    $"or use `/pet pictureclear` to remove it.",
+                    ColourPet, footer: Username, footerIconUrl: AvatarUrl)
                     .WithImageUrl(current)
-                    .WithFooter(Username, AvatarUrl)
-                    .WithCurrentTimestamp()
                     .Build());
             }
             else
             {
-                await FollowupAsync(embed: new EmbedBuilder()
-                    .WithTitle($"🖼️  No Picture Set")
-                    .WithColor(ColourInfo)
-                    .WithDescription(
-                        $"**{petName}** doesn't have a picture yet.\n\n" +
-                        $"Attach an image when using `/pet picture` to set one.\n" +
-                        $"Supported formats: PNG, JPG, GIF, WEBP")
-                    .WithFooter(Username, AvatarUrl)
-                    .WithCurrentTimestamp()
-                    .Build());
+                await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+                    $"🖼️  No Picture Set",
+                    $"**{petName}** doesn't have a picture yet.\n\n" +
+                    $"Attach an image when using `/pet picture` to set one.\n" +
+                    $"Supported formats: PNG, JPG, GIF, WEBP",
+                    ColourInfo, footer: Username, footerIconUrl: AvatarUrl).Build());
             }
             return;
         }
@@ -1844,18 +1781,14 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
 
         string emoji = PetHelper.PetEmoji(species, 80, 80, false, level >= 50);
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"🖼️  Picture updated for {petName}!")
-            .WithColor(ColourSuccess)
-            .WithDescription(
-                $"{emoji} **{petName}**'s picture has been set.\n" +
-                $"It will now appear as a thumbnail in all their embeds.")
-            .WithThumbnailUrl(url)
-            .WithFooter(Username, AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"🖼️  Picture updated for {petName}!",
+            $"{emoji} **{petName}**'s picture has been set.\n" +
+            $"It will now appear as a thumbnail in all their embeds.",
+            ColourSuccess, footer: Username, footerIconUrl: AvatarUrl).WithThumbnailUrl(url).Build());
     }
 
+    /// <summary>Removes the active pet's custom picture, reverting to emoji display.</summary>
     [SlashCommand("pictureclear", "Remove the photo from your active pet.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandlePetPictureClearAsync()
@@ -1875,16 +1808,14 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
             new SqlParameter("@PictureUrl", DBNull.Value)
         ]);
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"🖼️  Picture cleared")
-            .WithColor(ColourInfo)
-            .WithDescription($"**{petName}**'s picture has been removed. Emojis will be used instead.")
-            .WithFooter(Username, AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"🖼️  Picture cleared",
+            $"**{petName}**'s picture has been removed. Emojis will be used instead.",
+            ColourInfo, footer: Username, footerIconUrl: AvatarUrl).Build());
     }
 
 
+    /// <summary>Sets or clears a custom bio (up to 1000 characters) for the active pet.</summary>
     [SlashCommand("bio", "Set a custom bio for your active pet (up to 1000 characters). Leave blank to clear it.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandlePetBioAsync(
@@ -1907,27 +1838,20 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
 
         if (string.IsNullOrEmpty(cleaned))
         {
-            await FollowupAsync(embed: new EmbedBuilder()
-                .WithTitle($"📝  Bio cleared")
-                .WithColor(ColourInfo)
-                .WithDescription($"**{petName}**'s bio has been removed.")
-                .WithFooter(Username, AvatarUrl)
-                .WithCurrentTimestamp()
-                .Build());
+            await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+                $"📝  Bio cleared", $"**{petName}**'s bio has been removed.",
+                ColourInfo, footer: Username, footerIconUrl: AvatarUrl).Build());
         }
         else
         {
-            await FollowupAsync(embed: new EmbedBuilder()
-                .WithTitle($"📝  Bio updated!")
-                .WithColor(ColourSuccess)
-                .WithDescription($"**{petName}**'s bio:\n\n*{cleaned}*")
-                .WithFooter(Username, AvatarUrl)
-                .WithCurrentTimestamp()
-                .Build());
+            await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+                $"📝  Bio updated!", $"**{petName}**'s bio:\n\n*{cleaned}*",
+                ColourSuccess, footer: Username, footerIconUrl: AvatarUrl).Build());
         }
     }
 
 
+    /// <summary>Lists all valid breeds for a given species.</summary>
     [SlashCommand("breedlist", "Show all available breeds for a species.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleBreedListAsync(
@@ -1960,16 +1884,13 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
 
         string emoji = PetHelper.PetEmoji(species, 80, 80, false, false);
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"{emoji}  {char.ToUpper(species[0])}{species[1..]} Breeds")
-            .WithColor(ColourPet)
-            .WithDescription(list)
-            .WithFooter("Use /adopt to choose your breed")
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"{emoji}  {char.ToUpper(species[0])}{species[1..]} Breeds", list,
+            ColourPet, footer: "Use /adopt to choose your breed").Build());
     }
 
 
+    /// <summary>Fetches the user's currently active pet row, or an error message if they have none.</summary>
     private (DataRow? row, string? error) GetActivePet()
     {
         var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetActivePet",
@@ -1980,9 +1901,11 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
             : (dt.Rows[0], null);
     }
 
+    /// <summary>Posts a standard pet error embed as the interaction followup.</summary>
     private async Task ErrorAsync(string message) =>
         await FollowupAsync(embed: _embed.BuildErrorEmbed("Pet", message, Username).Build());
 
+    /// <summary>Compares XP before/after a change and, if the pet leveled up, builds the celebratory level-up message (including any unlock text).</summary>
     private static (int newLevel, string? unlockMessage) CheckLevelUp(int oldXp, int newXp)
     {
         int oldLevel = PetHelper.LevelFromXp(oldXp);
@@ -1993,6 +1916,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
         return (newLevel, unlock is not null ? $"{base_}\n{unlock}" : base_);
     }
 
+    /// <summary>Builds the pet stat embed shared by /pet card and other commands — species/level/XP always shown, hunger/happiness/energy/hygiene only when <paramref name="detailed"/>, plus accessories, bio, and cosmetics when present.</summary>
     private (string petName, EmbedBuilder embed) BuildPetEmbed(DataRow row, bool detailed, string? lastActivity = null, string? titleKey = null, string? auraKey = null)
     {
         string petName = row["Name"].ToString()!;
@@ -2076,8 +2000,10 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
 
 // ── Shared page-building helpers (used by Pet group and PetComponentHandlers) ──
 
+/// <summary>Shared paginated-list embed/button builders for the pet list, used by both the Pet group and PetComponentHandlers.</summary>
 internal static class PetPageHelper
 {
+    /// <summary>Builds one page of the user's pet list embed (5 pets per page).</summary>
     internal static EmbedBuilder BuildPetsPageEmbed(System.Data.DataTable dt, int page, string username)
     {
         int total      = dt.Rows.Count;
@@ -2109,14 +2035,12 @@ internal static class PetPageHelper
             sb.AppendLine($"{emoji} **{petName}** — {breedDisplay} — Lv.{level} — {status} `[ID: {petId}]`");
         }
 
-        return new EmbedBuilder()
-            .WithTitle($"🐾  {username}'s Pets ({total} total)")
-            .WithColor(Pet.PetAccentColor)
-            .WithDescription(sb.ToString())
-            .WithFooter($"Page {page + 1}/{totalPages} • Use /pet setactive [ID] to switch")
-            .WithCurrentTimestamp();
+        return new EmbedHelper().BuildSimpleEmbed(
+            $"🐾  {username}'s Pets ({total} total)", sb.ToString(), Pet.PetAccentColor,
+            footer: $"Page {page + 1}/{totalPages} • Use /pet setactive [ID] to switch");
     }
 
+    /// <summary>Builds the Prev/Next pagination buttons for a pet list page, disabling at the first/last page.</summary>
     internal static MessageComponent BuildPetsPageButtons(string userId, int page, int totalPets)
     {
         int totalPages = (totalPets + Pet.PetsPerPage - 1) / Pet.PetsPerPage;
@@ -2131,6 +2055,7 @@ internal static class PetPageHelper
 
 // ── Component interaction handlers for the pet list (must be outside [Group]) ──
 
+/// <summary>Button handlers for the pet list and release-confirmation flow — declared outside [Group] since component interaction IDs aren't routed through the slash-command group.</summary>
 public class PetComponentHandlers : InteractionModuleBase<SocketInteractionContext>
 {
     private readonly StoredProcedure _sp  = new();
@@ -2145,6 +2070,7 @@ public class PetComponentHandlers : InteractionModuleBase<SocketInteractionConte
 
     // ── release:confirm ────────────────────────────────────────────────────────
 
+    /// <summary>Confirms and permanently deletes the pet from the /pet release confirmation prompt.</summary>
     [ComponentInteraction("release:confirm:*")]
     public async Task OnReleaseConfirmAsync(string petIdStr)
     {
@@ -2174,40 +2100,34 @@ public class PetComponentHandlers : InteractionModuleBase<SocketInteractionConte
 
         await ModifyOriginalResponseAsync(m =>
         {
-            m.Embed = new EmbedBuilder()
-                .WithTitle("🌈  Farewell!")
-                .WithColor(ColourInfo)
-                .WithDescription(
-                    $"You released **{name}** into the wild. 🌿\n" +
-                    "They'll always remember you. Goodbye, little friend!")
-                .WithFooter(Username, AvatarUrl)
-                .WithCurrentTimestamp()
-                .Build();
+            m.Embed = _embed.BuildSimpleEmbed(
+                "🌈  Farewell!",
+                $"You released **{name}** into the wild. 🌿\n" +
+                "They'll always remember you. Goodbye, little friend!",
+                ColourInfo, footer: Username, footerIconUrl: AvatarUrl).Build();
             m.Components = new ComponentBuilder().Build();
         });
     }
 
     // ── release:cancel ─────────────────────────────────────────────────────────
 
+    /// <summary>Cancels the /pet release confirmation prompt, leaving the pet untouched.</summary>
     [ComponentInteraction("release:cancel")]
     public async Task OnReleaseCancelAsync()
     {
         await DeferAsync();
         await ModifyOriginalResponseAsync(m =>
         {
-            m.Embed = new EmbedBuilder()
-                .WithTitle("✅  Cancelled")
-                .WithColor(ColourSuccess)
-                .WithDescription("Your pet is safe. 🐾")
-                .WithFooter(Username, AvatarUrl)
-                .WithCurrentTimestamp()
-                .Build();
+            m.Embed = _embed.BuildSimpleEmbed(
+                "✅  Cancelled", "Your pet is safe. 🐾",
+                ColourSuccess, footer: Username, footerIconUrl: AvatarUrl).Build();
             m.Components = new ComponentBuilder().Build();
         });
     }
 
     // ── pets:nav ───────────────────────────────────────────────────────────────
 
+    /// <summary>Handles Prev/Next clicks on a paginated pet list, re-rendering the requested page (only for the list's original owner).</summary>
     [ComponentInteraction("pets:nav:*:*")]
     public async Task OnPetsNavAsync(string targetUserId, string pageStr)
     {

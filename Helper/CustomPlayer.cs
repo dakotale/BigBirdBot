@@ -15,6 +15,7 @@ public sealed class CustomPlayer : QueuedLavalinkPlayer
 {
     private readonly ITextChannel? _textChannel;
 
+    /// <summary>Captures the bound text channel from the player options for later Now Playing notifications.</summary>
     public CustomPlayer(IPlayerProperties<CustomPlayer, CustomPlayerOptions> properties)
         : base(properties)
     {
@@ -80,13 +81,11 @@ public sealed class CustomPlayer : QueuedLavalinkPlayer
     }
 
 
+    /// <summary>Builds the small "Music — {title}" embed used for auto-fired track start notifications.</summary>
     private static EmbedBuilder BuildNowPlayingEmbed(string title, string description, string artwork = "") =>
-        new EmbedBuilder()
-            .WithTitle($"Music — {title}")
-            .WithColor(new Color(88, 101, 242))   // matches Audio.cs ColourDefault
-            .WithDescription(description)
-            .WithImageUrl(artwork)
-            .WithCurrentTimestamp();
+        new EmbedHelper().BuildSimpleEmbed(
+            $"Music — {title}", description, new Color(88, 101, 242))   // matches Audio.cs ColourDefault
+            .WithImageUrl(artwork);
 
     /// <summary>
     /// Builds the same two-row playback button row used by the slash commands

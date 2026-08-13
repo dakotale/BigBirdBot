@@ -159,6 +159,7 @@ public partial class Games
     ];
 
 
+    /// <summary>Starts a Wordle game in the channel (one at a time), posting the empty 6-row board and persisting the answer for chat-message guess checking.</summary>
     [SlashCommand("wordle", "Guess the 5-letter word in 6 attempts!")]
     [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
     public async Task HandleWordleAsync()
@@ -190,6 +191,7 @@ public partial class Games
     }
 
 
+    /// <summary>Builds the Wordle board embed: rendered guess rows padded with empty tiles, titled/coloured for in-progress, win, or loss.</summary>
     public static EmbedBuilder BuildWordleEmbed(
         string answer, List<string> guesses, bool gameOver)
     {
@@ -216,13 +218,9 @@ public partial class Games
             ? (won ? "Well done!" : "Better luck next time!")
             : "Type a 5-letter word in chat to guess!";
 
-        return new EmbedBuilder()
-            .WithTitle(title)
-            .WithColor(colour)
-            .WithDescription(sb.ToString())
-            .AddField("Key", "🟩 Correct  🟨 Wrong position  ⬛ Not in word", inline: false)
-            .WithFooter(footer)
-            .WithCurrentTimestamp();
+        return new EmbedHelper().BuildSimpleEmbed(
+            title, sb.ToString(), colour, footer: footer,
+            fields: [("Key", "🟩 Correct  🟨 Wrong position  ⬛ Not in word", false)]);
     }
 
     /// <summary>

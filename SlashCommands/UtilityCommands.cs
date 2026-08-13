@@ -29,6 +29,7 @@ public class UtilityCommands : InteractionModuleBase<SocketInteractionContext>
     ];
 
 
+    /// <summary>Rolls a random integer between 1 and the given upper bound (inclusive).</summary>
     [SlashCommand("random", "Randomise a number between 1 and the value you provide.")]
     [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
     public async Task GenerateRandomNumberAsync(
@@ -43,6 +44,7 @@ public class UtilityCommands : InteractionModuleBase<SocketInteractionContext>
     }
 
 
+    /// <summary>Converts a message into regional-indicator letter emojis (delegates to <see cref="EmojiText"/>).</summary>
     [SlashCommand("etext", "Convert your message into regional-indicator emojis.")]
     [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
     public async Task HandleEmojiTextAsync(
@@ -53,6 +55,7 @@ public class UtilityCommands : InteractionModuleBase<SocketInteractionContext>
     }
 
 
+    /// <summary>Posts a reaction poll for up to 10 non-empty choices (2 required), with an optional image attachment.</summary>
     [SlashCommand("poll", "Create a reaction poll with up to 10 choices.")]
     [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
     public async Task HandlePollAsync(
@@ -90,6 +93,7 @@ public class UtilityCommands : InteractionModuleBase<SocketInteractionContext>
     }
 
 
+    /// <summary>Answers a yes/no question with a random classic Magic 8-Ball response, colored green/blue/red by affirmative/neutral/negative.</summary>
     [SlashCommand("8ball", "Ask the magic 8-ball a yes/no question.")]
     [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
     public async Task HandleEightBallAsync(
@@ -114,17 +118,13 @@ public class UtilityCommands : InteractionModuleBase<SocketInteractionContext>
 
         var (text, color) = responses[Random.Shared.Next(responses.Length)];
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle("🎱  Magic 8-Ball")
-            .WithColor(color)
-            .AddField("Question", question, inline: false)
-            .AddField("Answer", $"*{text}*", inline: false)
-            .WithFooter($"Asked by {Username}", AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            "🎱  Magic 8-Ball", "", color, footer: $"Asked by {Username}", footerIconUrl: AvatarUrl,
+            fields: [("Question", question, false), ("Answer", $"*{text}*", false)]).Build());
     }
 
 
+    /// <summary>Splits a comma-separated list into choices (at least 2 required) and randomly picks one, marking the winner in the reply.</summary>
     [SlashCommand("choose", "Let the bot pick from your comma-separated options.")]
     [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
     public async Task HandleChooseAsync(
@@ -148,16 +148,13 @@ public class UtilityCommands : InteractionModuleBase<SocketInteractionContext>
         string list = string.Join("\n", choices.Select(c =>
             c == winner ? $"➡️  **{c}**" : $"　 {c}"));
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle("🎯  The bot chooses…")
-            .WithColor(Color.Purple)
-            .WithDescription(list)
-            .WithFooter($"Requested by {Username}", AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            "🎯  The bot chooses…", list, Color.Purple,
+            footer: $"Requested by {Username}", footerIconUrl: AvatarUrl).Build());
     }
 
 
+    /// <summary>Schedules a one-off DM reminder at a parsed local date/time (converted to UTC via the given offset), rejecting times under 1 minute or over 1 year away.</summary>
     [SlashCommand("remind", "Set a DM reminder for yourself at a specific date/time.")]
     [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
     public async Task HandleRemindAsync(
@@ -216,6 +213,7 @@ public class UtilityCommands : InteractionModuleBase<SocketInteractionContext>
     }
 
 
+    /// <summary>Computes the elapsed (or remaining) time between today and a given date, broken into years/months/days.</summary>
     [SlashCommand("daysince", "Calculate how many days since or until a date.")]
     [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
     public async Task HandleDaySinceAsync(
@@ -238,16 +236,14 @@ public class UtilityCommands : InteractionModuleBase<SocketInteractionContext>
         int months = totalDays % 365 / 30;
         int days = totalDays % 30;
 
-        await FollowupAsync(embed: new EmbedBuilder()
-            .WithTitle($"📅  Days {dir} {parsed:MMMM dd, yyyy}")
-            .WithColor(past ? Color.LightGrey : Color.Green)
-            .WithDescription($"**{years}y {months}mo {days}d** ({totalDays:N0} total days)")
-            .WithFooter($"Requested by {Username}", AvatarUrl)
-            .WithCurrentTimestamp()
-            .Build());
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"📅  Days {dir} {parsed:MMMM dd, yyyy}", $"**{years}y {months}mo {days}d** ({totalDays:N0} total days)",
+            past ? Color.LightGrey : Color.Green,
+            footer: $"Requested by {Username}", footerIconUrl: AvatarUrl).Build());
     }
 
 
+    /// <summary>Shows a hex code's RGB breakdown and a rendered swatch image, without applying it anywhere.</summary>
     [SlashCommand("colorpreview", "Preview what a hex colour looks like before applying it.")]
     [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
     public async Task HandleColorPreviewAsync(
@@ -262,16 +258,12 @@ public class UtilityCommands : InteractionModuleBase<SocketInteractionContext>
             var sys = System.Drawing.ColorTranslator.FromHtml("#" + bare);
             var role = new Color(sys.R, sys.G, sys.B);
 
-            await FollowupAsync(embed: new EmbedBuilder()
-                .WithTitle($"🎨  Color Preview — #{bare}")
-                .WithColor(role)
-                .WithDescription(
-                    $"**Hex:** `#{bare}`\n" +
-                    $"**RGB:** `{sys.R}, {sys.G}, {sys.B}`")
-                .WithImageUrl($"https://singlecolorimage.com/get/{bare}/300x80")
-                .WithFooter($"Requested by {Username}", AvatarUrl)
-                .WithCurrentTimestamp()
-                .Build());
+            await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+                $"🎨  Color Preview — #{bare}",
+                $"**Hex:** `#{bare}`\n" +
+                $"**RGB:** `{sys.R}, {sys.G}, {sys.B}`",
+                role, footer: $"Requested by {Username}", footerIconUrl: AvatarUrl)
+                .WithImageUrl($"https://singlecolorimage.com/get/{bare}/300x80").Build());
         }
         catch
         {
@@ -283,6 +275,7 @@ public class UtilityCommands : InteractionModuleBase<SocketInteractionContext>
     }
 
 
+    /// <summary>Rolls the given number of dice with the given side count plus a flat modifier, flagging natural 1s and max rolls.</summary>
     [SlashCommand("dnddice", "Roll any number of any-sided dice with an optional modifier.")]
     [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
     public async Task HandleDndDiceAsync(
@@ -314,6 +307,7 @@ public class UtilityCommands : InteractionModuleBase<SocketInteractionContext>
     }
 
 
+    /// <summary>Toggles this server's automatic link-embed-fixing (Twitter/Reddit/TikTok/Bsky) via the UpdateBrokenEmbed stored procedure.</summary>
     [SlashCommand("fixembed", "Let the bot fix embeds for Twitter, Reddit, Tiktok, and Bsky links.")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleEmbeds()

@@ -10,6 +10,7 @@ namespace DiscordBot.Constants
     /// </summary>
     public class StoredProcedure
     {
+        /// <summary>Runs a stored procedure that returns rows and returns the result as a DataTable.</summary>
         public DataTable Select(string connStr, string spName, List<SqlParameter> parameters)
         {
             var dt = new DataTable();
@@ -29,6 +30,7 @@ namespace DiscordBot.Constants
             return dt;
         }
 
+        /// <summary>Runs a stored procedure that doesn't return rows (an insert/update/delete).</summary>
         public void UpdateCreate(string connStr, string spName, List<SqlParameter> parameters)
         {
             using SqlConnection conn = new SqlConnection(connStr);

@@ -9,6 +9,7 @@ using Microsoft.Data.SqlClient;
 
 namespace DiscordBot.SlashCommands
 {
+    /// <summary>Quote archive: save any message as a quote via context menu, then browse/search saved quotes with paginated embeds.</summary>
     public class QuoteCommands : InteractionModuleBase<SocketInteractionContext>
     {
         private readonly EmbedHelper _embed = new();
@@ -29,6 +30,7 @@ namespace DiscordBot.SlashCommands
 
         // ── Context Menu ──────────────────────────────────────────────────────────
 
+        /// <summary>Right-click "Save Quote" context menu command: archives the target message's text (and re-uploads its first attachment) to the guild's configured quote channel, skipping if already saved.</summary>
         [MessageCommand("Save Quote")]
         [CommandContextType(InteractionContextType.Guild)]
         public async Task HandleSaveQuoteAsync(IMessage message)
@@ -140,6 +142,7 @@ namespace DiscordBot.SlashCommands
 
         // ── Slash Commands ────────────────────────────────────────────────────────
 
+        /// <summary>/quote subcommands — configure the archive channel and browse saved quotes.</summary>
         [Group("quote", "Browse and manage saved quotes.")]
         [CommandContextType(InteractionContextType.Guild)]
         public class QuoteSubCommands : InteractionModuleBase<SocketInteractionContext>
@@ -149,6 +152,7 @@ namespace DiscordBot.SlashCommands
 
             private string Username => Context.User.Username;
 
+            /// <summary>Sets (or changes) the text channel this guild's saved quotes are archived to.</summary>
             [SlashCommand("setup", "Set the channel where quotes are archived.")]
             [RequireUserPermission(GuildPermission.ManageChannels)]
             public async Task HandleSetupAsync(
@@ -168,6 +172,7 @@ namespace DiscordBot.SlashCommands
                     "", Username, EmbedColors.Green).Build(), ephemeral: true);
             }
 
+            /// <summary>Shows one random saved quote from this guild with links to the original message and archive post.</summary>
             [SlashCommand("random", "Show a random saved quote.")]
             public async Task HandleRandomAsync()
             {
@@ -197,6 +202,7 @@ namespace DiscordBot.SlashCommands
                 await FollowupAsync(embed: embed, components: buttons.Build());
             }
 
+            /// <summary>Searches saved quotes by text and shows the matches as a paginated embed.</summary>
             [SlashCommand("search", "Search saved quotes by text.")]
             public async Task HandleSearchAsync(
                 [Summary("query", "Text to search for in quote content.")] string query)
@@ -221,6 +227,7 @@ namespace DiscordBot.SlashCommands
                 await SendPaginatedAsync(pages);
             }
 
+            /// <summary>Lists all saved quotes attributed to a specific user as a paginated embed.</summary>
             [SlashCommand("user", "Browse all quotes from a specific user.")]
             public async Task HandleUserAsync(
                 [Summary("user", "The user whose quotes to browse.")] IUser user)
@@ -245,6 +252,7 @@ namespace DiscordBot.SlashCommands
                 await SendPaginatedAsync(pages);
             }
 
+            /// <summary>Stores the page set under a 15-minute session keyed by user ID and posts the first page with nav buttons.</summary>
             private async Task SendPaginatedAsync(List<Embed> pages)
             {
                 string sessionKey = Context.User.Id.ToString();
@@ -259,18 +267,21 @@ namespace DiscordBot.SlashCommands
 
         // ── Pagination button handler ─────────────────────────────────────────────
 
+        /// <summary>Handles the "◀ Prev" button on a paginated quote result.</summary>
         [ComponentInteraction("quote:nav:p:*")]
         public async Task HandlePrevAsync(string userId)
         {
             await HandleNavAsync(userId, -1);
         }
 
+        /// <summary>Handles the "Next ▶" button on a paginated quote result.</summary>
         [ComponentInteraction("quote:nav:n:*")]
         public async Task HandleNextAsync(string userId)
         {
             await HandleNavAsync(userId, +1);
         }
 
+        /// <summary>Moves the caller's paginated quote session by <paramref name="delta"/> pages (clamped to bounds) and re-renders the message in place, or reports if the session expired.</summary>
         private async Task HandleNavAsync(string userId, int delta)
         {
             if (!_sessions.TryGetValue(userId, out var session) || session.ExpiresAt < DateTime.UtcNow)
@@ -293,6 +304,7 @@ namespace DiscordBot.SlashCommands
 
         // ── Helpers ───────────────────────────────────────────────────────────────
 
+        /// <summary>Splits a quote result set into embed pages of <see cref="PageSize"/> quotes each, with an ID/author/date field per quote.</summary>
         private static List<Embed> BuildPages(DataTable dt, string title)
         {
             var pages = new List<Embed>();
@@ -301,10 +313,9 @@ namespace DiscordBot.SlashCommands
 
             for (int p = 0; p < totalPages; p++)
             {
-                var builder = new EmbedBuilder()
-                    .WithTitle(title)
-                    .WithColor(EmbedColors.Blue)
-                    .WithFooter($"Page {p + 1} of {totalPages} • {total} quote(s)");
+                var builder = new EmbedHelper().BuildSimpleEmbed(
+                    title, "", EmbedColors.Blue,
+                    footer: $"Page {p + 1} of {totalPages} • {total} quote(s)", timestamp: false);
 
                 int start = p * PageSize;
                 int end   = Math.Min(start + PageSize, total);
@@ -327,6 +338,7 @@ namespace DiscordBot.SlashCommands
             return pages;
         }
 
+        /// <summary>Builds the Prev/Next buttons for a paginated quote result, disabling at the first/last page.</summary>
         private static MessageComponent BuildNavComponents(int currentPage, int totalPages, string userId)
         {
             return new ComponentBuilder()
@@ -337,6 +349,7 @@ namespace DiscordBot.SlashCommands
                 .Build();
         }
 
+        /// <summary>Converts a quote DB row into its display embed.</summary>
         private static Embed RowToQuoteEmbed(DataRow row)
         {
             int quoteId         = (int)row["QuoteId"];
@@ -350,6 +363,7 @@ namespace DiscordBot.SlashCommands
             return BuildQuoteEmbed(quoteId, author, null, content, originalUrl, attachUrl, savedBy, savedAt);
         }
 
+        /// <summary>Builds the shared quote display embed: quoted content as the description, author as the embed author (with avatar if known), and an image preview if the attachment is a recognized image extension.</summary>
         private static Embed BuildQuoteEmbed(
             int quoteId,
             string authorUsername,
@@ -360,10 +374,9 @@ namespace DiscordBot.SlashCommands
             string savedByUsername,
             DateTime savedAt)
         {
-            var builder = new EmbedBuilder()
-                .WithColor(EmbedColors.Gold)
-                .WithDescription($"\"{content}\"")
-                .WithFooter($"Quote #{quoteId} • Saved by {savedByUsername} • {savedAt:yyyy-MM-dd}");
+            var builder = new EmbedHelper().BuildSimpleEmbed(
+                "", $"\"{content}\"", EmbedColors.Gold,
+                footer: $"Quote #{quoteId} • Saved by {savedByUsername} • {savedAt:yyyy-MM-dd}", timestamp: false);
 
             if (authorAvatarUrl is not null)
                 builder.WithAuthor(authorUsername, authorAvatarUrl);

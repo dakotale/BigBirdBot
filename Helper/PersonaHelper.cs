@@ -1,9 +1,11 @@
 namespace DiscordBot.Helper;
 
+/// <summary>Static helper for the AI chat feature — maps a named personality choice to its system-prompt text.</summary>
 public static class PersonaHelper
 {
     private const string DefaultPersona = "You are a friendly and helpful assistant.";
 
+    /// <summary>Returns the system prompt for a named personality, or a generic default if the name isn't recognized.</summary>
     public static string ResolvePersona(string personality) => personality switch
     {
         "Bisexual Support Guide" =>
@@ -42,6 +44,7 @@ public static class PersonaHelper
         _ => DefaultPersona
     };
 
+    /// <summary>The full list of selectable personality names, e.g. for a slash-command choice list.</summary>
     public static IReadOnlyList<string> NamedPersonalities =>
     [
         "Bisexual Support Guide",
