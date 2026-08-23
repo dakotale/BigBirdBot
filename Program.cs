@@ -67,7 +67,12 @@ static void ConfigureServices(IServiceCollection services) =>
             x.BufferSize = 2048;
             x.Label = "BigBirdBot";
             x.ReadyTimeout = TimeSpan.FromMinutes(15);
-            x.ResumptionOptions = new(TimeSpan.Zero);
+            // Grace window for the Lavalink server to keep the session (and its players)
+            // alive across a brief WebSocket drop, so a transient blip doesn't 404 every
+            // subsequent player call with "Session not found". TimeSpan.Zero previously
+            // used here still enables resumption but with a zero-second grace window,
+            // which is indistinguishable from no protection at all.
+            x.ResumptionOptions = new(TimeSpan.FromSeconds(60));
         })
         .AddHttpClient()
         .AddSingleton<ISpotifyService, SpotifyService>()
@@ -341,11 +346,30 @@ internal sealed class BotHost(
     }
 
     /// <summary>
-    /// Fires when the bot is added to a new guild: registers the server in the DB (if not
-    /// already present), downloads the member list, and backfills every existing member
-    /// into the user table.
+    /// Fires when the bot is added to a new guild (or when a full gateway reconnect
+    /// repopulates an empty guild cache, which makes already-joined guilds look "new").
+    /// Immediately hands off to a background task and returns, since the handler body
+    /// below awaits <see cref="IGuild.DownloadUsersAsync"/> — that call needs the gateway
+    /// receive loop to keep processing incoming GUILD_MEMBERS_CHUNK payloads to complete,
+    /// so running it inline here would block that same receive loop on itself, starving
+    /// heartbeat ACK processing and tripping "Server missed last heartbeat" disconnects.
     /// </summary>
-    private async Task OnJoinedGuildAsync(SocketGuild guild)
+    private Task OnJoinedGuildAsync(SocketGuild guild)
+    {
+        _ = Task.Run(async () =>
+        {
+            try { await ProcessJoinedGuildAsync(guild); }
+            catch (Exception ex) { await logger.InfoAsync($"[JoinedGuild] Handler failed for {guild.Name}: {ex.Message}"); }
+        });
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Registers the server in the DB (if not already present), downloads the member
+    /// list, and backfills every existing member into the user table.
+    /// </summary>
+    private async Task ProcessJoinedGuildAsync(SocketGuild guild)
     {
         await Task.Run(() =>
         {
