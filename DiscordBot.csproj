@@ -23,7 +23,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Anthropic" Version="12.40.0" />
+    <PackageReference Include="Anthropic" Version="12.42.0" />
     <PackageReference Include="Discord.KillersLibrary" Version="1.2.2" />
     <PackageReference Include="Discord.Net" Version="3.20.1" />
     <PackageReference Include="Discord.Net.Commands" Version="3.20.1" />

@@ -59,6 +59,7 @@ namespace DiscordBot.Constants
             return fallback ?? string.Empty;
         }
 
+        // SQL Server
         public static string discordBotConnStr => Get(nameof(discordBotConnStr), "Server=localhost;DataBase=DiscordBot;Integrated Security=true;TrustServerCertificate=True");
         public static string botToken => Get(nameof(botToken));
         public static string devBotToken => Get(nameof(devBotToken));
