@@ -1,0 +1,342 @@
+﻿=== pgloader stderr (progress/report) ===
+
+=== pgloader stdout ===
+14:16:23.695 INFO  [main] pgloader.core - Connected to PostgreSQL at pgsql://postgres:%3E%7C%24%3Bi.Gn%3B%7DU%7CoK1%25s8Ts@localhost/discordbot
+14:16:23.925 INFO  [main] pgloader.core - pgloader v4
+14:16:23.927 INFO  [main] pgloader.core - Source: mssql://bigbirdbot:JP%405TzwQI%25D*5nY%40@localhost/DiscordBot
+14:16:23.928 INFO  [main] pgloader.core - Target: pgsql://postgres:%3E%7C%24%3Bi.Gn%3B%7DU%7CoK1%25s8Ts@localhost/discordbot
+14:16:23.951 INFO  [main] pgloader.core - Fetching catalog from mssql://bigbirdbot:JP%405TzwQI%25D*5nY%40@localhost/DiscordBot
+14:16:23.952 INFO  [main] p.source.mssql - Fetching table list from MS SQL Server
+14:16:25.029 INFO  [main] pgloader.core - Found 57 tables/views in source catalog
+14:16:25.040 INFO  [main] pgloader.core - Processing tables in this order: AuditButtonExecuted, AuditGameTrigger, AuditGuildJoined, AuditLog, AuditReactionAdded, AuditUserJoined, AuditUserLeft, Birthday, BlackjackGame, BotAIMessage, ChallengePool, ChatKeyword, ChatKeywordAlias, ChatKeywordMap, Credits, FishLog, ForgedCosmetics, GambleLog, GuildAutoRole, GuildQuoteConfig, Investments, JackpotEntries, JournalEntries, JournalSubscriptions, Music, MusicQueue, NamesReference, NamesStaging, PassiveJackpot, PassiveJackpotContributors, Pet, PetCosmetics, PetEggs, PetJournal, PetWordPuzzle, PlayerConnected, PokerLobby, PokerPlayer, PregnancyEvents, Pronouns, Quotes, Reminders, ScrambleGame, ServerPassiveJackpot, Servers, StockHistory, StockHoldings, StockTransactions, Stocks, TriviaMessage, UserActiveEffects, UserDailyChallenges, UserInventory, Users, UsersScheduledKeyword, WordleGame, Words
+14:16:25.040 INFO  [main] pgloader.core - Preparing target PostgreSQL schema
+14:16:25.056 INFO  [main] pgloader.core - COPY AuditButtonExecuted [1/57]
+14:16:25.115 ERROR [main] pgloader.core - Failed to create public.AuditButtonExecuted: ERROR: function getutcdate() does not exist
+  Hint: No function matches the given name and argument types. You might need to add explicit type casts.
+  Position: 208
+14:16:25.116 INFO  [main] pgloader.core - COPY AuditGameTrigger [2/57]
+14:16:25.120 ERROR [main] pgloader.core - Failed to create public.AuditGameTrigger: ERROR: function getutcdate() does not exist
+  Hint: No function matches the given name and argument types. You might need to add explicit type casts.
+  Position: 202
+14:16:25.121 INFO  [main] pgloader.core - COPY AuditGuildJoined [3/57]
+14:16:25.126 ERROR [main] pgloader.core - Failed to create public.AuditGuildJoined: ERROR: function getutcdate() does not exist
+  Hint: No function matches the given name and argument types. You might need to add explicit type casts.
+  Position: 176
+14:16:25.127 INFO  [main] pgloader.core - COPY AuditLog [4/57]
+14:16:25.178 INFO  [main] pgloader.core - COPY AuditReactionAdded [5/57]
+14:16:25.183 ERROR [main] pgloader.core - Failed to create public.AuditReactionAdded: ERROR: function getutcdate() does not exist
+  Hint: No function matches the given name and argument types. You might need to add explicit type casts.
+  Position: 234
+14:16:25.183 INFO  [main] pgloader.core - COPY AuditUserJoined [6/57]
+14:16:25.189 ERROR [main] pgloader.core - Failed to create public.AuditUserJoined: ERROR: function getutcdate() does not exist
+  Hint: No function matches the given name and argument types. You might need to add explicit type casts.
+  Position: 174
+14:16:25.189 INFO  [main] pgloader.core - COPY AuditUserLeft [7/57]
+14:16:25.193 ERROR [main] pgloader.core - Failed to create public.AuditUserLeft: ERROR: function getutcdate() does not exist
+  Hint: No function matches the given name and argument types. You might need to add explicit type casts.
+  Position: 170
+14:16:25.194 INFO  [main] pgloader.core - COPY Birthday [8/57]
+14:16:25.197 INFO  [main] pgloader.core - COPY BlackjackGame [9/57]
+14:16:25.200 ERROR [main] pgloader.core - Failed to create public.BlackjackGame: ERROR: function getutcdate() does not exist
+  Hint: No function matches the given name and argument types. You might need to add explicit type casts.
+  Position: 271
+14:16:25.200 INFO  [main] pgloader.core - COPY BotAIMessage [10/57]
+14:16:25.204 INFO  [main] pgloader.core - COPY ChallengePool [11/57]
+14:16:25.210 INFO  [main] pgloader.core - COPY ChatKeyword [12/57]
+14:16:25.213 INFO  [main] pgloader.core - COPY ChatKeywordAlias [13/57]
+14:16:25.219 ERROR [main] pgloader.core - Failed to create public.ChatKeywordAlias: ERROR: function getutcdate() does not exist
+  Hint: No function matches the given name and argument types. You might need to add explicit type casts.
+  Position: 198
+14:16:25.220 INFO  [main] pgloader.core - COPY ChatKeywordMap [14/57]
+14:16:25.225 INFO  [main] pgloader.core - COPY Credits [15/57]
+14:16:25.230 INFO  [main] pgloader.core - COPY FishLog [16/57]
+14:16:25.233 ERROR [main] pgloader.core - Failed to create public.FishLog: ERROR: function getutcdate() does not exist
+  Hint: No function matches the given name and argument types. You might need to add explicit type casts.
+  Position: 258
+14:16:25.234 INFO  [main] pgloader.core - COPY ForgedCosmetics [17/57]
+14:16:25.238 ERROR [main] pgloader.core - Failed to create public.ForgedCosmetics: ERROR: function getutcdate() does not exist
+  Hint: No function matches the given name and argument types. You might need to add explicit type casts.
+  Position: 366
+14:16:25.239 INFO  [main] pgloader.core - COPY GambleLog [18/57]
+14:16:25.241 ERROR [main] pgloader.core - Failed to create public.GambleLog: ERROR: function getutcdate() does not exist
+  Hint: No function matches the given name and argument types. You might need to add explicit type casts.
+  Position: 271
+14:16:25.242 INFO  [main] pgloader.core - COPY GuildAutoRole [19/57]
+14:16:25.243 ERROR [main] pgloader.core - Failed to create public.GuildAutoRole: ERROR: function sysutcdatetime() does not exist
+  Hint: No function matches the given name and argument types. You might need to add explicit type casts.
+  Position: 155
+14:16:25.245 INFO  [main] pgloader.core - COPY GuildQuoteConfig [20/57]
+14:16:25.248 INFO  [main] pgloader.core - COPY Investments [21/57]
+14:16:25.253 ERROR [main] pgloader.core - Failed to create public.Investments: ERROR: function getutcdate() does not exist
+  Hint: No function matches the given name and argument types. You might need to add explicit type casts.
+  Position: 315
+14:16:25.254 INFO  [main] pgloader.core - COPY JackpotEntries [22/57]
+14:16:25.257 ERROR [main] pgloader.core - Failed to create public.JackpotEntries: ERROR: function getutcdate() does not exist
+  Hint: No function matches the given name and argument types. You might need to add explicit type casts.
+  Position: 202
+14:16:25.257 INFO  [main] pgloader.core - COPY JournalEntries [23/57]
+14:16:25.260 ERROR [main] pgloader.core - Failed to create public.JournalEntries: ERROR: function sysutcdatetime() does not exist
+  Hint: No function matches the given name and argument types. You might need to add explicit type casts.
+  Position: 173
+14:16:25.261 INFO  [main] pgloader.core - COPY JournalSubscriptions [24/57]
+14:16:25.263 ERROR [main] pgloader.core - Failed to create public.JournalSubscriptions: ERROR: function sysutcdatetime() does not exist
+  Hint: No function matches the given name and argument types. You might need to add explicit type casts.
+  Position: 202
+14:16:25.263 INFO  [main] pgloader.core - COPY Music [25/57]
+14:16:25.266 INFO  [main] pgloader.core - COPY MusicQueue [26/57]
+14:16:25.269 INFO  [main] pgloader.core - COPY NamesReference [27/57]
+14:16:25.272 INFO  [main] pgloader.core - COPY NamesStaging [28/57]
+14:16:25.274 INFO  [main] pgloader.core - COPY PassiveJackpot [29/57]
+14:16:25.279 INFO  [main] pgloader.core - COPY PassiveJackpotContributors [30/57]
+14:16:25.283 INFO  [main] pgloader.core - COPY Pet [31/57]
+14:16:25.288 ERROR [main] pgloader.core - Failed to create public.Pet: ERROR: function getutcdate() does not exist
+  Hint: No function matches the given name and argument types. You might need to add explicit type casts.
+  Position: 698
+14:16:25.288 INFO  [main] pgloader.core - COPY PetCosmetics [32/57]
+14:16:25.291 ERROR [main] pgloader.core - Failed to create public.PetCosmetics: ERROR: function getutcdate() does not exist
+  Hint: No function matches the given name and argument types. You might need to add explicit type casts.
+  Position: 211
+14:16:25.292 INFO  [main] pgloader.core - COPY PetEggs [33/57]
+14:16:25.295 ERROR [main] pgloader.core - Failed to create public.PetEggs: ERROR: function getutcdate() does not exist
+  Hint: No function matches the given name and argument types. You might need to add explicit type casts.
+  Position: 499
+14:16:25.295 INFO  [main] pgloader.core - COPY PetJournal [34/57]
+14:16:25.299 ERROR [main] pgloader.core - Failed to create public.PetJournal: ERROR: function getutcdate() does not exist
+  Hint: No function matches the given name and argument types. You might need to add explicit type casts.
+  Position: 197
+14:16:25.299 INFO  [main] pgloader.core - COPY PetWordPuzzle [35/57]
+14:16:25.303 INFO  [main] pgloader.core - COPY PlayerConnected [36/57]
+14:16:25.306 INFO  [main] pgloader.core - COPY PokerLobby [37/57]
+14:16:25.310 ERROR [main] pgloader.core - Failed to create public.PokerLobby: ERROR: function getutcdate() does not exist
+  Hint: No function matches the given name and argument types. You might need to add explicit type casts.
+  Position: 332
+14:16:25.311 INFO  [main] pgloader.core - COPY PokerPlayer [38/57]
+14:16:25.316 INFO  [main] pgloader.core - COPY PregnancyEvents [39/57]
+14:16:25.320 ERROR [main] pgloader.core - Failed to create public.PregnancyEvents: ERROR: function getutcdate() does not exist
+  Hint: No function matches the given name and argument types. You might need to add explicit type casts.
+  Position: 169
+14:16:25.320 INFO  [main] pgloader.core - COPY Pronouns [40/57]
+14:16:25.323 INFO  [main] pgloader.core - COPY Quotes [41/57]
+14:16:25.326 ERROR [main] pgloader.core - Failed to create public.Quotes: ERROR: function sysutcdatetime() does not exist
+  Hint: No function matches the given name and argument types. You might need to add explicit type casts.
+  Position: 389
+14:16:25.326 INFO  [main] pgloader.core - COPY Reminders [42/57]
+14:16:25.330 INFO  [main] pgloader.core - COPY ScrambleGame [43/57]
+14:16:25.333 INFO  [main] pgloader.core - COPY ServerPassiveJackpot [44/57]
+14:16:25.336 ERROR [main] pgloader.core - Failed to create public.ServerPassiveJackpot: ERROR: function getutcdate() does not exist
+  Hint: No function matches the given name and argument types. You might need to add explicit type casts.
+  Position: 172
+14:16:25.336 INFO  [main] pgloader.core - COPY Servers [45/57]
+14:16:25.340 INFO  [main] pgloader.core - COPY StockHistory [46/57]
+14:16:25.343 ERROR [main] pgloader.core - Failed to create public.StockHistory: ERROR: function getutcdate() does not exist
+  Hint: No function matches the given name and argument types. You might need to add explicit type casts.
+  Position: 174
+14:16:25.344 INFO  [main] pgloader.core - COPY StockHoldings [47/57]
+14:16:25.349 INFO  [main] pgloader.core - COPY StockTransactions [48/57]
+14:16:25.353 ERROR [main] pgloader.core - Failed to create public.StockTransactions: ERROR: function getutcdate() does not exist
+  Hint: No function matches the given name and argument types. You might need to add explicit type casts.
+  Position: 315
+14:16:25.353 INFO  [main] pgloader.core - COPY Stocks [49/57]
+14:16:25.355 ERROR [main] pgloader.core - Failed to create public.Stocks: ERROR: function getutcdate() does not exist
+  Hint: No function matches the given name and argument types. You might need to add explicit type casts.
+  Position: 442
+14:16:25.355 INFO  [main] pgloader.core - COPY TriviaMessage [50/57]
+14:16:25.358 INFO  [main] pgloader.core - COPY UserActiveEffects [51/57]
+14:16:25.361 ERROR [main] pgloader.core - Failed to create public.UserActiveEffects: ERROR: function getutcdate() does not exist
+  Hint: No function matches the given name and argument types. You might need to add explicit type casts.
+  Position: 276
+14:16:25.361 INFO  [main] pgloader.core - COPY UserDailyChallenges [52/57]
+14:16:25.366 INFO  [main] pgloader.core - COPY UserInventory [53/57]
+14:16:25.369 ERROR [main] pgloader.core - Failed to create public.UserInventory: ERROR: function getutcdate() does not exist
+  Hint: No function matches the given name and argument types. You might need to add explicit type casts.
+  Position: 245
+14:16:25.369 INFO  [main] pgloader.core - COPY Users [54/57]
+14:16:25.374 INFO  [main] pgloader.core - COPY UsersScheduledKeyword [55/57]
+14:16:25.378 INFO  [main] pgloader.core - COPY WordleGame [56/57]
+14:16:25.380 ERROR [main] pgloader.core - Failed to create public.WordleGame: ERROR: function getutcdate() does not exist
+  Hint: No function matches the given name and argument types. You might need to add explicit type casts.
+  Position: 235
+14:16:25.381 INFO  [main] pgloader.core - COPY Words [57/57]
+14:16:25.746 INFO  [pool-3-thread-2] pgloader.core - COPY Birthday done: 27 rows in 0.008s
+14:16:25.870 INFO  [pool-3-thread-3] pgloader.core - COPY BotAIMessage done: 10 rows in 0.006s
+14:16:25.944 INFO  [pool-3-thread-4] pgloader.core - COPY AuditLog done: 9973 rows in 0.402s
+14:16:25.977 INFO  [pool-3-thread-1] pgloader.core - COPY ChallengePool done: 19 rows in 0.013s
+14:16:26.000 INFO  [pool-3-thread-2] pgloader.core - COPY ChatKeyword done: 4602 rows in 0.160s
+14:16:26.103 INFO  [pool-3-thread-4] pgloader.core - COPY ChatKeywordMap done: 57 rows in 0.010s
+14:16:26.151 INFO  [pool-3-thread-1] pgloader.core - COPY Credits done: 148 rows in 0.033s
+14:16:26.365 INFO  [pool-3-thread-2] pgloader.core - COPY GuildQuoteConfig done: 1 rows in 0.004s
+14:16:26.624 INFO  [pool-3-thread-3] pgloader.core - COPY MusicQueue done: 0 rows in 0.008s
+14:16:26.858 INFO  [pool-3-thread-3] pgloader.core - COPY PassiveJackpot done: 2 rows in 0.026s
+14:16:26.861 INFO  [pool-3-thread-4] pgloader.core - COPY NamesStaging done: 31904 rows in 0.183s
+14:16:26.866 INFO  [pool-3-thread-1] pgloader.core - COPY NamesReference done: 90538 rows in 0.249s
+14:16:26.916 INFO  [pool-3-thread-2] pgloader.core - COPY Music done: 19385 rows in 0.461s
+14:16:27.011 INFO  [pool-3-thread-3] pgloader.core - COPY PassiveJackpotContributors done: 0 rows in 0.005s
+14:16:27.112 INFO  [pool-3-thread-3] pgloader.core - COPY PlayerConnected done: 0 rows in 0.002s
+14:16:27.141 INFO  [pool-3-thread-4] pgloader.core - COPY PetWordPuzzle done: 4056 rows in 0.046s
+14:16:27.159 INFO  [pool-3-thread-1] pgloader.core - COPY PokerPlayer done: 4 rows in 0.013s
+14:16:27.253 INFO  [pool-3-thread-4] pgloader.core - COPY Pronouns done: 7 rows in 0.007s
+14:16:27.292 INFO  [pool-3-thread-3] pgloader.core - COPY Reminders done: 0 rows in 0.002s
+14:16:27.315 INFO  [pool-3-thread-2] pgloader.core - COPY ScrambleGame done: 0 rows in 0.004s
+14:16:27.422 INFO  [pool-3-thread-1] pgloader.core - COPY StockHoldings done: 17 rows in 0.007s
+14:16:27.467 INFO  [pool-3-thread-4] pgloader.core - COPY Servers done: 24 rows in 0.013s
+14:16:27.548 INFO  [pool-3-thread-2] pgloader.core - COPY TriviaMessage done: 3 rows in 0.029s
+14:16:27.570 INFO  [pool-3-thread-3] pgloader.core - COPY UserDailyChallenges done: 11 rows in 0.012s
+14:16:27.650 INFO  [pool-3-thread-1] pgloader.core - COPY Users done: 218 rows in 0.007s
+14:16:27.688 INFO  [pool-3-thread-4] pgloader.core - COPY Words done: 3901 rows in 0.014s
+14:16:27.784 INFO  [pool-3-thread-2] pgloader.core - COPY UsersScheduledKeyword done: 36 rows in 0.005s
+14:16:27.786 INFO  [main] pgloader.core - Waiting for parallel index builds to complete
+14:16:27.975 INFO  [main] pgloader.core - Creating foreign keys
+14:16:27.978 WARN  [main] pgloader.core - FK on PetJournal failed (skipping): ERROR: relation "public.PetJournal" does not exist
+14:16:27.980 INFO  [main] pgloader.core - Resetting sequences
+14:16:27.981 WARN  [main] pgloader.core - SEQUENCE for AuditButtonExecuted failed (skipping): ERROR: relation "public.AuditButtonExecuted" does not exist
+  Position: 126
+14:16:27.982 WARN  [main] pgloader.core - SEQUENCE for AuditGameTrigger failed (skipping): ERROR: relation "public.AuditGameTrigger" does not exist
+  Position: 123
+14:16:27.983 WARN  [main] pgloader.core - SEQUENCE for AuditGuildJoined failed (skipping): ERROR: relation "public.AuditGuildJoined" does not exist
+  Position: 123
+14:16:27.983 WARN  [main] pgloader.core - SEQUENCE for AuditReactionAdded failed (skipping): ERROR: relation "public.AuditReactionAdded" does not exist
+  Position: 125
+14:16:27.984 WARN  [main] pgloader.core - SEQUENCE for AuditUserJoined failed (skipping): ERROR: relation "public.AuditUserJoined" does not exist
+  Position: 122
+14:16:27.984 WARN  [main] pgloader.core - SEQUENCE for AuditUserLeft failed (skipping): ERROR: relation "public.AuditUserLeft" does not exist
+  Position: 120
+14:16:27.988 WARN  [main] pgloader.core - SEQUENCE for ChatKeywordAlias failed (skipping): ERROR: relation "public.ChatKeywordAlias" does not exist
+  Position: 123
+14:16:27.991 WARN  [main] pgloader.core - SEQUENCE for FishLog failed (skipping): ERROR: relation "public.FishLog" does not exist
+  Position: 120
+14:16:27.992 WARN  [main] pgloader.core - SEQUENCE for ForgedCosmetics failed (skipping): ERROR: relation "public.ForgedCosmetics" does not exist
+  Position: 132
+14:16:27.992 WARN  [main] pgloader.core - SEQUENCE for GambleLog failed (skipping): ERROR: relation "public.GambleLog" does not exist
+  Position: 122
+14:16:27.993 WARN  [main] pgloader.core - SEQUENCE for Investments failed (skipping): ERROR: relation "public.Investments" does not exist
+  Position: 138
+14:16:27.993 WARN  [main] pgloader.core - SEQUENCE for JackpotEntries failed (skipping): ERROR: relation "public.JackpotEntries" does not exist
+  Position: 131
+14:16:27.994 WARN  [main] pgloader.core - SEQUENCE for JournalEntries failed (skipping): ERROR: relation "public.JournalEntries" does not exist
+  Position: 131
+14:16:27.995 WARN  [main] pgloader.core - SEQUENCE for Pet failed (skipping): ERROR: relation "public.Pet" does not exist
+  Position: 116
+14:16:27.995 WARN  [main] pgloader.core - SEQUENCE for PetCosmetics failed (skipping): ERROR: relation "public.PetCosmetics" does not exist
+  Position: 135
+14:16:27.996 WARN  [main] pgloader.core - SEQUENCE for PetEggs failed (skipping): ERROR: relation "public.PetEggs" does not exist
+  Position: 120
+14:16:27.996 WARN  [main] pgloader.core - SEQUENCE for PetJournal failed (skipping): ERROR: relation "public.PetJournal" does not exist
+  Position: 131
+14:16:28.001 WARN  [main] pgloader.core - SEQUENCE for PokerLobby failed (skipping): ERROR: relation "public.PokerLobby" does not exist
+  Position: 125
+14:16:28.005 WARN  [main] pgloader.core - SEQUENCE for PregnancyEvents failed (skipping): ERROR: relation "public.PregnancyEvents" does not exist
+  Position: 122
+14:16:28.006 WARN  [main] pgloader.core - SEQUENCE for Quotes failed (skipping): ERROR: relation "public.Quotes" does not exist
+  Position: 123
+14:16:28.008 WARN  [main] pgloader.core - SEQUENCE for StockHistory failed (skipping): ERROR: relation "public.StockHistory" does not exist
+  Position: 133
+14:16:28.012 WARN  [main] pgloader.core - SEQUENCE for StockTransactions failed (skipping): ERROR: relation "public.StockTransactions" does not exist
+  Position: 128
+14:16:28.012 WARN  [main] pgloader.core - SEQUENCE for UserActiveEffects failed (skipping): ERROR: relation "public.UserActiveEffects" does not exist
+  Position: 136
+14:16:28.016 WARN  [main] pgloader.core - SEQUENCE for UserInventory failed (skipping): ERROR: relation "public.UserInventory" does not exist
+  Position: 138
+14:16:28.017 INFO  [main] pgloader.core - Done copying all tables
+
+Results:
+
+                         table name     errors       rows      bytes      total time
+-----------------------------------  ---------  ---------  ---------  --------------
+                    fetch meta data          0         57                     1.076s
+                      Create tables          0         57                     0.327s
+-----------------------------------  ---------  ---------  ---------  --------------
+       public."AuditButtonExecuted"          1          0                     0.000s
+          public."AuditGameTrigger"          1          0                     0.000s
+          public."AuditGuildJoined"          1          0                     0.000s
+                  public."AuditLog"          0       9973  729.87 kB          0.402s
+        public."AuditReactionAdded"          1          0                     0.000s
+           public."AuditUserJoined"          1          0                     0.000s
+             public."AuditUserLeft"          1          0                     0.000s
+                  public."Birthday"          0         27    2.36 kB          0.008s
+             public."BlackjackGame"          1          0                     0.000s
+              public."BotAIMessage"          0         10    3.16 kB          0.006s
+             public."ChallengePool"          0         19    1.13 kB          0.013s
+               public."ChatKeyword"          0       4602  453.86 kB          0.160s
+          public."ChatKeywordAlias"          1          0                     0.000s
+            public."ChatKeywordMap"          0         57    4.15 kB          0.010s
+                   public."Credits"          0        148   10.78 kB          0.033s
+                   public."FishLog"          1          0                     0.000s
+           public."ForgedCosmetics"          1          0                     0.000s
+                 public."GambleLog"          1          0                     0.000s
+             public."GuildAutoRole"          1          0                     0.000s
+          public."GuildQuoteConfig"          0          1       40 B          0.004s
+               public."Investments"          1          0                     0.000s
+            public."JackpotEntries"          1          0                     0.000s
+            public."JournalEntries"          1          0                     0.000s
+      public."JournalSubscriptions"          1          0                     0.000s
+                     public."Music"          0      19385    3.09 MB          0.461s
+                public."MusicQueue"          0          0                     0.008s
+            public."NamesReference"          0      90538  665.11 kB          0.249s
+              public."NamesStaging"          0      31904  366.31 kB          0.183s
+            public."PassiveJackpot"          0          2       44 B          0.026s
+public."PassiveJackpotContributors"          0          0                     0.005s
+                       public."Pet"          1          0                     0.000s
+              public."PetCosmetics"          1          0                     0.000s
+                   public."PetEggs"          1          0                     0.000s
+                public."PetJournal"          1          0                     0.000s
+             public."PetWordPuzzle"          0       4056  225.83 kB          0.046s
+           public."PlayerConnected"          0          0                     0.002s
+                public."PokerLobby"          1          0                     0.000s
+               public."PokerPlayer"          0          4      125 B          0.013s
+           public."PregnancyEvents"          1          0                     0.000s
+                  public."Pronouns"          0          7       77 B          0.007s
+                    public."Quotes"          1          0                     0.000s
+                 public."Reminders"          0          0                     0.002s
+              public."ScrambleGame"          0          0                     0.004s
+      public."ServerPassiveJackpot"          1          0                     0.000s
+                   public."Servers"          0         24    2.20 kB          0.013s
+              public."StockHistory"          1          0                     0.000s
+             public."StockHoldings"          0         17      999 B          0.007s
+         public."StockTransactions"          1          0                     0.000s
+                    public."Stocks"          1          0                     0.000s
+             public."TriviaMessage"          0          3      178 B          0.029s
+         public."UserActiveEffects"          1          0                     0.000s
+       public."UserDailyChallenges"          0         11      746 B          0.012s
+             public."UserInventory"          1          0                     0.000s
+                     public."Users"          0        218   27.97 kB          0.007s
+     public."UsersScheduledKeyword"          0         36    1.71 kB          0.005s
+                public."WordleGame"          1          0                     0.000s
+                     public."Words"          0       3901   43.61 kB          0.014s
+-----------------------------------  ---------  ---------  ---------  --------------
+                     Create Indexes          0         26                     2.020s
+               COPY Wall-Clock Time          0          4    5.58 MB          2.402s
+                       Primary Keys          0         12                     0.009s
+                Create Foreign Keys          0          1                     0.001s
+                    Reset Sequences          0         31                     0.036s
+-----------------------------------  ---------  ---------  ---------  --------------
+                  Total import time         30     164943    5.58 MB          4.318s
+
+
+
+=== CORRECTIVE ACTIONS (post-pgloader) ===
+pgloader's run above left 30/57 tables uncreated (0 rows) because it carries SQL Server column
+DEFAULT expressions into CREATE TABLE verbatim, and does not translate getutcdate()/sysutcdatetime()
+(confirmed as a known unresolved pgloader limitation for MSSQL sources: github.com/dimitri/pgloader/issues/1343).
+This also cascaded into 1 failed foreign key (PetJournal->Pet) and left the affected tables'
+identity sequences unset.
+
+Remediation performed:
+1. Extracted full column metadata for all 57 tables directly from sys.columns/sys.types/
+   sys.identity_columns/sys.default_constraints (saved to backups/source-schema-columns.csv).
+2. Generated corrected CREATE TABLE DDL for the 30 missing tables (backups/create-missing-tables.sql),
+   translating getutcdate()/sysutcdatetime() defaults to `(now() AT TIME ZONE 'utc')` (or cast to
+   ::date for the one date-typed column), and recreating identity columns as sequence-backed integer/
+   bigint columns matching pgloader's own naming convention ("Table_Column_seq").
+3. Discovered a SEPARATE pgloader inconsistency: 10 of the 27 originally-successful tables
+   (AuditLog, Birthday, BotAIMessage, ChatKeyword, Music, MusicQueue, PlayerConnected, Pronouns,
+   Servers, Words) have a genuine IDENTITY column in SQL Server (confirmed via sys.identity_columns)
+   but pgloader created them with no sequence/default at all. Backfilled sequences for these 10
+   (backups/fix-missing-sequences.sql) so future inserts work correctly.
+4. Copied data for the 30 rebuilt tables directly from SQL Server to Postgres via a small
+   Npgsql/Microsoft.Data.SqlClient console app (parameterized inserts, explicit UTC DateTime kind
+   and NpgsqlDbType per column) rather than re-running pgloader. All 30 tables' row counts matched
+   the source exactly (e.g. GambleLog 1924, PetJournal 559, AuditGameTrigger 174).
+5. Recreated the FK_PetJournal_Pet foreign key that failed during the original run.
+
+Result: all 57 tables now exist in the target with schema + data. Formal row-count verification
+follows as its own step.

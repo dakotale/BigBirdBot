@@ -1,12 +1,13 @@
-﻿using Discord;
+using Discord;
 using Discord.Interactions;
-using Discord.WebSocket;
 using DiscordBot.Constants;
+using DiscordBot.Data;
 using DiscordBot.Helper;
 using DiscordBot.Models;
+using DiscordBot.Models.Generated;
 using DiscordBot.Services;
-using System.Data;
-using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace DiscordBot.SlashCommands;
 
@@ -20,14 +21,15 @@ public class AICommands : InteractionModuleBase<SocketInteractionContext>
 {
     private readonly ISpotifyService _spotifyService;
     private readonly IAIChatService _aiChatService;
+    private readonly DiscordbotContext _db;
     private readonly EmbedHelper _embed = new();
-    private readonly StoredProcedure _sp = new();
 
     /// <summary>Injects the Spotify and AI chat backends used by /mood and /chat respectively.</summary>
-    public AICommands(ISpotifyService spotifyService, IAIChatService aiChatService)
+    public AICommands(ISpotifyService spotifyService, IAIChatService aiChatService, DiscordbotContext db)
     {
         _spotifyService = spotifyService;
         _aiChatService = aiChatService;
+        _db = db;
     }
 
     private string Username => Context.User.Username;
@@ -74,48 +76,32 @@ public class AICommands : InteractionModuleBase<SocketInteractionContext>
         {
             if (isNew)
             {
-                _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "DeleteBotAIMessage",
-                [
-                    new SqlParameter("@UserID",    userId),
-                    new SqlParameter("@ServerUID", serverUid),
-                    new SqlParameter("@ChannelID", channelId)
-                ]);
+                _db.BotAimessages.RemoveRange(_db.BotAimessages.Where(m =>
+                    m.UserId == userId && (m.ServerUid == serverUid || m.ChannelId == channelId)));
+                await _db.SaveChangesAsync();
             }
 
-            var history = isNew
-                ? new DataTable()
-                : _sp.Select(Constants.Constants.discordBotConnStr, "GetBotAIMessage",
-                [
-                    new SqlParameter("@UserID",    userId),
-                    new SqlParameter("@ServerUID", serverUid),
-                    new SqlParameter("@ChannelID", channelId)
-                ]);
-
-            var historyPairs = history.Rows.Cast<DataRow>()
-                .Select(dr => (Role: dr["ChatRole"].ToString()!, Text: dr["ChatMessage"].ToString()!));
+            var historyPairs = isNew
+                ? Enumerable.Empty<(string Role, string Text)>()
+                : (await _db.BotAimessages.AsNoTracking()
+                    .Where(m => m.UserId == userId && (m.ServerUid == serverUid || m.ChannelId == channelId))
+                    .OrderBy(m => m.BotAimessageId)
+                    .ToListAsync())
+                    .Select(m => (Role: m.ChatRole, Text: m.ChatMessage));
 
             string aiText = await _aiChatService.GetResponseAsync(persona, historyPairs, message);
 
-            SqlParameter[] baseParams =
-            [
-                new SqlParameter("@UserID",    userId),
-                new SqlParameter("@ServerUID", serverUid),
-                new SqlParameter("@ChannelID", channelId)
-            ];
-
-            _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "AddBotAIMessage",
-            [
-                .. baseParams,
-                new SqlParameter("@ChatRole",    "user"),
-                new SqlParameter("@ChatMessage", message)
-            ]);
-
-            _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "AddBotAIMessage",
-            [
-                .. baseParams,
-                new SqlParameter("@ChatRole",    "assistant"),
-                new SqlParameter("@ChatMessage", aiText)
-            ]);
+            _db.BotAimessages.Add(new BotAimessage
+            {
+                UserId = userId, ServerUid = serverUid, ChannelId = channelId,
+                ChatRole = "user", ChatMessage = message
+            });
+            _db.BotAimessages.Add(new BotAimessage
+            {
+                UserId = userId, ServerUid = serverUid, ChannelId = channelId,
+                ChatRole = "assistant", ChatMessage = aiText
+            });
+            await _db.SaveChangesAsync();
 
             string title = personality == "None" ? "Chat" : personality;
             string description = $"**Message:** {message}\n\n**Response:** {aiText}";
@@ -195,17 +181,31 @@ public class AICommands : InteractionModuleBase<SocketInteractionContext>
                 return;
             }
 
-            var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetAIJSONImageReturn",
-                [new SqlParameter("@json", body)]);
+            // GetAIJSONImageReturn was pure OPENJSON parsing of a JSON string already sitting
+            // in a C# variable — same situation as the trivia procs, converted to direct
+            // System.Text.Json parsing instead of a DB round-trip.
+            string? status = null;
+            double? percentageChance = null;
+            try
+            {
+                using var doc = JsonDocument.Parse(body);
+                status = doc.RootElement.GetProperty("status").GetString();
+                if (doc.RootElement.TryGetProperty("type", out var typeEl) &&
+                    typeEl.TryGetProperty("ai_generated", out var aiGenEl))
+                {
+                    percentageChance = aiGenEl.GetDouble() * 100.0;
+                }
+            }
+            catch (JsonException) { /* fall through to the failure embed below */ }
 
-            if (dt.Rows.Count == 0 || dt.Rows[0]["Status"].ToString() != "success")
+            if (status != "success" || percentageChance is null)
             {
                 await FollowupAsync(embed: _embed.BuildErrorEmbed(
                     "AI Detection", "The detection request failed.", Username).Build());
                 return;
             }
 
-            double rate = double.Parse(dt.Rows[0]["PercentageChance"].ToString()!);
+            double rate = percentageChance.Value;
 
             string desc = rate switch
             {

@@ -59,7 +59,7 @@ namespace DiscordBot.Constants
             return fallback ?? string.Empty;
         }
 
-        public static string discordBotConnStr => Get(nameof(discordBotConnStr), "Server=localhost;DataBase=DiscordBot;Integrated Security=true;TrustServerCertificate=True");
+        public static string postgresConnStr => Get(nameof(postgresConnStr));
         public static string botToken => Get(nameof(botToken));
         public static string devBotToken => Get(nameof(devBotToken));
         public static string lavalinkUrl => Get(nameof(lavalinkUrl), "http://localhost:2333");

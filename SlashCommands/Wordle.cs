@@ -1,9 +1,9 @@
 ﻿using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
-using DiscordBot.Constants;
 using DiscordBot.Helper;
-using Microsoft.Data.SqlClient;
+using DiscordBot.Models.Generated;
+using Microsoft.EntityFrameworkCore;
 
 namespace DiscordBot.SlashCommands;
 
@@ -166,10 +166,10 @@ public partial class Games
     {
         await DeferAsync();
 
-        var existing = _sp.Select(Constants.Constants.discordBotConnStr, "GetWordleByChannel",
-            [new SqlParameter("@ChannelID", Context.Channel.Id.ToString())]);
+        string channelIdKey = Context.Channel.Id.ToString();
+        bool existing = await db.WordleGames.AnyAsync(g => g.ChannelId == channelIdKey);
 
-        if (existing.Rows.Count > 0)
+        if (existing)
         {
             await FollowupAsync(embed: _embed.BuildErrorEmbed(
                 "Wordle", "A Wordle is already running in this channel! Finish it first.", Username).Build());
@@ -180,14 +180,12 @@ public partial class Games
 
         var msg = await FollowupAsync(embed: BuildWordleEmbed(answer, [], false).Build());
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "AddWordleGame",
-        [
-            new SqlParameter("@ChannelID", Context.Channel.Id.ToString()),
-            new SqlParameter("@MessageID", msg.Id.ToString()),
-            new SqlParameter("@Answer",    answer),
-            new SqlParameter("@Guesses",   ""),
-            new SqlParameter("@StartedBy", Context.User.Id.ToString())
-        ]);
+        db.WordleGames.Add(new WordleGame
+        {
+            ChannelId = channelIdKey, MessageId = msg.Id.ToString(), Answer = answer,
+            Guesses = "", StartedBy = Context.User.Id.ToString()
+        });
+        await db.SaveChangesAsync();
     }
 
 

@@ -1,11 +1,11 @@
-﻿using System.Data;
-using Microsoft.Data.SqlClient;
-using System.Runtime.CompilerServices;
+﻿using System.Runtime.CompilerServices;
 using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 using DiscordBot.Constants;
+using DiscordBot.Data;
 using DiscordBot.Helper;
+using DiscordBot.Models.Generated;
 using Fergun.Interactive;
 using Fergun.Interactive.Pagination;
 using Lavalink4NET;
@@ -14,6 +14,7 @@ using Lavalink4NET.Players;
 using Lavalink4NET.Players.Queued;
 using Lavalink4NET.Rest.Entities.Tracks;
 using Lavalink4NET.Tracks;
+using Microsoft.EntityFrameworkCore;
 
 namespace DiscordBot.SlashCommands;
 
@@ -22,7 +23,7 @@ namespace DiscordBot.SlashCommands;
 /// via Lavalink4NET, including queueing, playback control, and volume management.
 /// Supports interactive button controls on Now Playing embeds.
 /// </summary>
-public sealed class Audio(IAudioService audioService, InteractiveService interactiveService)
+public sealed class Audio(IAudioService audioService, InteractiveService interactiveService, DiscordbotContext db, IServiceProvider services)
     : InteractionModuleBase<SocketInteractionContext>
 {
     private readonly EmbedHelper _embed = new();
@@ -247,11 +248,7 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
 
         await player.SetVolumeAsync(volume / 100f);
 
-        new StoredProcedure().UpdateCreate(Constants.Constants.discordBotConnStr, "UpdateVolume",
-        [
-            new SqlParameter("@ServerUID", GuildId),
-            new SqlParameter("@Volume",    volume)
-        ]);
+        SetVolume(GuildId, volume);
 
         var embed = MakeEmbed(EmojiVolume, "Volume", ColourSuccess)
             .AddField("Level", $"{VolumeBar(volume)}  **{volume}%**");
@@ -440,10 +437,8 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
         int count = player.Queue.Count;
         await player.Queue.ClearAsync();
 
-        new StoredProcedure().UpdateCreate(Constants.Constants.discordBotConnStr, "DeleteMusicQueueAll",
-        [
-            new SqlParameter("@ServerID", GuildId)
-        ]);
+        db.MusicQueues.RemoveRange(db.MusicQueues.Where(q => q.ServerUid == GuildId));
+        db.SaveChanges();
 
         await ReplyEmbedAsync(EmojiQueue, "Queue Cleared", $"Removed **{count}** track(s).", ColourSuccess);
     }
@@ -688,7 +683,8 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
         var options = new CustomPlayerOptions
         {
             SelfMute = true,
-            TextChannel = Context.Channel as ITextChannel
+            TextChannel = Context.Channel as ITextChannel,
+            Services = services
         };
 
         var retrieveOptions = new PlayerRetrieveOptions(
@@ -909,11 +905,7 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
 
         await player.SetVolumeAsync(newVol / 100f);
 
-        new StoredProcedure().UpdateCreate(Constants.Constants.discordBotConnStr, "UpdateVolume",
-        [
-            new SqlParameter("@ServerUID", GuildId),
-            new SqlParameter("@Volume",    newVol)
-        ]);
+        SetVolume(GuildId, newVol);
 
         await UpdateNowPlayingMessageAsync(player, player.State is PlayerState.Paused);
     }
@@ -1063,55 +1055,111 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
     #region DB Helpers
 
     /// <summary>Reads the guild's saved playback volume, defaulting to 50 if none is stored.</summary>
-    private int GetVolume(long guildId)
+    private int GetVolume(long guildId) =>
+        db.Servers.AsNoTracking().FirstOrDefault(s => s.ServerUid == guildId)?.Volume ?? 50;
+
+    /// <summary>Persists the guild's playback volume. A no-op if the guild has no Servers row.</summary>
+    private void SetVolume(long guildId, int volume)
     {
-        var dt = new StoredProcedure().Select(Constants.Constants.discordBotConnStr, "GetVolume",
-        [
-            new SqlParameter("@ServerUID", guildId)
-        ]);
-
-        foreach (DataRow row in dt.Rows)
-        {
-            if (int.TryParse(row["Volume"]?.ToString(), out int v))
-                return v;
-        }
-
-        return 50;
+        var server = db.Servers.FirstOrDefault(s => s.ServerUid == guildId);
+        if (server is null) return;
+        server.Volume = volume;
+        db.SaveChanges();
     }
 
-    /// <summary>Records that the bot has connected to a voice/text channel pair in this guild.</summary>
-    private void AddPlayerConnected(IVoiceState voiceState) =>
-        new StoredProcedure().UpdateCreate(Constants.Constants.discordBotConnStr, "AddPlayerConnected",
-        [
-            new SqlParameter("@ServerID",       GuildId),
-            new SqlParameter("@VoiceChannelID", (long)voiceState.VoiceChannel.Id),
-            new SqlParameter("@TextChannelID",  (long)((ITextChannel)Context.Channel).Id),
-            new SqlParameter("@CreatedBy",      Context.User.Id.ToString())
-        ]);
+    /// <summary>
+    /// Records that the bot has connected to a voice/text channel pair in this guild.
+    /// Source proc bundled this insert with an UPDATE Servers.IsPlayerConnected = 1 in the
+    /// same call (no explicit transaction in the T-SQL though, so this EF version — one
+    /// SaveChanges covering both changes — is at least as atomic as the original, not less.
+    /// </summary>
+    private void AddPlayerConnected(IVoiceState voiceState)
+    {
+        long voiceChannelId = (long)voiceState.VoiceChannel.Id;
+        long textChannelId = (long)((ITextChannel)Context.Channel).Id;
 
-    /// <summary>Clears the guild's connected-player record and any leftover queued-track rows.</summary>
+        bool alreadyExists = db.PlayerConnecteds.Any(p =>
+            p.ServerUid == GuildId && p.VoiceChannelId == voiceChannelId && p.TextChannelId == textChannelId);
+        if (alreadyExists) return;
+
+        db.PlayerConnecteds.Add(new PlayerConnected
+        {
+            ServerUid = GuildId,
+            VoiceChannelId = voiceChannelId,
+            TextChannelId = textChannelId,
+            CreatedBy = Context.User.Id.ToString()
+        });
+
+        var server = db.Servers.FirstOrDefault(s => s.ServerUid == GuildId);
+        if (server is not null) server.IsPlayerConnected = true;
+
+        db.SaveChanges();
+    }
+
+    /// <summary>
+    /// Clears the guild's connected-player record and any leftover queued-track rows.
+    /// Source was two separate procs (DeletePlayerConnected also updated
+    /// Servers.IsPlayerConnected = 0, DeleteMusicQueueAll a separate single-table delete) —
+    /// staged together here and saved once so the PlayerConnected+Servers pair stays atomic.
+    /// </summary>
     private void DeletePlayerConnected(long serverId)
     {
-        SqlParameter[] p = [new SqlParameter("@ServerID", serverId)];
-        var sp = new StoredProcedure();
-        sp.UpdateCreate(Constants.Constants.discordBotConnStr, "DeletePlayerConnected", [.. p]);
-        sp.UpdateCreate(Constants.Constants.discordBotConnStr, "DeleteMusicQueueAll", [.. p]);
+        db.PlayerConnecteds.RemoveRange(db.PlayerConnecteds.Where(p => p.ServerUid == serverId));
+
+        var server = db.Servers.FirstOrDefault(s => s.ServerUid == serverId);
+        if (server is not null) server.IsPlayerConnected = false;
+
+        db.SaveChanges();
+
+        db.MusicQueues.RemoveRange(db.MusicQueues.Where(q => q.ServerUid == serverId));
+        db.SaveChanges();
     }
 
-    /// <summary>Logs a played track to the music history table.</summary>
+    /// <summary>
+    /// Logs a played track to the music history table and enqueues it in MusicQueue.
+    /// Source proc (AddMusic) did both inserts itself, resolving the current voice/text
+    /// channel from the PlayerConnected row for this guild — replicated the same way here.
+    /// NOTE: unlike AddPlayerConnected/DeletePlayerConnected above, this needs two separate
+    /// SaveChanges calls (the generated MusicId has to exist before the MusicQueue row can
+    /// reference it), so it is NOT atomic between the two inserts — a failure between them
+    /// would leave an orphaned Music row with no matching queue entry. Flagging rather than
+    /// silently accepting: this matches the source's actual behavior though, not a regression
+    /// — the original proc had no explicit transaction either, so it had the same exposure.
+    /// </summary>
     private void AddMusicTable(LavalinkTrack? track, string serverId, string createdBy)
     {
         if (track is null) return;
 
-        new StoredProcedure().UpdateCreate(Constants.Constants.discordBotConnStr, "AddMusic",
-        [
-            new SqlParameter("@ServerID",  long.Parse(serverId)),
-            new SqlParameter("@VideoID",   track.Identifier),
-            new SqlParameter("@Author",    track.Author),
-            new SqlParameter("@Title",     track.Title),
-            new SqlParameter("@URL",       track.Uri?.OriginalString ?? ""),
-            new SqlParameter("@CreatedBy", createdBy)
-        ]);
+        long guildId = long.Parse(serverId);
+        string url = track.Uri?.OriginalString ?? "";
+
+        var music = new Music
+        {
+            ServerUid = guildId,
+            VideoId = track.Identifier,
+            Author = track.Author,
+            Title = track.Title,
+            Url = url,
+            CreatedBy = createdBy
+        };
+        db.Musics.Add(music);
+        db.SaveChanges(); // need music.MusicId assigned before building the MusicQueue row below
+
+        // Source resolved these via a scalar subquery against PlayerConnected for this guild —
+        // this always exists in practice (the bot must have joined voice, which writes a
+        // PlayerConnected row, before any track can be queued), same assumption preserved here.
+        var connected = db.PlayerConnecteds.AsNoTracking().First(p => p.ServerUid == guildId);
+
+        db.MusicQueues.Add(new MusicQueue
+        {
+            MusicId = music.MusicId,
+            ServerUid = guildId,
+            VoiceChannelId = connected.VoiceChannelId,
+            TextChannelId = connected.TextChannelId,
+            Url = url,
+            CreatedBy = createdBy
+        });
+        db.SaveChanges();
     }
 
     #endregion

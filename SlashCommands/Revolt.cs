@@ -2,10 +2,11 @@
 using Discord.Interactions;
 using Discord.WebSocket;
 using DiscordBot.Constants;
+using DiscordBot.Data;
 using DiscordBot.Helper;
+using DiscordBot.Models.Generated;
+using Microsoft.EntityFrameworkCore;
 using System.Collections.Concurrent;
-using System.Data;
-using Microsoft.Data.SqlClient;
 using System.Text;
 
 namespace DiscordBot.SlashCommands;
@@ -18,10 +19,8 @@ namespace DiscordBot.SlashCommands;
 /// guillotined: their credits and liquidated stock portfolio are seized and
 /// split equally across every user in the server.
 /// </summary>
-public class Revolt : InteractionModuleBase<SocketInteractionContext>
+public class Revolt(DiscordbotContext db) : InteractionModuleBase<SocketInteractionContext>
 {
-    private readonly StoredProcedure _sp = new();
-    private readonly Economy _eco = new();
     private readonly EmbedHelper _embed = new();
 
     private string UserId => Context.User.Id.ToString();
@@ -74,7 +73,7 @@ public class Revolt : InteractionModuleBase<SocketInteractionContext>
         }
 
         // ── Check revolter's own balance ───────────────────────────────────────
-        decimal revolterBalance = _eco.GetBalance(UserId, ServerId);
+        decimal revolterBalance = await CreditService.GetBalanceAsync(db, UserId, ServerId);
         if (revolterBalance >= MaxRevolterBalance)
         {
             await ErrorAsync(
@@ -84,7 +83,7 @@ public class Revolt : InteractionModuleBase<SocketInteractionContext>
         }
 
         // ── Check target actually has something worth seizing ──────────────────
-        decimal targetBalance = _eco.GetBalance(target.Id.ToString(), ServerId);
+        decimal targetBalance = await CreditService.GetBalanceAsync(db, target.Id.ToString(), ServerId);
         if (targetBalance <= 0m)
         {
             await ErrorAsync($"**{target.Username}** has nothing worth taking. Pick a wealthier target.");
@@ -158,38 +157,36 @@ public class Revolt : InteractionModuleBase<SocketInteractionContext>
         string targetId = target.Id.ToString();
 
         // ── Seize credits ──────────────────────────────────────────────────────
-        decimal seizedCredits = _eco.GetBalance(targetId, ServerId);
+        decimal seizedCredits = await CreditService.GetBalanceAsync(db, targetId, ServerId);
         if (seizedCredits > 0m)
-            _eco.DeductCredits(targetId, ServerId, seizedCredits, "guillotined");
+            await CreditService.DeductCreditsAsync(db, targetId, ServerId, seizedCredits, "guillotined");
 
         // ── Liquidate stock portfolio ──────────────────────────────────────────
         decimal stockProceeds = 0m;
 
-        var portfolioDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetPortfolio",
-        [
-            new SqlParameter("@UserID",   targetId),
-            new SqlParameter("@ServerID", ServerId)
-        ]);
+        var portfolio = await (
+            from h in db.StockHoldings
+            join s in db.Stocks.AsNoTracking() on h.Ticker equals s.Ticker
+            where h.UserId == targetId && h.ServerId == ServerId
+            select new { Holding = h, s.Price }
+        ).ToListAsync();
 
-        foreach (DataRow row in portfolioDt.Rows)
+        foreach (var row in portfolio)
         {
             try
             {
-                string ticker = row["Ticker"].ToString()!;
-                int shares = int.Parse(row["Shares"].ToString()!);
-                decimal price = decimal.Parse(row["CurrentPrice"].ToString()!);
+                int shares = row.Holding.Shares;
+                decimal price = row.Price;
                 decimal proceeds = Math.Floor(price * shares);
                 stockProceeds += proceeds;
 
-                _sp.Select(Constants.Constants.discordBotConnStr, "SellStock",
-                [
-                    new SqlParameter("@UserID",    targetId),
-                    new SqlParameter("@ServerID",  ServerId),
-                    new SqlParameter("@Ticker",    ticker),
-                    new SqlParameter("@Shares",    shares),
-                    new SqlParameter("@PriceEach", price),
-                    new SqlParameter("@TotalGain", proceeds)
-                ]);
+                db.StockHoldings.Remove(row.Holding);
+                db.StockTransactions.Add(new StockTransaction
+                {
+                    UserId = targetId, ServerId = ServerId, Ticker = row.Holding.Ticker, TxType = "SELL",
+                    Shares = shares, PriceEach = price, TotalCost = proceeds
+                });
+                await db.SaveChangesAsync();
             }
             catch { /* non-fatal — skip bad row */ }
         }
@@ -197,18 +194,12 @@ public class Revolt : InteractionModuleBase<SocketInteractionContext>
         decimal totalSeized = seizedCredits + stockProceeds;
 
         // ── Get all server members to split across ─────────────────────────────
-        var membersDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetCreditLeaderboard",
-            [new SqlParameter("@ServerID", ServerId)]);
-
         // Include target in denominator — they get nothing, but we count everyone
-        // who has an account. Use Credits table directly for a full count.
-        var recipientsDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetAllServerUsers",
-            [new SqlParameter("@ServerID", ServerId)]);
-
-        var recipients = recipientsDt.Rows.Cast<DataRow>()
-            .Select(r => r["UserID"].ToString()!)
-            .Where(uid => uid != targetId)
-            .ToList();
+        // who has an account.
+        var recipients = await db.Credits.AsNoTracking()
+            .Where(c => c.ServerId == ServerId && c.UserId != targetId)
+            .Select(c => c.UserId)
+            .ToListAsync();
 
         decimal share = recipients.Count > 0
             ? Math.Floor(totalSeized / recipients.Count)
@@ -218,7 +209,7 @@ public class Revolt : InteractionModuleBase<SocketInteractionContext>
         {
             foreach (string uid in recipients)
             {
-                try { _eco.AddCredits(uid, ServerId, share, "revolt_share"); }
+                try { await CreditService.AddCreditsAsync(db, uid, ServerId, share, "revolt_share"); }
                 catch { }
             }
         }
@@ -247,9 +238,12 @@ public class Revolt : InteractionModuleBase<SocketInteractionContext>
         try
         {
             var guild = Context.Guild;
-            var serverDetails = ServerHelper.GetServerInfo(guild.Id);
-            var channel = guild.GetTextChannel(UInt64.Parse(serverDetails.DefaultChannelID));
-            await channel.SendMessageAsync(embed: resultEmbed.Build());
+            var serverDetails = await ServerHelper.GetServerInfoAsync(db, guild.Id);
+            if (serverDetails is not null)
+            {
+                var channel = guild.GetTextChannel(UInt64.Parse(serverDetails.DefaultChannelID));
+                await channel.SendMessageAsync(embed: resultEmbed.Build());
+            }
         }
         catch { }
     }

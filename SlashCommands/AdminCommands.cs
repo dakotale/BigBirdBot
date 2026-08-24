@@ -1,18 +1,16 @@
 ﻿using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
-using DiscordBot.Constants;
+using DiscordBot.Data;
 using DiscordBot.Helper;
-using System.Data;
-using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
 
 namespace DiscordBot.SlashCommands
 {
     /// <summary>Server moderation/admin utility commands: pronoun-role menu, bot nickname, message purge, and announcement toggling.</summary>
-    public class AdminCommands : InteractionModuleBase<SocketInteractionContext>
+    public class AdminCommands(DiscordbotContext db) : InteractionModuleBase<SocketInteractionContext>
     {
         private readonly EmbedHelper _embed = new();
-        private readonly StoredProcedure _sp = new();
 
         private string Username => Context.User.Username;
 
@@ -24,11 +22,11 @@ namespace DiscordBot.SlashCommands
         {
             await DeferAsync();
 
-            var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetPronouns", []);
+            var pronouns = await db.Pronouns.AsNoTracking().ToListAsync();
 
             var builder = new ComponentBuilder();
-            foreach (DataRow dr in dt.Rows)
-                builder.WithButton(dr["Pronoun"].ToString(), dr["ID"].ToString());
+            foreach (var p in pronouns)
+                builder.WithButton(p.Pronoun1, p.Id.ToString());
 
             await FollowupAsync(
                 embed: _embed.BuildMessageEmbed(
@@ -106,13 +104,24 @@ namespace DiscordBot.SlashCommands
         {
             await DeferAsync(ephemeral: true);
 
-            var dt = _sp.Select(Constants.Constants.discordBotConnStr, "ToggleAnnouncements",
-            [
-                new SqlParameter("@ServerUID", (long)Context.Guild.Id),
-                new SqlParameter("@ChannelID", (long)Context.Channel.Id)
-            ]);
+            var server = await db.Servers.FirstOrDefaultAsync(s => s.ServerUid == (long)Context.Guild.Id);
 
-            string result = dt.Rows.Count > 0 ? dt.Rows[0]["Result"].ToString() ?? "" : "Unknown error toggling announcements.";
+            string result;
+            if (server is null)
+            {
+                result = "Unknown error toggling announcements.";
+            }
+            else
+            {
+                server.AnnouncementsEnabled = !server.AnnouncementsEnabled;
+                if (server.AnnouncementsEnabled)
+                    server.DefaultChannelId = (long)Context.Channel.Id;
+                await db.SaveChangesAsync();
+
+                result = server.AnnouncementsEnabled
+                    ? "Announcements enabled. Timed events (word puzzles, jackpot results) will be posted in this channel."
+                    : "Announcements disabled. The bot will no longer post timed events in this server.";
+            }
 
             await FollowupAsync(embed: _embed.BuildMessageEmbed(
                 "📣  Announcements",

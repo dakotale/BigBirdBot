@@ -1,10 +1,9 @@
-﻿using System.Data;
-using Microsoft.Data.SqlClient;
-using System.Reflection;
+﻿using System.Reflection;
 using Discord;
 using Discord.Commands;
 using Discord.WebSocket;
 using DiscordBot.Constants;
+using DiscordBot.Data;
 using DiscordBot.Helper;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -57,18 +56,27 @@ namespace DiscordBot.Services
 
             // This value holds the offset where the prefix ends
             int argPos = 0;
-            // Perform prefix check. You may want to replace this with
-            // (!message.HasCharPrefix('!', ref argPos))
-            // for a more traditional command format like !help.
-            StoredProcedure stored = new StoredProcedure();
-            string prefix = "";
-            SocketGuildChannel? channelId = message.Channel as SocketGuildChannel;
-            bool isActive = false;
-            DataTable dtPrefix = stored.Select(Constants.Constants.discordBotConnStr, "GetServerByID", new List<SqlParameter> { new SqlParameter("@ServerUID", Int64.Parse(channelId.Guild.Id.ToString())) });
-            foreach (DataRow dr in dtPrefix.Rows)
+            // BUG FIX: this used to read a "Prefix" column from GetServerByID's result that has
+            // never existed in the Servers table (confirmed against the live schema) — every
+            // message in every registered guild threw an ArgumentException here (silently
+            // caught/logged by Discord.Net's event dispatcher), so this legacy handler has never
+            // successfully run a command. There's also no per-server prefix concept anywhere in
+            // the schema to restore, and zero classes inherit ModuleBase<T> in this codebase
+            // (checked), so CommandService has nothing registered to dispatch to regardless —
+            // fixed to just stop throwing, using the "!" prefix this class's own doc comment
+            // already describes ("!play"), with IsActive fetched correctly via EF.
+            const string prefix = "!";
+            // BUG FIX: source also indexed channelId.Guild without checking channelId was
+            // actually a guild channel first — a DM to the bot would NRE here. Guarded instead.
+            if (message.Channel is not SocketGuildChannel channelId)
+                return;
+
+            bool isActive;
+            using (var scope = _services.CreateScope())
             {
-                prefix = dr["Prefix"].ToString();
-                isActive = bool.Parse(dr["IsActive"].ToString());
+                var scopedDb = scope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+                var info = await ServerHelper.GetServerInfoAsync(scopedDb, channelId.Guild.Id);
+                isActive = info?.IsActive ?? false;
             }
 
             // No Command for you, the server is inactive
@@ -101,8 +109,9 @@ namespace DiscordBot.Services
             // the command was successful, we don't care about this result, unless we want to log that a command succeeded.
             if (result.IsSuccess)
             {
-                Audit audit = new Audit();
-                audit.InsertAudit(command.Value.Name, context.User.Id.ToString(), Constants.Constants.discordBotConnStr, context.Guild.Id.ToString());
+                using var scope = _services.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+                await AuditService.InsertAuditAsync(db, command.Value.Name, context.User.Id.ToString(), context.Guild.Id.ToString());
                 return;
             }
 

@@ -1,11 +1,11 @@
 using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
-using DiscordBot.Constants;
+using DiscordBot.Data;
 using DiscordBot.Helper;
 using DiscordBot.Misc;
-using System.Data;
-using Microsoft.Data.SqlClient;
+using DiscordBot.Models.Generated;
+using Microsoft.EntityFrameworkCore;
 using System.Text;
 
 namespace DiscordBot.SlashCommands;
@@ -14,10 +14,9 @@ namespace DiscordBot.SlashCommands;
 /// General-purpose utility commands.
 /// These are self-contained tools with no external API dependencies.
 /// </summary>
-public class UtilityCommands : InteractionModuleBase<SocketInteractionContext>
+public class UtilityCommands(DiscordbotContext db) : InteractionModuleBase<SocketInteractionContext>
 {
     private readonly EmbedHelper _embed = new();
-    private readonly StoredProcedure _sp = new();
 
     private string Username => Context.User.Username;
     private string AvatarUrl => Context.User.GetAvatarUrl();
@@ -176,6 +175,13 @@ public class UtilityCommands : InteractionModuleBase<SocketInteractionContext>
 
         var reminderUtc = DateTime.SpecifyKind(parsedLocal, DateTimeKind.Unspecified)
                           - TimeSpan.FromHours(utcOffset);
+        // reminderUtc's clock value is already the correct UTC instant (computed via explicit
+        // offset subtraction above) — it just needs the Kind tag corrected to Utc so Npgsql
+        // accepts it. SpecifyKind (relabel only, no shift) is correct here, unlike the
+        // .ToUniversalTime() pattern used elsewhere for GETDATE()-sourced local wall-clock
+        // values — calling .ToUniversalTime() on this Unspecified-kind value would incorrectly
+        // subtract the local UTC offset a second time.
+        var reminderUtcKind = DateTime.SpecifyKind(reminderUtc, DateTimeKind.Utc);
         var delay = reminderUtc - DateTime.UtcNow;
 
         if (delay < TimeSpan.FromMinutes(1))
@@ -196,12 +202,13 @@ public class UtilityCommands : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "AddReminder",
-        [
-            new SqlParameter("@UserID",      Context.User.Id.ToString()),
-            new SqlParameter("@Message",     reminder),
-            new SqlParameter("@RemindAtUtc", reminderUtc)
-        ]);
+        db.Reminders.Add(new Reminder
+        {
+            UserId = Context.User.Id.ToString(),
+            Message = reminder,
+            RemindAtUtc = reminderUtcKind
+        });
+        await db.SaveChangesAsync();
 
         string offsetLabel = utcOffset >= 0 ? $"UTC+{utcOffset}" : $"UTC{utcOffset}";
         string displayTime = parsedLocal.ToString("MMMM d, yyyy 'at' h:mm tt");
@@ -314,10 +321,18 @@ public class UtilityCommands : InteractionModuleBase<SocketInteractionContext>
     {
         await DeferAsync(ephemeral: true);
 
-        var dt = _sp.Select(Constants.Constants.discordBotConnStr, "UpdateBrokenEmbed",
-            [new SqlParameter("@ServerID", long.Parse(Context.Guild.Id.ToString()))]);
+        var server = await db.Servers.FirstOrDefaultAsync(s => s.ServerUid == (long)Context.Guild.Id);
 
-        string result = dt.Rows.Count > 0 ? dt.Rows[^1]["Result"].ToString() ?? "" : "";
+        string result = "";
+        if (server is not null)
+        {
+            server.FixEmbed = !server.FixEmbed;
+            await db.SaveChangesAsync();
+
+            result = server.FixEmbed
+                ? "The bot will now embed Twitter, Reddit, and Bluesky links."
+                : "The bot will no longer embed Twitter, Reddit, and Bluesky links.";
+        }
 
         await FollowupAsync(embed: _embed.BuildMessageEmbed(
             "Embeds", result, "", $"Command from: {Username}", Color.Green).Build(),

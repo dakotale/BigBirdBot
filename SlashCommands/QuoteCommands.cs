@@ -2,19 +2,18 @@ using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 using DiscordBot.Constants;
+using DiscordBot.Data;
 using DiscordBot.Helper;
+using DiscordBot.Models.Generated;
+using Microsoft.EntityFrameworkCore;
 using System.Collections.Concurrent;
-using System.Data;
-using Microsoft.Data.SqlClient;
 
 namespace DiscordBot.SlashCommands
 {
     /// <summary>Quote archive: save any message as a quote via context menu, then browse/search saved quotes with paginated embeds.</summary>
-    public class QuoteCommands : InteractionModuleBase<SocketInteractionContext>
+    public class QuoteCommands(DiscordbotContext db, IHttpClientFactory httpFactory) : InteractionModuleBase<SocketInteractionContext>
     {
         private readonly EmbedHelper _embed = new();
-        private readonly StoredProcedure _sp = new();
-        private readonly IHttpClientFactory _httpFactory;
 
         private static readonly ConcurrentDictionary<string, (List<Embed> Pages, int CurrentPage, DateTime ExpiresAt)>
             _sessions = new();
@@ -22,11 +21,6 @@ namespace DiscordBot.SlashCommands
         private const int PageSize = 5;
 
         private static readonly string[] ImageExtensions = [".png", ".jpg", ".jpeg", ".gif", ".webp"];
-
-        public QuoteCommands(IHttpClientFactory httpFactory)
-        {
-            _httpFactory = httpFactory;
-        }
 
         // ── Context Menu ──────────────────────────────────────────────────────────
 
@@ -37,12 +31,10 @@ namespace DiscordBot.SlashCommands
         {
             await DeferAsync(ephemeral: true);
 
-            var configDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetGuildQuoteConfig",
-            [
-                new SqlParameter("@GuildId", (long)Context.Guild.Id)
-            ]);
+            var config = await db.GuildQuoteConfigs.AsNoTracking()
+                .FirstOrDefaultAsync(x => x.GuildId == (long)Context.Guild.Id);
 
-            if (configDt.Rows.Count == 0)
+            if (config is null)
             {
                 await FollowupAsync(embed: _embed.BuildErrorEmbed(
                     "Save Quote",
@@ -51,7 +43,7 @@ namespace DiscordBot.SlashCommands
                 return;
             }
 
-            ulong archiveChannelId = (ulong)(long)configDt.Rows[0]["ArchiveChannelId"];
+            ulong archiveChannelId = (ulong)config.ArchiveChannelId;
 
             string content = string.IsNullOrWhiteSpace(message.Content)
                 ? (message.Attachments.Count > 0 ? "[attachment]" : "[empty message]")
@@ -66,7 +58,7 @@ namespace DiscordBot.SlashCommands
                 var attachment = message.Attachments.First();
                 try
                 {
-                    var httpClient = _httpFactory.CreateClient();
+                    var httpClient = httpFactory.CreateClient();
                     var bytes = await httpClient.GetByteArrayAsync(attachment.Url);
                     string ext = Path.GetExtension(attachment.Filename);
                     string filename = $"quote_{message.Id}{ext}";
@@ -81,20 +73,39 @@ namespace DiscordBot.SlashCommands
                 catch { /* attachment re-upload failed — continue without it */ }
             }
 
-            var insertDt = _sp.Select(Constants.Constants.discordBotConnStr, "InsertQuote",
-            [
-                new SqlParameter("@GuildId",            (long)Context.Guild.Id),
-                new SqlParameter("@AuthorId",           (long)message.Author.Id),
-                new SqlParameter("@AuthorUsername",     message.Author.Username),
-                new SqlParameter("@SavedByUserId",      (long)Context.User.Id),
-                new SqlParameter("@SavedByUsername",    Context.User.Username),
-                new SqlParameter("@Content",            content),
-                new SqlParameter("@OriginalMessageUrl", messageUrl),
-                new SqlParameter("@ArchiveMessageUrl",  (object?)null ?? DBNull.Value),
-                new SqlParameter("@AttachmentUrl",      (object?)attachmentUrl ?? DBNull.Value)
-            ]);
+            // Mirrors InsertQuote's check-then-insert: same duplicate check by (GuildId,
+            // OriginalMessageUrl), same lack of a transaction/unique-constraint guarantee
+            // against a race between the check and the insert — preserved as-is, not hardened.
+            var existingQuote = await db.Quotes.AsNoTracking()
+                .FirstOrDefaultAsync(q => q.GuildId == (long)Context.Guild.Id && q.OriginalMessageUrl == messageUrl);
 
-            bool duplicate = insertDt.Rows.Count > 0 && (int)insertDt.Rows[0]["Duplicate"] == 1;
+            bool duplicate;
+            int quoteId;
+
+            if (existingQuote is not null)
+            {
+                duplicate = true;
+                quoteId = existingQuote.QuoteId;
+            }
+            else
+            {
+                var quote = new Quote
+                {
+                    GuildId = (long)Context.Guild.Id,
+                    AuthorId = (long)message.Author.Id,
+                    AuthorUsername = message.Author.Username,
+                    SavedByUserId = (long)Context.User.Id,
+                    SavedByUsername = Context.User.Username,
+                    Content = content,
+                    OriginalMessageUrl = messageUrl,
+                    ArchiveMessageUrl = null,
+                    AttachmentUrl = attachmentUrl
+                };
+                db.Quotes.Add(quote);
+                await db.SaveChangesAsync();
+                duplicate = false;
+                quoteId = quote.QuoteId;
+            }
 
             if (duplicate)
             {
@@ -103,8 +114,6 @@ namespace DiscordBot.SlashCommands
                     ephemeral: true);
                 return;
             }
-
-            int quoteId = (int)insertDt.Rows[0]["QuoteId"];
 
             // Post quote embed to archive channel
             var quoteEmbed = BuildQuoteEmbed(
@@ -127,11 +136,15 @@ namespace DiscordBot.SlashCommands
                 var archiveMsg = await archiveTextChannel.SendMessageAsync(
                     embed: quoteEmbed, components: jumpButton);
 
-                _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "UpdateQuoteArchiveUrl",
-                [
-                    new SqlParameter("@QuoteId",          quoteId),
-                    new SqlParameter("@ArchiveMessageUrl", archiveMsg.GetJumpUrl())
-                ]);
+                // Separate write from the insert above (same as the original two-proc-call
+                // sequence — there's a Discord API call in between, so this was never one
+                // atomic unit even before conversion).
+                var quoteToUpdate = await db.Quotes.FindAsync(quoteId);
+                if (quoteToUpdate is not null)
+                {
+                    quoteToUpdate.ArchiveMessageUrl = archiveMsg.GetJumpUrl();
+                    await db.SaveChangesAsync();
+                }
             }
 
             await FollowupAsync(embed: _embed.BuildMessageEmbed(
@@ -145,10 +158,9 @@ namespace DiscordBot.SlashCommands
         /// <summary>/quote subcommands — configure the archive channel and browse saved quotes.</summary>
         [Group("quote", "Browse and manage saved quotes.")]
         [CommandContextType(InteractionContextType.Guild)]
-        public class QuoteSubCommands : InteractionModuleBase<SocketInteractionContext>
+        public class QuoteSubCommands(DiscordbotContext db) : InteractionModuleBase<SocketInteractionContext>
         {
             private readonly EmbedHelper _embed = new();
-            private readonly StoredProcedure _sp = new();
 
             private string Username => Context.User.Username;
 
@@ -160,11 +172,17 @@ namespace DiscordBot.SlashCommands
             {
                 await DeferAsync(ephemeral: true);
 
-                _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "UpsertGuildQuoteConfig",
-                [
-                    new SqlParameter("@GuildId",          (long)Context.Guild.Id),
-                    new SqlParameter("@ArchiveChannelId", (long)channel.Id)
-                ]);
+                long guildId = (long)Context.Guild.Id;
+                var existing = await db.GuildQuoteConfigs.FindAsync(guildId);
+                if (existing is not null)
+                {
+                    existing.ArchiveChannelId = (long)channel.Id;
+                }
+                else
+                {
+                    db.GuildQuoteConfigs.Add(new GuildQuoteConfig { GuildId = guildId, ArchiveChannelId = (long)channel.Id });
+                }
+                await db.SaveChangesAsync();
 
                 await FollowupAsync(embed: _embed.BuildMessageEmbed(
                     "Quote Setup",
@@ -178,26 +196,29 @@ namespace DiscordBot.SlashCommands
             {
                 await DeferAsync();
 
-                var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetRandomQuote",
-                [
-                    new SqlParameter("@GuildId", (long)Context.Guild.Id)
-                ]);
+                // No portable EF Core "ORDER BY random()" — fetch matching IDs (cheap, ID-only
+                // projection), pick one client-side, then fetch that single row. Avoids raw SQL.
+                var ids = await db.Quotes.AsNoTracking()
+                    .Where(q => q.GuildId == (long)Context.Guild.Id)
+                    .Select(q => q.QuoteId)
+                    .ToListAsync();
 
-                if (dt.Rows.Count == 0)
+                if (ids.Count == 0)
                 {
                     await FollowupAsync(embed: _embed.BuildErrorEmbed(
                         "Random Quote", "No quotes have been saved yet.", Username).Build(), ephemeral: true);
                     return;
                 }
 
-                var embed = RowToQuoteEmbed(dt.Rows[0]);
-                string? archiveUrl = dt.Rows[0]["ArchiveMessageUrl"] as string;
-                string originalUrl = dt.Rows[0]["OriginalMessageUrl"].ToString()!;
+                int randomId = ids[Random.Shared.Next(ids.Count)];
+                var quote = await db.Quotes.AsNoTracking().FirstAsync(q => q.QuoteId == randomId);
+
+                var embed = QuoteToEmbed(quote);
 
                 var buttons = new ComponentBuilder()
-                    .WithButton("Jump to Original", style: ButtonStyle.Link, url: originalUrl);
-                if (!string.IsNullOrEmpty(archiveUrl))
-                    buttons.WithButton("View in Archive", style: ButtonStyle.Link, url: archiveUrl);
+                    .WithButton("Jump to Original", style: ButtonStyle.Link, url: quote.OriginalMessageUrl);
+                if (!string.IsNullOrEmpty(quote.ArchiveMessageUrl))
+                    buttons.WithButton("View in Archive", style: ButtonStyle.Link, url: quote.ArchiveMessageUrl);
 
                 await FollowupAsync(embed: embed, components: buttons.Build());
             }
@@ -209,13 +230,15 @@ namespace DiscordBot.SlashCommands
             {
                 await DeferAsync(ephemeral: true);
 
-                var dt = _sp.Select(Constants.Constants.discordBotConnStr, "SearchQuotes",
-                [
-                    new SqlParameter("@GuildId", (long)Context.Guild.Id),
-                    new SqlParameter("@Query",   query)
-                ]);
+                // SQL Server's default collation (SQL_Latin1_General_CP1_CI_AS) made the
+                // source LIKE '%...%' search case-insensitive; ILike matches that (plain
+                // Contains()/LIKE in Postgres is case-sensitive and would be a regression).
+                var quotes = await db.Quotes.AsNoTracking()
+                    .Where(q => q.GuildId == (long)Context.Guild.Id && EF.Functions.ILike(q.Content, $"%{query}%"))
+                    .OrderByDescending(q => q.SavedAt)
+                    .ToListAsync();
 
-                if (dt.Rows.Count == 0)
+                if (quotes.Count == 0)
                 {
                     await FollowupAsync(embed: _embed.BuildErrorEmbed(
                         "Quote Search", $"No quotes found matching \"{query}\".", Username).Build(),
@@ -223,7 +246,7 @@ namespace DiscordBot.SlashCommands
                     return;
                 }
 
-                var pages = BuildPages(dt, $"Quote Search — \"{query}\"");
+                var pages = BuildPages(quotes, $"Quote Search — \"{query}\"");
                 await SendPaginatedAsync(pages);
             }
 
@@ -234,13 +257,12 @@ namespace DiscordBot.SlashCommands
             {
                 await DeferAsync(ephemeral: true);
 
-                var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetQuotesByUser",
-                [
-                    new SqlParameter("@GuildId",  (long)Context.Guild.Id),
-                    new SqlParameter("@AuthorId", (long)user.Id)
-                ]);
+                var quotes = await db.Quotes.AsNoTracking()
+                    .Where(q => q.GuildId == (long)Context.Guild.Id && q.AuthorId == (long)user.Id)
+                    .OrderByDescending(q => q.SavedAt)
+                    .ToListAsync();
 
-                if (dt.Rows.Count == 0)
+                if (quotes.Count == 0)
                 {
                     await FollowupAsync(embed: _embed.BuildErrorEmbed(
                         "User Quotes", $"No quotes found for **{user.Username}**.", Username).Build(),
@@ -248,7 +270,7 @@ namespace DiscordBot.SlashCommands
                     return;
                 }
 
-                var pages = BuildPages(dt, $"Quotes by {user.Username}");
+                var pages = BuildPages(quotes, $"Quotes by {user.Username}");
                 await SendPaginatedAsync(pages);
             }
 
@@ -305,10 +327,10 @@ namespace DiscordBot.SlashCommands
         // ── Helpers ───────────────────────────────────────────────────────────────
 
         /// <summary>Splits a quote result set into embed pages of <see cref="PageSize"/> quotes each, with an ID/author/date field per quote.</summary>
-        private static List<Embed> BuildPages(DataTable dt, string title)
+        private static List<Embed> BuildPages(List<Quote> quotes, string title)
         {
             var pages = new List<Embed>();
-            int total = dt.Rows.Count;
+            int total = quotes.Count;
             int totalPages = (int)Math.Ceiling(total / (double)PageSize);
 
             for (int p = 0; p < totalPages; p++)
@@ -322,14 +344,12 @@ namespace DiscordBot.SlashCommands
 
                 for (int i = start; i < end; i++)
                 {
-                    var row = dt.Rows[i];
-                    int quoteId = (int)row["QuoteId"];
-                    string author = row["AuthorUsername"].ToString()!;
-                    string snippet = row["Content"].ToString()!;
+                    var q = quotes[i];
+                    string snippet = q.Content;
                     if (snippet.Length > 200) snippet = snippet[..200] + "…";
-                    string savedAt = ((DateTime)row["SavedAt"]).ToString("yyyy-MM-dd");
+                    string savedAt = q.SavedAt.ToString("yyyy-MM-dd");
 
-                    builder.AddField($"#{quoteId} — {author} ({savedAt})", snippet);
+                    builder.AddField($"#{q.QuoteId} — {q.AuthorUsername} ({savedAt})", snippet);
                 }
 
                 pages.Add(builder.Build());
@@ -349,19 +369,10 @@ namespace DiscordBot.SlashCommands
                 .Build();
         }
 
-        /// <summary>Converts a quote DB row into its display embed.</summary>
-        private static Embed RowToQuoteEmbed(DataRow row)
-        {
-            int quoteId         = (int)row["QuoteId"];
-            string author       = row["AuthorUsername"].ToString()!;
-            string content      = row["Content"].ToString()!;
-            string originalUrl  = row["OriginalMessageUrl"].ToString()!;
-            string? attachUrl   = row["AttachmentUrl"] as string;
-            string savedBy      = row["SavedByUsername"].ToString()!;
-            var savedAt         = (DateTime)row["SavedAt"];
-
-            return BuildQuoteEmbed(quoteId, author, null, content, originalUrl, attachUrl, savedBy, savedAt);
-        }
+        /// <summary>Converts a saved quote into its display embed.</summary>
+        private static Embed QuoteToEmbed(Quote quote) =>
+            BuildQuoteEmbed(quote.QuoteId, quote.AuthorUsername, null, quote.Content,
+                quote.OriginalMessageUrl, quote.AttachmentUrl, quote.SavedByUsername, quote.SavedAt);
 
         /// <summary>Builds the shared quote display embed: quoted content as the description, author as the embed author (with avatar if known), and an image preview if the attachment is a recognized image extension.</summary>
         private static Embed BuildQuoteEmbed(

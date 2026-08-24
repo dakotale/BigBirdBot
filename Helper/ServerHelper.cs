@@ -1,10 +1,5 @@
-﻿using Discord;
-using DiscordBot.Constants;
-using System;
-using System.Collections.Generic;
-using System.Data;
-using Microsoft.Data.SqlClient;
-using System.Text;
+using DiscordBot.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace DiscordBot.Helper
 {
@@ -12,13 +7,18 @@ namespace DiscordBot.Helper
     public static class ServerHelper
     {
         /// <summary>Fetches the configured server row for a guild, or null if the guild has no server record yet.</summary>
-        public static ServerInfo GetServerInfo(ulong serverId)
+        public static async Task<ServerInfo?> GetServerInfoAsync(DiscordbotContext db, ulong serverId)
         {
-            StoredProcedure stored = new StoredProcedure();
-            DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "GetServerByID", [new SqlParameter("@ServerUID", (long)serverId)]);
-            var serverInfo = ServerInfo.PopulateByDataTable(dt);
-
-            return serverInfo;
+            long serverUid = (long)serverId;
+            var server = await db.Servers.AsNoTracking().FirstOrDefaultAsync(s => s.ServerUid == serverUid);
+            return server is null ? null : new ServerInfo
+            {
+                ServerUID = (ulong)server.ServerUid,
+                ServerName = server.ServerName,
+                DefaultChannelID = server.DefaultChannelId?.ToString() ?? "",
+                IsActive = server.IsActive,
+                AnnouncementsEnabled = server.AnnouncementsEnabled
+            };
         }
 
         /// <summary>Plain-data snapshot of a guild's row in the Servers table.</summary>
@@ -29,25 +29,6 @@ namespace DiscordBot.Helper
             public required string DefaultChannelID { get; set; }
             public bool IsActive { get; set; }
             public bool AnnouncementsEnabled { get; set; }
-
-            /// <summary>Builds a ServerInfo from the first row of a GetServerByID result, or null if the query returned no rows.</summary>
-            public static ServerInfo PopulateByDataTable(DataTable dt)
-            {
-                if (dt.Rows.Count == 0)
-                {
-                    return null;
-                }
-                DataRow row = dt.Rows[0];
-                return new ServerInfo
-                {
-                    ServerUID = Convert.ToUInt64(row["ServerUID"]),
-                    ServerName = row["ServerName"].ToString(),
-                    DefaultChannelID = row["DefaultChannelID"].ToString(),
-                    IsActive = Convert.ToBoolean(row["IsActive"]),
-                    AnnouncementsEnabled = row.Table.Columns.Contains("AnnouncementsEnabled")
-                                          && Convert.ToBoolean(row["AnnouncementsEnabled"])
-                };
-            }
         }
     }
 }

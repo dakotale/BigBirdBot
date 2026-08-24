@@ -1,8 +1,8 @@
 ﻿using Discord;
 using Discord.Interactions;
-using DiscordBot.Constants;
+using DiscordBot.Data;
 using DiscordBot.Helper;
-using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
 
 namespace DiscordBot.SlashCommands;
 
@@ -10,12 +10,10 @@ namespace DiscordBot.SlashCommands;
 /// Autocomplete handler for the food parameter on /feed.
 /// Filters available food by the pet's current level and the user's partial input.
 /// </summary>
-public class FoodAutocompleteHandler : AutocompleteHandler
+public class FoodAutocompleteHandler(DiscordbotContext db) : AutocompleteHandler
 {
-    private readonly StoredProcedure _sp = new();
-
     /// <summary>Returns up to 25 food suggestions unlocked at the user's active pet's level, filtered by their partial input.</summary>
-    public override Task<AutocompletionResult> GenerateSuggestionsAsync(
+    public override async Task<AutocompletionResult> GenerateSuggestionsAsync(
         IInteractionContext context,
         IAutocompleteInteraction autocompleteInteraction,
         IParameterInfo parameter,
@@ -28,11 +26,9 @@ public class FoodAutocompleteHandler : AutocompleteHandler
         int petLevel = 1;
         try
         {
-            var dt = _sp.Select(DiscordBot.Constants.Constants.discordBotConnStr, "GetActivePet",
-                [new SqlParameter("@UserID", userId)]);
-
-            if (dt.Rows.Count > 0)
-                petLevel = PetHelper.LevelFromXp(int.Parse(dt.Rows[0]["XP"].ToString()!));
+            var pet = await db.Pets.AsNoTracking().FirstOrDefaultAsync(p => p.UserId == userId && p.IsActive);
+            if (pet is not null)
+                petLevel = PetHelper.LevelFromXp(pet.Xp);
         }
         catch { /* fallback to level 1 */ }
 
@@ -44,6 +40,6 @@ public class FoodAutocompleteHandler : AutocompleteHandler
                 $"{f.emoji} {f.name}  (+{f.hungerRestore} hunger, +{f.happyBonus} happiness)",
                 f.name));
 
-        return Task.FromResult(AutocompletionResult.FromSuccess(suggestions));
+        return AutocompletionResult.FromSuccess(suggestions);
     }
 }

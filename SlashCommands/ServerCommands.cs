@@ -1,20 +1,19 @@
 using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
-using DiscordBot.Constants;
+using DiscordBot.Data;
 using DiscordBot.Helper;
-using System.Data;
-using Microsoft.Data.SqlClient;
+using DiscordBot.Models.Generated;
+using Microsoft.EntityFrameworkCore;
 
 namespace DiscordBot.SlashCommands;
 
 /// <summary>
 /// Server and user information commands, plus server management utilities.
 /// </summary>
-public class ServerCommands : InteractionModuleBase<SocketInteractionContext>
+public class ServerCommands(DiscordbotContext db) : InteractionModuleBase<SocketInteractionContext>
 {
     private readonly EmbedHelper _embed = new();
-    private readonly StoredProcedure _sp = new();
 
     private string Username => Context.User.Username;
     private string AvatarUrl => Context.User.GetAvatarUrl();
@@ -126,13 +125,22 @@ public class ServerCommands : InteractionModuleBase<SocketInteractionContext>
 
             var birthday = new DateTime(DateTime.Now.Year, monthNumber, dayNumber);
 
-            _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "AddBirthday",
-            [
-                new SqlParameter("@BirthdayDate",    birthday),
-                new SqlParameter("@BirthdayUser",    user.Mention),
-                new SqlParameter("@BirthdayGuild",   guild.Id.ToString()),
-                new SqlParameter("@BirthdayChannel", (object?)channel?.Id.ToString() ?? DBNull.Value)
-            ]);
+            // Source (AddBirthday) inserted one row per year for the next 9 years so the
+            // exact-date match in GetTodaysBirthdays fires once annually without wraparound
+            // logic — not a bug, replicated exactly. BirthdayDate is a calendar date with no
+            // real "instant" meaning; treated as local midnight then converted to UTC to match
+            // this app's GETDATE()-local convention (see Keyword.cs/Program.cs for the pattern).
+            for (int n = 0; n <= 8; n++)
+            {
+                db.Birthdays.Add(new Birthday
+                {
+                    BirthdayDate = birthday.AddYears(n).ToUniversalTime(),
+                    BirthdayUser = user.Mention,
+                    BirthdayGuild = guild.Id.ToString(),
+                    BirthdayChannel = channel?.Id.ToString()
+                });
+            }
+            await db.SaveChangesAsync();
 
             string channelNote = channel is not null
                 ? $" Announcements will post in {channel.Mention}."
@@ -261,60 +269,59 @@ public class ServerCommands : InteractionModuleBase<SocketInteractionContext>
         string targetId = target.Id.ToString();
 
         // ── Credits ─────────────────────────────────────────────────────────
-        var creditDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetCredits",
-        [
-            new SqlParameter("@UserID",   targetId),
-            new SqlParameter("@ServerID", ServerId)
-        ]);
+        var credit = await db.Credits.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.UserId == targetId && c.ServerId == ServerId);
 
         string creditsField = "*No account yet*";
-        if (creditDt.Rows.Count > 0)
+        if (credit is not null)
         {
-            long balance = long.Parse(creditDt.Rows[0]["Balance"].ToString()!);
-            long earned  = long.Parse(creditDt.Rows[0]["TotalEarned"].ToString()!);
-            creditsField = $"{CreditHelper.Format(balance)}\nTotal Earned: {CreditHelper.Format(earned)}";
+            creditsField = $"{CreditHelper.Format(credit.Balance)}\nTotal Earned: {CreditHelper.Format(credit.TotalEarned)}";
         }
 
         // ── Active Pet ───────────────────────────────────────────────────────
-        var petDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetActivePet",
-            [new SqlParameter("@UserID", targetId)]);
+        // Source (GetActivePet) filters by UserID only, no ServerID — an active pet is a
+        // per-user, not per-server, concept. Preserved exactly.
+        var pet = await db.Pets.AsNoTracking()
+            .FirstOrDefaultAsync(p => p.UserId == targetId && p.IsActive);
 
         string petField = "*No active pet*";
-        if (petDt.Rows.Count > 0)
+        if (pet is not null)
         {
-            var row = petDt.Rows[0];
-            string petName    = row["Name"].ToString()!;
-            string petSpecies = row["Species"].ToString()!;
-            int xp            = int.Parse(row["XP"].ToString()!);
-            int level         = PetHelper.LevelFromXp(xp);
-            int happiness     = int.Parse(row["Happiness"].ToString()!);
-            int hunger        = int.Parse(row["Hunger"].ToString()!);
-            bool hib          = bool.TryParse(row["IsHibernating"].ToString(), out bool h) && h;
-            bool evolved      = level >= 50;
-            string emoji      = PetHelper.PetEmoji(petSpecies, happiness, hunger, hib, evolved);
+            int level     = PetHelper.LevelFromXp(pet.Xp);
+            bool evolved  = level >= 50;
+            string emoji  = PetHelper.PetEmoji(pet.Species, pet.Happiness, pet.Hunger, pet.IsHibernating, evolved);
 
-            petField = $"{emoji} **{petName}** — Lv.{level}\n" +
-                       $"😊 {PetHelper.StatBar(happiness)} | 🍖 {PetHelper.StatBar(hunger)}";
+            petField = $"{emoji} **{pet.Name}** — Lv.{level}\n" +
+                       $"😊 {PetHelper.StatBar(pet.Happiness)} | 🍖 {PetHelper.StatBar(pet.Hunger)}";
         }
 
         // ── Gambling Stats ───────────────────────────────────────────────────
-        var gambleDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetGambleStats",
-        [
-            new SqlParameter("@UserID",   targetId),
-            new SqlParameter("@ServerID", ServerId)
-        ]);
+        // Source (GetGambleStats) returns one row PER GAME, ordered by TotalWagered DESC —
+        // the original C# only ever read row[0], i.e. only the user's highest-wagered game's
+        // W/L/Net, silently mislabeled as overall gambling stats when a user has played more
+        // than one game. Pre-existing application-level bug (not introduced by this
+        // conversion) — replicated exactly here rather than silently fixed; flagged for the
+        // user to decide whether to aggregate across all games instead.
+        var topGame = await db.GambleLogs.AsNoTracking()
+            .Where(g => g.UserId == targetId && g.ServerId == ServerId)
+            .GroupBy(g => g.Game)
+            .Select(grp => new
+            {
+                Wins = grp.Count(g => g.Net > 0),
+                Losses = grp.Count(g => g.Net < 0),
+                NetTotal = grp.Sum(g => g.Net),
+                TotalWagered = grp.Sum(g => g.Bet)
+            })
+            .OrderByDescending(g => g.TotalWagered)
+            .FirstOrDefaultAsync();
 
         string gambleField = "*No gambling history*";
-        if (gambleDt.Rows.Count > 0)
+        if (topGame is not null)
         {
-            var row  = gambleDt.Rows[0];
-            decimal wins   = decimal.Parse(row["Wins"].ToString()!);
-            decimal losses = decimal.Parse(row["Losses"].ToString()!);
-            decimal net    = decimal.Parse(row["NetTotal"].ToString()!);
-            string netStr = net >= 0
-                ? $"+{CreditHelper.Format(net)}"
-                : $"-{CreditHelper.Format(Math.Abs(net))}";
-            gambleField = $"W/L: **{wins}** / **{losses}** — Net: {netStr}";
+            string netStr = topGame.NetTotal >= 0
+                ? $"+{CreditHelper.Format(topGame.NetTotal)}"
+                : $"-{CreditHelper.Format(Math.Abs(topGame.NetTotal))}";
+            gambleField = $"W/L: **{topGame.Wins}** / **{topGame.Losses}** — Net: {netStr}";
         }
 
         bool isSelf = target.Id == Context.User.Id;

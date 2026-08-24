@@ -2,9 +2,10 @@
 using Discord.Interactions;
 using Discord.WebSocket;
 using DiscordBot.Constants;
+using DiscordBot.Data;
 using DiscordBot.Helper;
-using System.Data;
-using Microsoft.Data.SqlClient;
+using DiscordBot.Models.Generated;
+using Microsoft.EntityFrameworkCore;
 
 namespace DiscordBot.SlashCommands;
 
@@ -25,8 +26,6 @@ namespace DiscordBot.SlashCommands;
 /// </summary>
 public partial class Games
 {
-    private readonly Economy _eco = new();
-
     private string UserId => Context.User.Id.ToString();
     private string ServerId => Context.Guild?.Id.ToString() ?? "DM";
     private string ChannelId => Context.Channel.Id.ToString();
@@ -48,17 +47,16 @@ public partial class Games
         await DeferAsync();
 
         // One active game per channel
-        var existing = _sp.Select(Constants.Constants.discordBotConnStr, "GetPokerGame",
-            [new SqlParameter("@ChannelID", ChannelId)]);
+        bool existing = await db.PokerLobbies.AnyAsync(g => g.ChannelId == ChannelId && (g.Status == "waiting" || g.Status == "active"));
 
-        if (existing.Rows.Count > 0)
+        if (existing)
         {
             await FollowupAsync(embed: _embed.BuildErrorEmbed("Poker",
                 "There's already an active game in this channel! Wait for it to finish.", Username).Build());
             return;
         }
 
-        decimal balance = _eco.GetBalance(UserId, ServerId);
+        decimal balance = await CreditService.GetBalanceAsync(db, UserId, ServerId);
         if ((decimal)bet > balance)
         {
             await FollowupAsync(embed: _embed.BuildErrorEmbed("Poker",
@@ -72,40 +70,25 @@ public partial class Games
         var remaining = deck.Skip(2).ToList();
 
         // Create game row
-        var gameIdDt = _sp.Select(Constants.Constants.discordBotConnStr, "CreatePokerGame",
-        [
-            new SqlParameter("@ChannelID",    ChannelId),
-            new SqlParameter("@ServerID",     ServerId),
-            new SqlParameter("@BetPerPlayer", bet),
-            new SqlParameter("@Deck",         string.Join(",", remaining))
-        ]);
+        var game = new PokerLobby
+        {
+            ChannelId = ChannelId, ServerId = ServerId, BetPerPlayer = bet,
+            Deck = string.Join(",", remaining), Community = "", Status = "waiting"
+        };
+        db.PokerLobbies.Add(game);
+        await db.SaveChangesAsync();
+        int gameId = game.GameId;
 
-        int gameId = int.Parse(gameIdDt.Rows[0]["GameID"].ToString()!);
-
-        // Add bot player
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "AddPokerPlayer",
-        [
-            new SqlParameter("@GameID",  gameId),
-            new SqlParameter("@UserID",  CreditHelper.PokerBotId),
-            new SqlParameter("@Hand",    string.Join(",", botHand))
-        ]);
+        // Add bot player (idempotency guard from source not needed — this is a fresh game)
+        db.PokerPlayers.Add(new PokerPlayer { GameId = gameId, UserId = CreditHelper.PokerBotId, Hand = string.Join(",", botHand) });
 
         // Deduct host's bet and add them as a player
-        _eco.DeductCredits(UserId, ServerId, (decimal)bet, "poker_buy_in");
+        await CreditService.DeductCreditsAsync(db, UserId, ServerId, (decimal)bet, "poker_buy_in");
         var (hostHand, deckAfterHost) = DealFromDeck(remaining, 2);
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "UpdatePokerDeck",
-        [
-            new SqlParameter("@GameID", gameId),
-            new SqlParameter("@Deck",   string.Join(",", deckAfterHost))
-        ]);
-
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "AddPokerPlayer",
-        [
-            new SqlParameter("@GameID",  gameId),
-            new SqlParameter("@UserID",  UserId),
-            new SqlParameter("@Hand",    string.Join(",", hostHand))
-        ]);
+        game.Deck = string.Join(",", deckAfterHost);
+        db.PokerPlayers.Add(new PokerPlayer { GameId = gameId, UserId = UserId, Hand = string.Join(",", hostHand) });
+        await db.SaveChangesAsync();
 
         // Post lobby message
         var components = BuildLobbyButtons(gameId);
@@ -119,11 +102,8 @@ public partial class Games
         var msg = await FollowupAsync(embed: lobbyEmbed, components: components);
 
         // Store message ID so subsequent joins can edit it
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "UpdatePokerMessage",
-        [
-            new SqlParameter("@GameID",    gameId),
-            new SqlParameter("@MessageID", msg.Id.ToString())
-        ]);
+        game.MessageId = msg.Id.ToString();
+        await db.SaveChangesAsync();
 
         // DM hole cards to host
         await TrySendHoleCards(Context.User, hostHand, bet);
@@ -260,11 +240,8 @@ public partial class Games
 // ── Component handlers for poker buttons (must be outside [Group("game")]) ───────
 
 /// <summary>Button handlers for the poker lobby's Join/Start flow — declared outside [Group] since component interaction IDs aren't routed through the slash-command group.</summary>
-public class GameComponentHandlers : InteractionModuleBase<SocketInteractionContext>
+public class GameComponentHandlers(DiscordbotContext db) : InteractionModuleBase<SocketInteractionContext>
 {
-    private readonly StoredProcedure _sp  = new();
-    private readonly Economy         _eco = new();
-
     private string UserId    => Context.User.Id.ToString();
     private string ServerId  => Context.Guild?.Id.ToString() ?? "DM";
 
@@ -278,37 +255,32 @@ public class GameComponentHandlers : InteractionModuleBase<SocketInteractionCont
 
         int gameId = int.Parse(gameIdStr);
 
-        var gameDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetPokerGameById",
-            [new SqlParameter("@GameID", gameId)]);
+        var game = await db.PokerLobbies.FirstOrDefaultAsync(g => g.GameId == gameId);
 
-        if (gameDt.Rows.Count == 0 || gameDt.Rows[0]["Status"].ToString() != "waiting")
+        if (game is null || game.Status != "waiting")
         {
             await FollowupAsync("This game is no longer accepting players.", ephemeral: true);
             return;
         }
 
-        var gameRow = gameDt.Rows[0];
-        long bet = long.Parse(gameRow["BetPerPlayer"].ToString()!);
+        long bet = (long)game.BetPerPlayer;
 
-        var playersDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetPokerPlayers",
-            [new SqlParameter("@GameID", gameId)]);
+        var players = await db.PokerPlayers.AsNoTracking().Where(p => p.GameId == gameId).ToListAsync();
 
-        var players = playersDt.Rows.Cast<DataRow>().ToList();
-
-        if (players.Any(p => p["UserID"].ToString() == UserId))
+        if (players.Any(p => p.UserId == UserId))
         {
             await FollowupAsync("You're already at the table!", ephemeral: true);
             return;
         }
 
-        int humanCount = players.Count(p => p["UserID"].ToString() != CreditHelper.PokerBotId);
+        int humanCount = players.Count(p => p.UserId != CreditHelper.PokerBotId);
         if (humanCount >= Games.MaxHumans)
         {
             await FollowupAsync("This table is full.", ephemeral: true);
             return;
         }
 
-        decimal balance = _eco.GetBalance(UserId, ServerId);
+        decimal balance = await CreditService.GetBalanceAsync(db, UserId, ServerId);
         if ((decimal)bet > balance)
         {
             await FollowupAsync(
@@ -317,31 +289,19 @@ public class GameComponentHandlers : InteractionModuleBase<SocketInteractionCont
             return;
         }
 
-        var deckCards = gameRow["Deck"].ToString()!.Split(',').ToList();
+        var deckCards = game.Deck.Split(',').ToList();
         var (hand, deckAfter) = Games.DealFromDeck(deckCards, 2);
 
-        _eco.DeductCredits(UserId, ServerId, (decimal)bet, "poker_buy_in");
+        await CreditService.DeductCreditsAsync(db, UserId, ServerId, (decimal)bet, "poker_buy_in");
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "UpdatePokerDeck",
-        [
-            new SqlParameter("@GameID", gameId),
-            new SqlParameter("@Deck",   string.Join(",", deckAfter))
-        ]);
+        game.Deck = string.Join(",", deckAfter);
+        db.PokerPlayers.Add(new PokerPlayer { GameId = gameId, UserId = UserId, Hand = string.Join(",", hand) });
+        await db.SaveChangesAsync();
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "AddPokerPlayer",
-        [
-            new SqlParameter("@GameID",  gameId),
-            new SqlParameter("@UserID",  UserId),
-            new SqlParameter("@Hand",    string.Join(",", hand))
-        ]);
+        var updatedPlayersRaw = await db.PokerPlayers.AsNoTracking().Where(p => p.GameId == gameId).ToListAsync();
+        var updatedPlayers = updatedPlayersRaw.Select(p => (userId: p.UserId, isBot: p.UserId == CreditHelper.PokerBotId)).ToList();
 
-        var updatedPlayersDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetPokerPlayers",
-            [new SqlParameter("@GameID", gameId)]);
-        var updatedPlayers = updatedPlayersDt.Rows.Cast<DataRow>()
-            .Select(r => (r["UserID"].ToString()!, r["UserID"].ToString() == CreditHelper.PokerBotId))
-            .ToList();
-
-        int newHumanCount = updatedPlayers.Count(p => !p.Item2);
+        int newHumanCount = updatedPlayers.Count(p => !p.isBot);
 
         await ModifyOriginalResponseAsync(m =>
         {
@@ -368,43 +328,35 @@ public class GameComponentHandlers : InteractionModuleBase<SocketInteractionCont
 
         int gameId = int.Parse(gameIdStr);
 
-        var gameDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetPokerGameById",
-            [new SqlParameter("@GameID", gameId)]);
+        var game = await db.PokerLobbies.FirstOrDefaultAsync(g => g.GameId == gameId);
 
-        if (gameDt.Rows.Count == 0 || gameDt.Rows[0]["Status"].ToString() != "waiting")
+        if (game is null || game.Status != "waiting")
         {
             await FollowupAsync("Game already started or not found.", ephemeral: true);
             return;
         }
 
-        var gameRow = gameDt.Rows[0];
+        var players = await db.PokerPlayers.AsNoTracking().Where(p => p.GameId == gameId).ToListAsync();
 
-        var playersDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetPokerPlayers",
-            [new SqlParameter("@GameID", gameId)]);
-        var players = playersDt.Rows.Cast<DataRow>().ToList();
-
-        int humanCount = players.Count(p => p["UserID"].ToString() != CreditHelper.PokerBotId);
+        int humanCount = players.Count(p => p.UserId != CreditHelper.PokerBotId);
         if (humanCount < 1)
         {
             await FollowupAsync("Need at least 1 human player to start!", ephemeral: true);
             return;
         }
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "UpdatePokerStatus",
-        [
-            new SqlParameter("@GameID",    gameId),
-            new SqlParameter("@Status",    "active"),
-            new SqlParameter("@Community", "")
-        ]);
+        game.Status = "active";
+        game.Community = "";
+        await db.SaveChangesAsync();
 
-        long bet      = long.Parse(gameRow["BetPerPlayer"].ToString()!);
-        var  deckList = gameRow["Deck"].ToString()!.Split(',').ToList();
+        long bet      = (long)game.BetPerPlayer;
+        var  deckList = game.Deck.Split(',').ToList();
         var  community = deckList.Take(5).ToList();
 
         var playerList = players.Select(p => (
-            userId: p["UserID"].ToString()!,
-            hand:   p["Hand"].ToString()!.Split(',').ToList(),
-            isBot:  p["UserID"].ToString() == CreditHelper.PokerBotId
+            userId: p.UserId,
+            hand:   p.Hand.Split(',').ToList(),
+            isBot:  p.UserId == CreditHelper.PokerBotId
         )).ToList();
 
         // ── Step 1: Shuffle ────────────────────────────────────────────────────
@@ -478,25 +430,14 @@ public class GameComponentHandlers : InteractionModuleBase<SocketInteractionCont
 
         if (!botWon)
         {
-            _eco.AddCredits(winner.userId, ServerId, winnerPay, "poker_win");
-            try
-            {
-                _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "IncrementChallengeProgress",
-                [
-                    new SqlParameter("@UserID",   winner.userId),
-                    new SqlParameter("@ServerID", ServerId),
-                    new SqlParameter("@GameType", "poker")
-                ]);
-            }
+            await CreditService.AddCreditsAsync(db, winner.userId, ServerId, winnerPay, "poker_win");
+            try { await ChallengeService.IncrementProgressAsync(db, winner.userId, ServerId, "poker"); }
             catch { }
         }
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "UpdatePokerStatus",
-        [
-            new SqlParameter("@GameID",    gameId),
-            new SqlParameter("@Status",    "done"),
-            new SqlParameter("@Community", string.Join(",", community))
-        ]);
+        game.Status = "done";
+        game.Community = string.Join(",", community);
+        await db.SaveChangesAsync();
 
         await gameMsg.ModifyAsync(m =>
             m.Embed = Games.BuildShowdownEmbed(community, results, winner.userId, botWon,

@@ -2,6 +2,7 @@
 using Discord.Interactions;
 using Discord.WebSocket;
 using DiscordBot.Constants;
+using DiscordBot.Data;
 using DiscordBot.Helper;
 using System.Collections.Concurrent;
 
@@ -12,11 +13,9 @@ namespace DiscordBot.SlashCommands;
 /// The challenger picks a game theme; the target has 30 s to accept.
 /// Winner takes a random percentage (10–100 %) of the loser's current balance.
 /// </summary>
-public class Duel : InteractionModuleBase<SocketInteractionContext>
+public class Duel(DiscordbotContext db) : InteractionModuleBase<SocketInteractionContext>
 {
-    private readonly StoredProcedure _sp    = new();
-    private readonly EmbedHelper     _embed = new();
-    private readonly Economy         _eco   = new();
+    private readonly EmbedHelper _embed = new();
 
     private string Username  => Context.User.Username;
     private string AvatarUrl => Context.User.GetAvatarUrl();
@@ -675,8 +674,8 @@ public class Duel : InteractionModuleBase<SocketInteractionContext>
         string challengerId = challenge.ChallengerId;
         string srv          = challenge.ServerId;
 
-        decimal targetBal     = _eco.GetBalance(targetId, srv);
-        decimal challengerBal = _eco.GetBalance(challengerId, srv);
+        decimal targetBal     = await CreditService.GetBalanceAsync(db, targetId, srv);
+        decimal challengerBal = await CreditService.GetBalanceAsync(db, challengerId, srv);
 
         bool challengerWins = Random.Shared.Next(2) == 0;
 
@@ -688,8 +687,8 @@ public class Duel : InteractionModuleBase<SocketInteractionContext>
         decimal prize = Math.Floor(loserBal * pct);
         if (prize < 1) prize = 1;
 
-        _eco.DeductCredits(loserId, srv, prize, "duel_loss");
-        _eco.AddCredits(winnerId,   srv, prize, "duel_win");
+        await CreditService.DeductCreditsAsync(db, loserId, srv, prize, "duel_loss");
+        await CreditService.AddCreditsAsync(db, winnerId, srv, prize, "duel_win");
 
         string winnerMention = $"<@{winnerId}>";
         string loserMention  = $"<@{loserId}>";
