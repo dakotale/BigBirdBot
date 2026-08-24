@@ -1,6 +1,5 @@
 ﻿using System.Collections.Concurrent;
 using System.Data;
-using Microsoft.Data.SqlClient;
 using System.Text;
 using Discord;
 using Discord.Commands;
@@ -8,11 +7,14 @@ using Discord.Interactions;
 using Discord.Net;
 using Discord.WebSocket;
 using DiscordBot.Constants;
+using DiscordBot.Data;
 using DiscordBot.Helper;
+using DiscordBot.Models.Generated;
 using DiscordBot.Services;
 using Fergun.Interactive;
 using KillersLibrary.Services;
 using Lavalink4NET.Extensions;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -59,6 +61,13 @@ static void ConfigureServices(IServiceCollection services) =>
         .AddSingleton<EmbedPagesService>()
         .AddSingleton<MultiButtonsService>()
         .AddSingleton<BotHost>()
+        // Postgres/EF Core (see Constants.postgresConnStr) — registered Scoped (AddDbContext's
+        // default), NOT Singleton: this is a long-running bot process, and one shared DbContext across
+        // every command would accumulate tracked entities and cause stale-data/concurrency
+        // errors. A DI scope is created per Discord interaction in
+        // InteractionHandlerService.HandleInteractionAsync so each command gets its own
+        // fresh context, matching the per-request-scope pattern EF Core expects.
+        .AddDbContext<DiscordbotContext>(options => options.UseNpgsql(Constants.postgresConnStr))
         .AddLavalink()
         .ConfigureLavalink(x =>
         {
@@ -182,8 +191,6 @@ internal sealed class BotHost(
         _puzzleHintStates = new();
 
     private readonly EmbedHelper _embed = new();
-    private readonly StoredProcedure _sp = new();
-    private readonly DiscordBot.SlashCommands.Economy _creditEco = new();
 
     private static readonly Dictionary<string, string> EmojiToLetter = new()
     {
@@ -305,40 +312,69 @@ internal sealed class BotHost(
 
 
     /// <summary>Fires when a member leaves (or is removed from) a guild: purges their DB row and audits the departure.</summary>
-    private Task OnUserLeftAsync(SocketGuild guild, SocketUser user)
+    private async Task OnUserLeftAsync(SocketGuild guild, SocketUser user)
     {
-        if (user.IsBot || user.IsWebhook) return Task.CompletedTask; // bots/webhooks aren't tracked in the user table
+        if (user.IsBot || user.IsWebhook) return; // bots/webhooks aren't tracked in the user table
 
-        _sp.UpdateCreate(Constants.discordBotConnStr, "DeleteUser",
-        [
-            new SqlParameter("@UserID",   user.Id.ToString()),
-            new SqlParameter("@ServerID", guild.Id.ToString())
-        ]);
-        new Audit().InsertUserLeftAudit(user.Id.ToString(), guild.Id.ToString(), Constants.discordBotConnStr);
-        return Task.CompletedTask;
+        using var scope = services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+
+        string userId = user.Id.ToString();
+
+        // Source (DeleteUser) counts this user's rows across ALL servers before deleting;
+        // if this was their only server, it also purges their global (not per-server)
+        // UsersScheduledKeyword/BotAIMessage rows. Preserved exactly.
+        int totalCount = await db.Users.CountAsync(u => u.UserId == userId);
+
+        db.Users.RemoveRange(db.Users.Where(u => u.UserId == userId && u.ServerUid == (long)guild.Id));
+
+        if (totalCount == 1)
+        {
+            // BUG FIX: UsersScheduledKeyword has no real primary key in the schema (verified —
+            // just UserID/ChatKeyword/ScheduledDateTime columns, no unique constraint), but the
+            // EF model declares HasKey(UserId, ChatKeyword) since something has to be configured
+            // for Add() to work. A user CAN legitimately have 2+ rows sharing that "key" (nothing
+            // prevents duplicate /keyword schedule add calls), so a tracked RemoveRange/SaveChanges
+            // here throws DbUpdateConcurrencyException ("expected to affect 1 row(s), but actually
+            // affected 0") whenever that happens. ExecuteDeleteAsync bypasses key-based tracking
+            // entirely — it just runs DELETE ... WHERE UserID = @userId directly.
+            await db.UsersScheduledKeywords.Where(u => u.UserId == userId).ExecuteDeleteAsync();
+            db.BotAimessages.RemoveRange(db.BotAimessages.Where(m => m.UserId == userId));
+        }
+
+        await db.SaveChangesAsync();
+
+        await AuditService.InsertUserLeftAuditAsync(db, userId, guild.Id.ToString());
     }
 
     /// <summary>Fires when a member joins a guild: records them in the DB, audits the join, and assigns the guild's auto-role (if configured).</summary>
     private async Task OnUserJoinedAsync(SocketGuildUser user)
     {
         if (user.IsBot || user.IsWebhook) return; // bots/webhooks aren't tracked in the user table
-        AddUserToDatabase(user, user.Guild.Id);
-        new Audit().InsertUserJoinedAudit(user.Id.ToString(), user.Guild.Id.ToString(), Constants.discordBotConnStr);
+        await AddUserToDatabase(user, user.Guild.Id);
+        using (var auditScope = services.CreateScope())
+        {
+            var auditDb = auditScope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+            await AuditService.InsertUserJoinedAuditAsync(auditDb, user.Id.ToString(), user.Guild.Id.ToString());
+        }
         await AssignAutoRoleAsync(user);
     }
 
     /// <summary>Grants the guild's configured auto-role to a newly-joined member, if one is set up.</summary>
     private async Task AssignAutoRoleAsync(SocketGuildUser user)
     {
-        var dt = _sp.Select(Constants.discordBotConnStr, "GetGuildAutoRole",
-        [
-            new SqlParameter("@GuildId", (long)user.Guild.Id)
-        ]);
+        // BotHost is a singleton, so it can't hold a scoped DbContext directly (that would
+        // be a captive dependency living for the whole process). Create a short-lived scope
+        // for just this lookup instead, same as InteractionHandlerService does per interaction.
+        using var scope = services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DiscordbotContext>();
 
-        if (dt.Rows.Count == 0) return; // no auto-role configured for this guild
+        var autoRole = await db.GuildAutoRoles.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.GuildId == (long)user.Guild.Id);
 
-        ulong roleId = (ulong)(long)dt.Rows[0]["RoleId"];
-        var role = user.Guild.GetRole(roleId);
+        if (autoRole is null) return; // no auto-role configured for this guild
+
+        var role = user.Guild.GetRole((ulong)autoRole.RoleId);
         if (role is null) return; // role was deleted since being configured
 
         try { await user.AddRoleAsync(role); }
@@ -371,28 +407,34 @@ internal sealed class BotHost(
     /// </summary>
     private async Task ProcessJoinedGuildAsync(SocketGuild guild)
     {
-        await Task.Run(() =>
+        // Source layered a C#-side existence pre-check (GetServers, IsActive-filtered) in
+        // front of AddServer's own IF NOT EXISTS guard (unfiltered by IsActive) — since the
+        // proc's own guard is what actually determines whether a row gets inserted, the two
+        // checks compose to a single "does a Servers row with this ServerUID exist" test,
+        // replicated directly as that one check. The caller (OnJoinedGuildAsync) already runs
+        // this whole method inside a background Task.Run to stay off the gateway thread, so no
+        // additional Task.Run wrapping is needed here now that these calls are properly async.
+        using (var scope = services.CreateScope())
         {
-            new Audit().InsertGuildJoinedAudit(guild.Id.ToString(), guild.Name, Constants.discordBotConnStr);
-
-            // Build the set of server IDs we already know about, so re-adding the bot to a
-            // guild it was previously in doesn't insert a duplicate row.
-            var existingIds = _sp
-                .Select(Constants.discordBotConnStr, "GetServers", [])
-                .AsEnumerable()
-                .Select(r => r["ServerUID"].ToString())
-                .ToHashSet();
-
-            if (!existingIds.Contains(guild.Id.ToString()))
+            var db = scope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+            await AuditService.InsertGuildJoinedAuditAsync(db, guild.Id.ToString(), guild.Name);
+            bool exists = await db.Servers.AnyAsync(s => s.ServerUid == (long)guild.Id);
+            if (!exists)
             {
-                _sp.UpdateCreate(Constants.discordBotConnStr, "AddServer",
-                [
-                    new SqlParameter("@ServerUID",        (long)guild.Id),
-                    new SqlParameter("@ServerName",       guild.Name),
-                    new SqlParameter("@DefaultChannelID", (long)guild.DefaultChannel.Id)
-                ]);
+                db.Servers.Add(new Server
+                {
+                    ServerUid = (long)guild.Id,
+                    ServerName = guild.Name,
+                    DefaultChannelId = (long)guild.DefaultChannel.Id,
+                    Volume = 100,
+                    FixEmbed = false,
+                    IsPlayerConnected = false,
+                    IsActive = true,
+                    CreatedOn = DateTime.Now.ToUniversalTime()
+                });
+                await db.SaveChangesAsync();
             }
-        });
+        }
 
         await guild.DownloadUsersAsync();
 
@@ -406,27 +448,39 @@ internal sealed class BotHost(
             return;
         }
 
-        await Task.Run(() =>
-        {
-            // Backfill every existing human member — new joins after this point are
-            // handled individually by OnUserJoinedAsync.
-            foreach (var user in guild.Users.Where(u => !u.IsBot && !u.IsWebhook))
-                AddUserToDatabase(user, guild.Id);
-        });
+        // Backfill every existing human member — new joins after this point are
+        // handled individually by OnUserJoinedAsync.
+        foreach (var user in guild.Users.Where(u => !u.IsBot && !u.IsWebhook))
+            await AddUserToDatabase(user, guild.Id);
 
         await logger.InfoAsync($"{guild.Users.Count} users added for {guild.Name}");
     }
 
-    /// <summary>Inserts or updates a single member's row in the user table.</summary>
-    private void AddUserToDatabase(SocketGuildUser user, ulong guildId) =>
-        _sp.UpdateCreate(Constants.discordBotConnStr, "AddUser",
-        [
-            new SqlParameter("@UserID",    user.Id.ToString()),
-            new SqlParameter("@Username",  user.Username),
-            new SqlParameter("@JoinDate",  user.JoinedAt),
-            new SqlParameter("@ServerUID", (long)guildId),
-            new SqlParameter("@Nickname",  user.Nickname)
-        ]);
+    /// <summary>Inserts a single member's row in the user table, if not already present.</summary>
+    private async Task AddUserToDatabase(SocketGuildUser user, ulong guildId)
+    {
+        using var scope = services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+
+        // Source's AddUser proc guards with IF NOT EXISTS (UserID, ServerUID) before inserting.
+        bool exists = await db.Users.AnyAsync(x => x.UserId == user.Id.ToString() && x.ServerUid == (long)guildId);
+        if (exists) return;
+
+        // Source's @JoinDate param was a DateTimeOffset passed into a `datetime` column;
+        // SQL Server's implicit datetimeoffset→datetime cast converts to UTC first —
+        // .UtcDateTime matches that exactly (see OwnerCommands.HandlePopulateAllUserCommand,
+        // which has the identical proc conversion).
+        db.Users.Add(new User
+        {
+            UserId = user.Id.ToString(),
+            Username = user.Username,
+            JoinDate = user.JoinedAt!.Value.UtcDateTime,
+            ServerUid = (long)guildId,
+            Nickname = user.Nickname,
+            CreatedOn = DateTime.Now.ToUniversalTime()
+        });
+        await db.SaveChangesAsync();
+    }
 
 
     /// <summary>
@@ -441,14 +495,19 @@ internal sealed class BotHost(
         if (component.Data.CustomId.Contains('_') || component.Data.CustomId.Contains(':'))
             return;
 
-        var pronounTable = _sp.Select(Constants.discordBotConnStr, "GetPronouns", []);
+        List<Pronoun> pronouns;
+        using (var scope = services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+            pronouns = await db.Pronouns.AsNoTracking().ToListAsync();
+        }
         string pronounSelected = "";
         var guild = client.GetGuild(component.GuildId!.Value);
 
-        foreach (DataRow row in pronounTable.Rows)
+        foreach (var p in pronouns)
         {
-            string name = row["Pronoun"].ToString()!;
-            string id = row["ID"].ToString()!;
+            string name = p.Pronoun1;
+            string id = p.Id.ToString();
 
             // Lazily create the pronoun role on this guild the first time it's needed.
             if (!guild.Roles.Any(r => r.Name == name))
@@ -473,11 +532,15 @@ internal sealed class BotHost(
             await ((IGuildUser)guildUser).AddRoleAsync(role);
 
         string action = hasRole ? "removed" : "added";
-        new Audit().InsertButtonAudit(
-            $"{pronounSelected} {action}",
-            component.User.Id.ToString(),
-            component.GuildId!.Value.ToString(),
-            Constants.discordBotConnStr);
+        using (var auditScope = services.CreateScope())
+        {
+            var auditDb = auditScope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+            await AuditService.InsertButtonAuditAsync(
+                auditDb,
+                $"{pronounSelected} {action}",
+                component.User.Id.ToString(),
+                component.GuildId!.Value.ToString());
+        }
         await component.RespondAsync(
             embed: _embed.BuildMessageEmbed(
                 "Pronoun Selection",
@@ -513,25 +576,26 @@ internal sealed class BotHost(
     /// logging) — DMs have no server ID to log against, so the DM caller passes null.
     /// </summary>
     private async Task<bool> TryHandleScrambleGuessAsync(
-        IMessageChannel channel, string channelId, string message, IUser author, Action? onSolved)
+        IMessageChannel channel, string channelId, string message, IUser author, Func<DiscordbotContext, Task>? onSolved)
     {
-        var scramble = _sp.Select(Constants.discordBotConnStr, "GetScrambleByChannel",
-            [new SqlParameter("@ChannelID", channelId)]);
+        using var scope = services.CreateScope();
+        var scopedDb = scope.ServiceProvider.GetRequiredService<DiscordbotContext>();
 
-        if (scramble.Rows.Count == 0) return false;
+        var scramble = await scopedDb.ScrambleGames.FirstOrDefaultAsync(g => g.ChannelId == channelId);
 
-        bool expired = DateTime.TryParse(scramble.Rows[0]["ExpiresAt"].ToString(), out var expiresAt)
-                       && DateTime.UtcNow > expiresAt;
+        if (scramble is null) return false;
+
+        bool expired = DateTime.UtcNow > scramble.ExpiresAt;
         if (expired) return false;
 
-        string correctAnswer = scramble.Rows[0]["Answer"].ToString()!;
+        string correctAnswer = scramble.Answer;
 
         if (string.Equals(message, correctAnswer, StringComparison.OrdinalIgnoreCase))
         {
-            _sp.UpdateCreate(Constants.discordBotConnStr, "DeleteScrambleGame",
-                [new SqlParameter("@ChannelID", channelId)]);
+            scopedDb.ScrambleGames.Remove(scramble);
+            await scopedDb.SaveChangesAsync();
 
-            onSolved?.Invoke();
+            if (onSolved is not null) await onSolved(scopedDb);
 
             await channel.SendMessageAsync(embed: _embed.BuildSimpleEmbed(
                 "🎉  Correct!", $"{author.Mention} solved it! The word was **{correctAnswer}**.",
@@ -550,18 +614,20 @@ internal sealed class BotHost(
     /// callers add context-specific side effects (e.g. audit-logging a guild win).
     /// </summary>
     private async Task<bool> TryHandleWordleGuessAsync(
-        IMessageChannel channel, string channelId, string message, Action<bool>? onGuessed = null)
+        IMessageChannel channel, string channelId, string message, Func<bool, DiscordbotContext, Task>? onGuessed = null)
     {
         if (message.Length != 5 || !message.All(char.IsLetter)) return false;
 
-        var wordle = _sp.Select(Constants.discordBotConnStr, "GetWordleByChannel",
-            [new SqlParameter("@ChannelID", channelId)]);
+        using var scope = services.CreateScope();
+        var scopedDb = scope.ServiceProvider.GetRequiredService<DiscordbotContext>();
 
-        if (wordle.Rows.Count == 0) return false;
+        var wordle = await scopedDb.WordleGames.FirstOrDefaultAsync(g => g.ChannelId == channelId);
 
-        string answer       = wordle.Rows[0]["Answer"].ToString()!;
-        string messageIdStr = wordle.Rows[0]["MessageID"].ToString()!;
-        string guessesRaw   = wordle.Rows[0]["Guesses"].ToString()!;
+        if (wordle is null) return false;
+
+        string answer       = wordle.Answer;
+        string messageIdStr = wordle.MessageId;
+        string guessesRaw   = wordle.Guesses;
 
         var guesses = string.IsNullOrEmpty(guessesRaw)
             ? new List<string>()
@@ -572,19 +638,15 @@ internal sealed class BotHost(
         bool won      = message.Equals(answer, StringComparison.OrdinalIgnoreCase);
         bool gameOver = won || guesses.Count >= 6;
 
-        onGuessed?.Invoke(won);
+        if (onGuessed is not null) await onGuessed(won, scopedDb);
 
         string newGuesses = string.Join(",", guesses);
 
         if (gameOver)
-            _sp.UpdateCreate(Constants.discordBotConnStr, "DeleteWordleGame",
-                [new SqlParameter("@ChannelID", channelId)]);
+            scopedDb.WordleGames.Remove(wordle);
         else
-            _sp.UpdateCreate(Constants.discordBotConnStr, "UpdateWordleGame",
-            [
-                new SqlParameter("@ChannelID", channelId),
-                new SqlParameter("@Guesses",   newGuesses)
-            ]);
+            wordle.Guesses = newGuesses;
+        await scopedDb.SaveChangesAsync();
 
         if (ulong.TryParse(messageIdStr, out ulong messageId) &&
             await channel.GetMessageAsync(messageId) is IUserMessage gameMsg)
@@ -624,21 +686,43 @@ internal sealed class BotHost(
         string userId = msg.Author.Id.ToString();
         const string prefix = "-"; // marks a keyword-add/lookup command, e.g. "-cat http://..."
 
-        _sp.UpdateCreate(Constants.discordBotConnStr, "UpdateUserLastSeen",
-        [
-            new SqlParameter("@UserID",   userId),
-            new SqlParameter("@ServerID", long.Parse(serverId))
-        ]);
+        using (var scope = services.CreateScope())
+        {
+            var scopedDb = scope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+            // Source's UPDATE affects 0 rows (no error) if the user row doesn't exist yet —
+            // matched by only updating when found, rather than upserting.
+            var userRow = await scopedDb.Users.FirstOrDefaultAsync(u => u.UserId == userId && u.ServerUid == long.Parse(serverId));
+            if (userRow is not null)
+            {
+                userRow.LastSeen = DateTime.UtcNow; // source used GETUTCDATE() — already UTC, no conversion needed
+                await scopedDb.SaveChangesAsync();
+            }
+        }
 
         // Passive credits — pass serverId explicitly (Context.Guild is null outside slash commands)
-        _creditEco.AddCredits(userId, serverId, CreditHelper.PassiveMessageAmount, "message");
+        using (var creditScope = services.CreateScope())
+        {
+            var creditDb = creditScope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+            await CreditService.AddCreditsAsync(creditDb, userId, serverId, CreditHelper.PassiveMessageAmount, "message");
+        }
 
-        var serverInfo = _sp.Select(Constants.discordBotConnStr, "GetServerByID",
-            [new SqlParameter("ServerUID", long.Parse(serverId))]);
+        // Source called two separate procs (GetServerByID for IsActive, GetEmbedBroken for
+        // FixEmbed) against the same Servers row — fetched once here instead since nothing
+        // between these two checks can change that row. Source indexed Rows[0] on both without
+        // an empty-result check (would throw if the server isn't registered — Discord.NET's
+        // AsyncEvent wrapper catches that and routes it to OnLogMessageAsync); .First() below
+        // preserves that same throw-if-missing behavior rather than silently treating a
+        // missing server as inactive.
+        Server server;
+        using (var scope = services.CreateScope())
+        {
+            var scopedDb = scope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+            server = await scopedDb.Servers.AsNoTracking().FirstAsync(s => s.ServerUid == long.Parse(serverId));
+        }
 
-        // Server-wide kill switch — if the server record is missing/inactive, skip all
-        // further processing (no keyword triggers, games, or pet XP) for this message.
-        if (!bool.TryParse(serverInfo.Rows[0]["IsActive"]?.ToString(), out bool active) || !active)
+        // Server-wide kill switch — if the server record is inactive, skip all further
+        // processing (no keyword triggers, games, or pet XP) for this message.
+        if (!server.IsActive)
             return;
 
         var cleanup = new URLCleanup();
@@ -647,13 +731,9 @@ internal sealed class BotHost(
         // be broken, and that isn't itself a "-" keyword command — try to fix its embed.
         if (cleanup.HasSocialMediaEmbed(message) && !message.StartsWith(prefix))
         {
-            var embedSettings = _sp.Select(Constants.discordBotConnStr, "GetEmbedBroken",
-                [new SqlParameter("@ServerUID", long.Parse(serverId))]);
-
             // Only step in if this server opted into the fix AND Discord's own crawler
             // didn't manage to attach a rich embed on its own within the wait window.
-            if (bool.TryParse(embedSettings.Rows[0]["FixEmbed"]?.ToString(), out bool fix) && fix
-                && !await DiscordEmbedSucceededAsync(msg.Id))
+            if (server.FixEmbed && !await DiscordEmbedSucceededAsync(msg.Id))
             {
                 await msg.Channel.SendMessageAsync(cleanup.CleanURLEmbed(message));
             }
@@ -669,19 +749,15 @@ internal sealed class BotHost(
         }
 
 
-        var activePetRow = _sp.Select(Constants.discordBotConnStr, "GetActivePet",
-            [new SqlParameter("@UserID", userId)]);
-
         // Award passive pet XP for ordinary chatting — only if the user has an active,
         // non-hibernating pet. This block doesn't return early: games/keywords below still run.
-        if (activePetRow.Rows.Count > 0)
+        using (var scope = services.CreateScope())
         {
-            bool petHibernating = bool.TryParse(
-                activePetRow.Rows[0]["IsHibernating"].ToString(), out bool ph) && ph;
+            var scopedDb = scope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+            var activePet = await scopedDb.Pets.FirstOrDefaultAsync(p => p.UserId == userId && p.IsActive);
 
-            if (!petHibernating)
+            if (activePet is not null && !activePet.IsHibernating)
             {
-                int petId = int.Parse(activePetRow.Rows[0]["PetID"].ToString()!);
                 int xpGain = DiscordBot.Helper.PetHelper.XpMessage;
 
                 if (msg.Attachments.Count > 0)      // bonus XP for posting an image/file
@@ -690,37 +766,31 @@ internal sealed class BotHost(
                 if (message.Contains("http://") || message.Contains("https://")) // bonus XP for sharing a link
                     xpGain += DiscordBot.Helper.PetHelper.XpLink;
 
-                var xpResult = _sp.Select(Constants.discordBotConnStr, "AddPetXP",
-                [
-                    new SqlParameter("@PetID",  petId),
-                    new SqlParameter("@Amount", xpGain)
-                ]);
+                int oldXp = activePet.Xp;
+                activePet.Xp += xpGain;
+                await scopedDb.SaveChangesAsync();
+                int newXp = activePet.Xp;
 
-                if (xpResult.Rows.Count > 0) // AddPetXP returns the updated row only when the pet still exists
+                int oldLevel = DiscordBot.Helper.PetHelper.LevelFromXp(oldXp);
+                int newLevel = DiscordBot.Helper.PetHelper.LevelFromXp(newXp);
+
+                if (newLevel > oldLevel) // crossed a level threshold — announce it and pay out the level-up bonus
                 {
-                    int newXp = int.Parse(xpResult.Rows[0]["XP"].ToString()!);
-                    int oldXp = newXp - xpGain;
-                    int oldLevel = DiscordBot.Helper.PetHelper.LevelFromXp(oldXp);
-                    int newLevel = DiscordBot.Helper.PetHelper.LevelFromXp(newXp);
+                    string petName = activePet.Name;
+                    string species = activePet.Species;
+                    string? unlock = DiscordBot.Helper.PetHelper.LevelUpUnlock(newLevel);
+                    string emoji = DiscordBot.Helper.PetHelper.PetEmoji(
+                        species, 100, 100, false, newLevel >= 50);
 
-                    if (newLevel > oldLevel) // crossed a level threshold — announce it and pay out the level-up bonus
-                    {
-                        string petName = activePetRow.Rows[0]["Name"].ToString()!;
-                        string species = activePetRow.Rows[0]["Species"].ToString()!;
-                        string? unlock = DiscordBot.Helper.PetHelper.LevelUpUnlock(newLevel);
-                        string emoji = DiscordBot.Helper.PetHelper.PetEmoji(
-                            species, 100, 100, false, newLevel >= 50);
+                    decimal lvlBonus = CreditHelper.PetLevelUpAmount(newLevel);
+                    decimal newBalance = await CreditService.AddCreditsAsync(scopedDb, userId, serverId, lvlBonus, "pet_levelup");
 
-                        decimal lvlBonus = CreditHelper.PetLevelUpAmount(newLevel);
-                        decimal newBalance = _creditEco.AddCredits(userId, serverId, lvlBonus, "pet_levelup");
-
-                        await msg.Channel.SendMessageAsync(embed: _embed.BuildSimpleEmbed(
-                            $"{emoji}  {petName} levelled up!",
-                            $"{msg.Author.Mention}'s pet **{petName}** is now **Level {newLevel}**! 🎉\n" +
-                            $"Bonus: {CreditHelper.Format(lvlBonus)} | Balance: {CreditHelper.Format(newBalance)}" +
-                            (unlock is not null ? $"\n\n{unlock}" : ""),
-                            new Color(255, 215, 0)).Build());
-                    }
+                    await msg.Channel.SendMessageAsync(embed: _embed.BuildSimpleEmbed(
+                        $"{emoji}  {petName} levelled up!",
+                        $"{msg.Author.Mention}'s pet **{petName}** is now **Level {newLevel}**! 🎉\n" +
+                        $"Bonus: {CreditHelper.Format(lvlBonus)} | Balance: {CreditHelper.Format(newBalance)}" +
+                        (unlock is not null ? $"\n\n{unlock}" : ""),
+                        new Color(255, 215, 0)).Build());
                 }
             }
         }
@@ -728,18 +798,26 @@ internal sealed class BotHost(
 
         // Guild-channel scramble guess — audit-logged (DMs have no server ID to log against).
         if (await TryHandleScrambleGuessAsync(msg.Channel, msgChannel.Id.ToString(), message, msg.Author,
-                onSolved: () => new Audit().InsertGameTriggerAudit("scramble", userId, serverId, Constants.discordBotConnStr)))
+                onSolved: solvedDb => AuditService.InsertGameTriggerAuditAsync(solvedDb, "scramble", userId, serverId)))
             return;
 
 
-        var petPuzzle = _sp.Select(Constants.discordBotConnStr, "GetActivePetPuzzle",
-            [new SqlParameter("@ChannelID", msg.Channel.Id.ToString())]);
+        DiscordBot.Models.Generated.PetWordPuzzle? petPuzzle;
+        using (var scope = services.CreateScope())
+        {
+            var scopedDb = scope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+            string channelIdStr = msg.Channel.Id.ToString();
+            var nowUtc = DateTime.UtcNow;
+            petPuzzle = await scopedDb.PetWordPuzzles.AsNoTracking()
+                .Where(p => p.ChannelId == channelIdStr && !p.Claimed && p.ExpiresAt > nowUtc)
+                .FirstOrDefaultAsync();
+        }
 
         // A bonus word puzzle (posted hourly by the scheduler) is active in this channel.
-        if (petPuzzle.Rows.Count > 0)
+        if (petPuzzle is not null)
         {
-            string puzzleWord = petPuzzle.Rows[0]["Word"].ToString()!;
-            int puzzleId = int.Parse(petPuzzle.Rows[0]["PuzzleID"].ToString()!);
+            string puzzleWord = petPuzzle.Word;
+            int puzzleId = petPuzzle.PuzzleId;
 
             string puzzleChannelId = msg.Channel.Id.ToString();
 
@@ -748,37 +826,37 @@ internal sealed class BotHost(
                 // Clean up shared hint state for this channel
                 _puzzleHintStates.TryRemove(puzzleChannelId, out _);
 
-                _sp.UpdateCreate(Constants.discordBotConnStr, "ClaimPetPuzzle",
-                    [new SqlParameter("@PuzzleID", puzzleId)]);
-
-                new Audit().InsertGameTriggerAudit("petpuzzle", userId, serverId, Constants.discordBotConnStr);
+                using (var scope = services.CreateScope())
+                {
+                    var scopedDb = scope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+                    await scopedDb.PetWordPuzzles.Where(p => p.PuzzleId == puzzleId)
+                        .ExecuteUpdateAsync(s => s.SetProperty(p => p.Claimed, true));
+                    await AuditService.InsertGameTriggerAuditAsync(scopedDb, "petpuzzle", userId, serverId);
+                }
 
                 // Always award credits for solving the puzzle.
-                _creditEco.AddCredits(userId, serverId, CreditHelper.PuzzleSolveAmount, "puzzle");
-
-                var solverPet = _sp.Select(Constants.discordBotConnStr, "GetActivePet",
-                    [new SqlParameter("@UserID", userId)]);
+                using (var creditScope = services.CreateScope())
+                {
+                    var creditDb = creditScope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+                    await CreditService.AddCreditsAsync(creditDb, userId, serverId, CreditHelper.PuzzleSolveAmount, "puzzle");
+                }
 
                 bool awardedXp = false;
                 string petLine  = string.Empty;
 
                 // Pet XP bonus is separate from the credit reward above and only applies
                 // if the solver has an active, non-hibernating pet.
-                if (solverPet.Rows.Count > 0)
+                using (var scope = services.CreateScope())
                 {
-                    bool solverHib = bool.TryParse(
-                        solverPet.Rows[0]["IsHibernating"].ToString(), out bool sh) && sh;
+                    var scopedDb = scope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+                    var solverPet = await scopedDb.Pets.FirstOrDefaultAsync(p => p.UserId == userId && p.IsActive);
 
-                    if (!solverHib)
+                    if (solverPet is not null && !solverPet.IsHibernating)
                     {
-                        int    solverPetId   = int.Parse(solverPet.Rows[0]["PetID"].ToString()!);
-                        string solverPetName = solverPet.Rows[0]["Name"].ToString()!;
+                        string solverPetName = solverPet.Name;
 
-                        _sp.Select(Constants.discordBotConnStr, "AddPetXP",
-                        [
-                            new SqlParameter("@PetID",  solverPetId),
-                            new SqlParameter("@Amount", DiscordBot.Helper.PetHelper.XpWordPuzzle)
-                        ]);
+                        solverPet.Xp += DiscordBot.Helper.PetHelper.XpWordPuzzle;
+                        await scopedDb.SaveChangesAsync();
 
                         awardedXp = true;
                         petLine   = $"\n**{solverPetName}** earned **+{DiscordBot.Helper.PetHelper.XpWordPuzzle} XP**! 🐾";
@@ -830,24 +908,78 @@ internal sealed class BotHost(
 
 
         // Guild-channel Wordle guess — audit-log only on a win, same as the original inline check.
-        if (await TryHandleWordleGuessAsync(msg.Channel, msgChannel.Id.ToString(), message, won =>
+        if (await TryHandleWordleGuessAsync(msg.Channel, msgChannel.Id.ToString(), message, async (won, guessDb) =>
             {
-                if (won) new Audit().InsertGameTriggerAudit("wordle", userId, serverId, Constants.discordBotConnStr);
+                if (won) await AuditService.InsertGameTriggerAuditAsync(guessDb, "wordle", userId, serverId);
             }))
             return;
 
 
         // Fall-through: check whether this exact message text matches a registered
         // chat-triggered keyword (e.g. auto-replying with a saved image/link).
-        var actions = _sp.Select(Constants.discordBotConnStr, "GetChatAction",
-        [
-            new SqlParameter("@ServerID", long.Parse(serverId)),
-            new SqlParameter("@Message",  message)
-        ]);
+        var action = GetChatAction(long.Parse(serverId), message);
 
-        if (actions.Rows.Count > 0)
+        if (action is not null)
             // Fire-and-forget: don't block the gateway event handler on file/network I/O.
-            _ = Task.Run(() => SendChatActionsAsync(msg, msgChannel, actions));
+            _ = Task.Run(() => SendChatActionsAsync(msg, msgChannel, action.Value));
+    }
+
+    /// <summary>
+    /// Resolves a chat message to a registered keyword (direct name match, or via an alias)
+    /// and returns one random entry for it — same intent as the source GetChatAction proc's
+    /// STRING_SPLIT word-matching + ORDER BY NEWID() random picks, done client-side since
+    /// there's no clean EF/LINQ translation for random ordering. Realistic per-server keyword
+    /// counts are small (low hundreds at most), so pulling candidates into memory first is fine.
+    /// </summary>
+    private (string ChatAction, string Keyword, bool Nsfw)? GetChatAction(long serverId, string message)
+    {
+        using var scope = services.CreateScope();
+        var scopedDb = scope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+
+        var words = message.ToLowerInvariant()
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Distinct()
+            .ToList();
+        if (words.Count == 0) return null;
+
+        var directCandidates = scopedDb.ChatKeywordMaps.AsNoTracking()
+            .Where(m => m.ServerId == serverId && m.Keyword != null)
+            .Select(m => m.Keyword!)
+            .ToList()
+            .Where(k => words.Contains(k.ToLowerInvariant()))
+            .Distinct()
+            .ToList();
+
+        string? resolvedKeyword = directCandidates.Count > 0
+            ? directCandidates[Random.Shared.Next(directCandidates.Count)]
+            : null;
+
+        if (resolvedKeyword is null)
+        {
+            var aliasCandidates = scopedDb.ChatKeywordAliases.AsNoTracking()
+                .Where(a => a.ServerId == serverId)
+                .Select(a => new { a.Alias, a.Keyword })
+                .ToList()
+                .Where(a => words.Contains(a.Alias.ToLowerInvariant()))
+                .Select(a => a.Keyword)
+                .Distinct()
+                .ToList();
+
+            if (aliasCandidates.Count > 0)
+                resolvedKeyword = aliasCandidates[Random.Shared.Next(aliasCandidates.Count)];
+        }
+
+        if (resolvedKeyword is null) return null;
+
+        var entries = scopedDb.ChatKeywords.AsNoTracking()
+            .Where(c => EF.Functions.ILike(c.ChatKeyword1, resolvedKeyword))
+            .Select(c => new { c.FilePath, c.Nsfw })
+            .ToList();
+
+        if (entries.Count == 0) return null;
+
+        var picked = entries[Random.Shared.Next(entries.Count)];
+        return (picked.FilePath, resolvedKeyword, picked.Nsfw);
     }
 
     /// <summary>
@@ -902,15 +1034,23 @@ internal sealed class BotHost(
         if (parts.Length == 0) return;
 
         string keyword = parts[0][prefix.Length..];
-        var keywordMap = _sp.Select(Constants.discordBotConnStr, "GetChatKeywordMap",
-            [new SqlParameter("@AddKeyword", keyword)]);
+        string? resolvedKeyword;
+        using (var scope = services.CreateScope())
+        {
+            var scopedDb = scope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+            // Source LEFT JOINed ChatKeyword but never selected any of its columns or used it
+            // to filter — a no-op join. Preserved as a plain single-table lookup.
+            resolvedKeyword = scopedDb.ChatKeywordMaps.AsNoTracking()
+                .Where(m => EF.Functions.ILike(m.AddKeyword, keyword))
+                .Select(m => m.Keyword)
+                .FirstOrDefault();
+        }
 
-        if (keywordMap.Rows.Count == 0) return; // not a registered keyword — ignore silently
+        if (resolvedKeyword is null) return; // not a registered keyword — ignore silently
 
         if (msg.Attachments.Count > 0)
         {
-            await AddAttachmentsAsync(msg, keywordMap.Rows[0]["Keyword"].ToString()!,
-                                      Constants.discordBotConnStr, userId);
+            await AddAttachmentsAsync(msg, resolvedKeyword, userId);
             await msg.Channel.SendMessageAsync(
                 embed: _embed.BuildSimpleEmbed("Added Image", "Added attachment(s) successfully.", Color.Blue).Build());
         }
@@ -934,7 +1074,7 @@ internal sealed class BotHost(
 
                 string storeValue = await TrySaveSocialImageAsync(url, keyword)
                                     ?? cleanup.CleanURLEmbed(url);
-                StoreChatKeyword(keywordMap, storeValue, userId);
+                StoreChatKeyword(resolvedKeyword, storeValue, userId);
             }
 
             await msg.Channel.SendMessageAsync(
@@ -945,7 +1085,7 @@ internal sealed class BotHost(
             string storeValue = await TrySaveSocialImageAsync(content, keyword)
                                 ?? cleanup.CleanURLEmbed(content);
 
-            StoreChatKeyword(keywordMap, storeValue, userId);
+            StoreChatKeyword(resolvedKeyword, storeValue, userId);
 
             // Locally-downloaded social media images get a different confirmation message
             // than a plain URL/text entry, since the stored value is a file path either way.
@@ -958,18 +1098,23 @@ internal sealed class BotHost(
         }
     }
 
-    /// <summary>Persists one keyword value (a file path, URL, or plain text) for every table name the keyword maps to.</summary>
-    private void StoreChatKeyword(DataTable keywordMap, string value, string userId)
+    /// <summary>Persists one keyword value (a file path, URL, or plain text) against the given keyword.</summary>
+    private void StoreChatKeyword(string keyword, string value, string userId)
     {
-        foreach (DataRow row in keywordMap.Rows)
+        // Source stripped literal single-quotes from FilePath before insert.
+        using var scope = services.CreateScope();
+        var scopedDb = scope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+        // CreatedOn: source used GETDATE() (local, not UTC) and ChatKeyword has no DB default.
+        // Npgsql requires UTC-Kind DateTimes for timestamptz — ToUniversalTime() converts the
+        // correct local instant rather than just relabelling it (which SpecifyKind would do).
+        scopedDb.ChatKeywords.Add(new ChatKeyword
         {
-            _sp.UpdateCreate(Constants.discordBotConnStr, "AddChatKeyword",
-            [
-                new SqlParameter("@FilePath",  value),
-                new SqlParameter("@TableName", row["Keyword"].ToString()),
-                new SqlParameter("@UserID",    userId)
-            ]);
-        }
+            ChatKeyword1 = keyword,
+            FilePath = value.Replace("'", ""),
+            Nsfw = false,
+            CreatedOn = DateTime.Now.ToUniversalTime()
+        });
+        scopedDb.SaveChanges();
     }
 
     /// <summary>
@@ -978,17 +1123,17 @@ internal sealed class BotHost(
     /// posted images/links get a ❌ reaction so any member can delete them (see
     /// <see cref="OnReactionAddedAsync"/>).
     /// </summary>
-    private async Task SendChatActionsAsync(SocketMessage msg, SocketGuildChannel msgChannel, DataTable actions)
+    private async Task SendChatActionsAsync(
+        SocketMessage msg, SocketGuildChannel msgChannel, (string ChatAction, string Keyword, bool Nsfw) action)
     {
         if (client.GetChannel(msgChannel.Id) is not IMessageChannel sender) return;
 
-        foreach (DataRow row in actions.Rows)
         {
-            string chatAction = row["ChatAction"].ToString()!;
-            string keyword = row["Keyword"].ToString()!;
-            bool isNsfw = bool.TryParse(row["NSFW"]?.ToString(), out bool n) && n;
+            string chatAction = action.ChatAction;
+            string keyword = action.Keyword;
+            bool isNsfw = action.Nsfw;
 
-            if (string.IsNullOrWhiteSpace(chatAction)) continue;
+            if (string.IsNullOrWhiteSpace(chatAction)) return;
 
             await msg.Channel.TriggerTypingAsync();
 
@@ -1029,12 +1174,19 @@ internal sealed class BotHost(
                 else
                 {
                     // Link is dead — remove it from the keyword's rotation so it isn't served again.
+                    // FIX: source passed @Keyword='' (literal empty string) here instead of the
+                    // actual keyword, and DeleteChatKeywordURL's WHERE requires both FilePath AND
+                    // ChatKeyword to match a NOT NULL column — an empty string never matches a
+                    // real keyword, so this delete has never actually removed anything (the bot
+                    // claims success regardless). Passing the real keyword instead.
                     await sender.SendMessageAsync($"Link was dead so I deleted it :) -> {chatAction}");
-                    _sp.UpdateCreate(Constants.discordBotConnStr, "DeleteChatKeywordURL",
-                    [
-                        new SqlParameter("@FilePath", chatAction),
-                        new SqlParameter("@Keyword",  "")
-                    ]);
+                    using (var scope = services.CreateScope())
+                    {
+                        var scopedDb = scope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+                        scopedDb.ChatKeywords.RemoveRange(scopedDb.ChatKeywords.Where(c =>
+                            EF.Functions.ILike(c.FilePath, chatAction) && EF.Functions.ILike(c.ChatKeyword1, action.Keyword)));
+                        scopedDb.SaveChanges();
+                    }
                 }
             }
             else
@@ -1059,7 +1211,7 @@ internal sealed class BotHost(
         var guild = before.VoiceChannel?.Guild ?? after.VoiceChannel?.Guild;
         if (guild is null) return;
 
-        SqlParameter[] serverParam = [new SqlParameter("@ServerID", guild.Id.ToString())];
+        long guildId = (long)guild.Id;
 
         // Local helper: forces every bot user out of a voice channel (used both when the
         // music bot itself disconnects and when the last human leaves).
@@ -1069,6 +1221,17 @@ internal sealed class BotHost(
                 await bot.VoiceChannel.DisconnectAsync();
         }
 
+        // Same atomicity note as Audio.cs's DeletePlayerConnected helper: source was two
+        // separate procs (PlayerConnected delete + Servers.IsPlayerConnected update bundled
+        // in one proc, MusicQueue delete in another) — staged/saved the same way here.
+        void ClearPlayerConnected(DiscordbotContext scopedDb)
+        {
+            scopedDb.PlayerConnecteds.RemoveRange(scopedDb.PlayerConnecteds.Where(p => p.ServerUid == guildId));
+            var server = scopedDb.Servers.FirstOrDefault(s => s.ServerUid == guildId);
+            if (server is not null) server.IsPlayerConnected = false;
+            scopedDb.SaveChanges();
+        }
+
         if (user.IsBot)
         {
             // The bot itself left a channel — clear its "connected" DB row so future
@@ -1076,7 +1239,8 @@ internal sealed class BotHost(
             if (after.VoiceChannel is null && before.VoiceChannel is not null)
             {
                 await DisconnectBotsAsync(before.VoiceChannel);
-                _sp.UpdateCreate(Constants.discordBotConnStr, "DeletePlayerConnected", [.. serverParam]);
+                using var scope = services.CreateScope();
+                ClearPlayerConnected(scope.ServiceProvider.GetRequiredService<DiscordbotContext>());
             }
         }
         else if (before.VoiceChannel is not null && after.VoiceChannel is null)
@@ -1087,8 +1251,11 @@ internal sealed class BotHost(
             if (!anyNonBotRemaining)
             {
                 await DisconnectBotsAsync(before.VoiceChannel);
-                _sp.UpdateCreate(Constants.discordBotConnStr, "DeletePlayerConnected", [.. serverParam]);
-                _sp.UpdateCreate(Constants.discordBotConnStr, "DeleteMusicQueueAll", [.. serverParam]);
+                using var scope = services.CreateScope();
+                var scopedDb = scope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+                ClearPlayerConnected(scopedDb);
+                scopedDb.MusicQueues.RemoveRange(scopedDb.MusicQueues.Where(q => q.ServerUid == guildId));
+                scopedDb.SaveChanges();
             }
         }
     }
@@ -1123,12 +1290,16 @@ internal sealed class BotHost(
 
                 if (!string.IsNullOrEmpty(fileName))
                 {
-                    new Audit().InsertReactionAudit(
-                        reaction.Emote.Name,
-                        download.Id.ToString(),
-                        reaction.UserId.ToString(),
-                        cachedChannel.Id.ToString(),
-                        Constants.discordBotConnStr);
+                    using (var auditScope = services.CreateScope())
+                    {
+                        var auditDb = auditScope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+                        await AuditService.InsertReactionAuditAsync(
+                            auditDb,
+                            reaction.Emote.Name,
+                            download.Id.ToString(),
+                            reaction.UserId.ToString(),
+                            cachedChannel.Id.ToString());
+                    }
                     await TryMarkNsfwAsync(fileName, cachedChannel, reaction);
                     return;
                 }
@@ -1136,12 +1307,16 @@ internal sealed class BotHost(
 
             if (IsTriviaEmoji(reaction.Emote.Name))
             {
-                new Audit().InsertReactionAudit(
-                    reaction.Emote.Name,
-                    download.Id.ToString(),
-                    reaction.UserId.ToString(),
-                    cachedChannel.Id.ToString(),
-                    Constants.discordBotConnStr);
+                using (var auditScope = services.CreateScope())
+                {
+                    var auditDb = auditScope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+                    await AuditService.InsertReactionAuditAsync(
+                        auditDb,
+                        reaction.Emote.Name,
+                        download.Id.ToString(),
+                        reaction.UserId.ToString(),
+                        cachedChannel.Id.ToString());
+                }
                 await HandleTriviaReactionAsync(cachedMsg, cachedChannel, reaction, download);
             }
         });
@@ -1158,21 +1333,26 @@ internal sealed class BotHost(
         Cacheable<IMessageChannel, ulong> channel,
         SocketReaction reaction)
     {
-        var existing = _sp.Select(Constants.discordBotConnStr, "GetKeywordNSFW",
-            [new SqlParameter("@Message", content)]);
+        using var scope = services.CreateScope();
+        var scopedDb = scope.ServiceProvider.GetRequiredService<DiscordbotContext>();
 
-        if (existing.AsEnumerable().Any(r => r["NSFW"].ToString() == "1")) return; // already flagged — nothing to do
+        // Source's own comment flags this leading-wildcard LIKE as a known perf issue (full
+        // table scan every call, with a TODO in the proc itself for a future hash/checksum
+        // rewrite) — preserved exactly as-is; not something this conversion is fixing.
+        var matches = await scopedDb.ChatKeywords
+            .Where(c => EF.Functions.ILike(c.FilePath, $"%{content}%"))
+            .ToListAsync();
 
-        var result = _sp.Select(Constants.discordBotConnStr, "MarkKeywordNSFW",
-            [new SqlParameter("@Message", content)]);
+        if (matches.Count == 0) return; // no match at all
+        if (matches.Any(c => c.Nsfw)) return; // already flagged — nothing to do
 
-        if (result.Rows.Count > 0)
-        {
-            await channel.Value.SendMessageAsync(embed: _embed.BuildMessageEmbed(
-                "NSFW",
-                $"Thanks {reaction.User.Value.Mention}, the message was marked as NSFW, sorry about that :)",
-                "", "BigBirdBot", Color.Blue).Build());
-        }
+        foreach (var m in matches) m.Nsfw = true;
+        await scopedDb.SaveChangesAsync();
+
+        await channel.Value.SendMessageAsync(embed: _embed.BuildMessageEmbed(
+            "NSFW",
+            $"Thanks {reaction.User.Value.Mention}, the message was marked as NSFW, sorry about that :)",
+            "", "BigBirdBot", Color.Blue).Build());
     }
 
     /// <summary>
@@ -1193,12 +1373,15 @@ internal sealed class BotHost(
             long messageId = (long)cachedMsg.Id;
             string userMention = reaction.User.Value.Mention;
 
-            var dt = _sp.Select(Constants.discordBotConnStr, "GetTriviaMessage",
-                [new SqlParameter("@TriviaMessageID", messageId)]);
+            using var scope = services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<DiscordbotContext>();
 
-            if (dt.Rows.Count == 0) return; // no matching trivia record (already answered, or not a trivia message)
+            var triviaMessage = await db.TriviaMessages.AsNoTracking()
+                .FirstOrDefaultAsync(t => t.TriviaMessageId == messageId);
 
-            string correctAnswer = dt.Rows[0]["CorrectAnswer"].ToString()!;
+            if (triviaMessage is null) return; // no matching trivia record (already answered, or not a trivia message)
+
+            string correctAnswer = triviaMessage.CorrectAnswer;
 
             // The answer-choice fields are named "A. ...", "B. ...", etc. — filter out any
             // other fields the embed might have (e.g. a question/category field with no dot).
@@ -1225,8 +1408,10 @@ internal sealed class BotHost(
                 isCorrect ? Color.Green : Color.Red).Build());
 
             if (isCorrect)
-                _sp.UpdateCreate(Constants.discordBotConnStr, "DeleteTriviaMessage",
-                    [new SqlParameter("@TriviaMessageID", messageId)]);
+            {
+                db.TriviaMessages.Remove(triviaMessage);
+                await db.SaveChangesAsync();
+            }
         }
         catch (Exception ex)
         {
@@ -1276,13 +1461,26 @@ internal sealed class BotHost(
                 await RunScheduledKeywordsAsync();
 
                 // ── Reminders (every tick = every minute) ───────────────────
-                var dueReminders = _sp.Select(Constants.discordBotConnStr, "GetDueReminders", []);
-                foreach (DataRow reminderRow in dueReminders.Rows)
+                // Source proc did this as one atomic UPDATE...OUTPUT — select-then-update here
+                // instead, same flagged weaker-atomicity tradeoff as the Journal reminders block
+                // just below (fine in practice: single-instance sequential scheduler tick).
+                List<Reminder> dueReminders;
+                using (var reminderScope = services.CreateScope())
+                {
+                    var reminderDb = reminderScope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+                    var nowUtc = DateTime.UtcNow;
+                    dueReminders = await reminderDb.Reminders
+                        .Where(r => !r.Sent && r.RemindAtUtc <= nowUtc)
+                        .ToListAsync();
+                    foreach (var r in dueReminders) r.Sent = true;
+                    await reminderDb.SaveChangesAsync();
+                }
+                foreach (var reminderRow in dueReminders)
                 {
                     try
                     {
-                        ulong userId = ulong.Parse(reminderRow["UserID"].ToString()!);
-                        string message = reminderRow["Message"].ToString()!;
+                        ulong userId = ulong.Parse(reminderRow.UserId);
+                        string message = reminderRow.Message;
                         var reminderUser = await client.GetUserAsync(userId)
                                         ?? await client.Rest.GetUserAsync(userId);
                         if (reminderUser is null) continue;
@@ -1296,12 +1494,33 @@ internal sealed class BotHost(
                 }
 
                 // ── Journal reminders (every tick = every minute) ────────────
-                var dueJournals = _sp.Select(Constants.discordBotConnStr, "GetDueJournalReminders", []);
-                foreach (DataRow journalRow in dueJournals.Rows)
+                List<string> dueJournalUserIds;
+                {
+                    using var journalScope = services.CreateScope();
+                    var journalDb = journalScope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+                    var nowUtc = DateTime.UtcNow;
+                    var nowTimeUtc = TimeOnly.FromDateTime(nowUtc);
+                    var todayDateUtc = nowUtc.Date;
+
+                    // Source proc did this as one atomic UPDATE...OUTPUT (select-and-mark in a
+                    // single statement). This is select-then-update instead — a marginally
+                    // weaker guarantee, flagged per instructions rather than silently accepted.
+                    // Fine in practice: this is a single-instance scheduler tick, not concurrent.
+                    var due = await journalDb.JournalSubscriptions
+                        .Where(s => nowTimeUtc >= s.DailyTimeUtc
+                                 && (s.LastReminderSentAt == null || s.LastReminderSentAt.Value.Date < todayDateUtc))
+                        .ToListAsync();
+
+                    dueJournalUserIds = due.Select(s => s.UserId).ToList();
+                    foreach (var s in due) s.LastReminderSentAt = nowUtc;
+                    await journalDb.SaveChangesAsync();
+                }
+
+                foreach (string journalUserIdStr in dueJournalUserIds)
                 {
                     try
                     {
-                        ulong userId = ulong.Parse(journalRow["UserID"].ToString()!);
+                        ulong userId = ulong.Parse(journalUserIdStr);
                         var journalUser = await client.GetUserAsync(userId)
                                        ?? await client.Rest.GetUserAsync(userId);
                         if (journalUser is null) continue;
@@ -1322,16 +1541,32 @@ internal sealed class BotHost(
                 }
 
                 // ── Birthdays (every tick = every minute) ────────────────────
-                var todaysBirthdays = _sp.Select(Constants.discordBotConnStr, "GetTodaysBirthdays", []);
-                foreach (DataRow birthdayRow in todaysBirthdays.Rows)
+                // Source (GetTodaysBirthdays) used an atomic UPDATE...OUTPUT to select and
+                // mark Sent=1 in one statement. EF has no direct equivalent — this is a
+                // select-then-update instead, the same weaker-atomicity tradeoff already
+                // flagged for the Journal-reminders conversion. Not a real race here in
+                // practice since RunSchedulerAsync's tick loop is sequential, not concurrent.
+                // BirthdayDate is stored UTC (see ServerCommands.HandleBirthdayAsync) but the
+                // source compared calendar dates in LOCAL time (CAST(GETDATE() AS DATE)) — the
+                // .ToLocalTime() below reproduces that; done client-side since it isn't
+                // translatable to SQL.
+                List<Birthday> todaysBirthdays;
+                using (var scope = services.CreateScope())
+                {
+                    var scopedDb = scope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+                    var today = DateTime.Now.Date;
+                    var unsent = await scopedDb.Birthdays.Where(b => !b.Sent).ToListAsync();
+                    todaysBirthdays = unsent.Where(b => b.BirthdayDate.ToLocalTime().Date == today).ToList();
+                    foreach (var b in todaysBirthdays) b.Sent = true;
+                    await scopedDb.SaveChangesAsync();
+                }
+                foreach (var birthdayRow in todaysBirthdays)
                 {
                     try
                     {
-                        string mention = birthdayRow["BirthdayUser"].ToString()!;
-                        ulong guildId = ulong.Parse(birthdayRow["BirthdayGuild"].ToString()!);
-                        string? overrideChannelId = birthdayRow.Table.Columns.Contains("BirthdayChannel")
-                            ? birthdayRow["BirthdayChannel"] as string
-                            : null;
+                        string mention = birthdayRow.BirthdayUser;
+                        ulong guildId = ulong.Parse(birthdayRow.BirthdayGuild);
+                        string? overrideChannelId = birthdayRow.BirthdayChannel;
 
                         var birthdayGuild = client.GetGuild(guildId);
                         if (birthdayGuild is null) continue;
@@ -1343,7 +1578,12 @@ internal sealed class BotHost(
 
                         if (channel is null)
                         {
-                            var serverDetails = ServerHelper.GetServerInfo(guildId);
+                            ServerHelper.ServerInfo? serverDetails;
+                            using (var serverScope = services.CreateScope())
+                            {
+                                var serverScopedDb = serverScope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+                                serverDetails = await ServerHelper.GetServerInfoAsync(serverScopedDb, guildId);
+                            }
                             if (serverDetails is null || !serverDetails.AnnouncementsEnabled) continue;
 
                             channel = ResolveAnnouncementChannel(birthdayGuild, serverDetails.DefaultChannelID);
@@ -1362,18 +1602,46 @@ internal sealed class BotHost(
             // Runs once every 30 minutes (tick increments once per minute).
             if (_schedulerTick % 30 == 0)
             {
-                var decayed = _sp.Select(Constants.discordBotConnStr, "DecayPetStats", []);
+                List<(string UserId, string Name, string Species)> newlyHibernated;
+                using (var scope = services.CreateScope())
+                {
+                    var scopedDb = scope.ServiceProvider.GetRequiredService<DiscordbotContext>();
 
-                foreach (DataRow decayRow in decayed.Rows)
+                    // Step 1: decay stats for absent-owner (2h+) pets only.
+                    var absenceCutoff = DateTime.UtcNow.AddHours(-2);
+                    await scopedDb.Pets
+                        .Where(p => !p.IsHibernating && scopedDb.Users.Any(u =>
+                            u.UserId == p.UserId && (u.LastSeen == null || u.LastSeen < absenceCutoff)))
+                        .ExecuteUpdateAsync(s => s
+                            .SetProperty(p => p.Hunger, p => p.Hunger > 5 ? p.Hunger - 5 : 0)
+                            .SetProperty(p => p.Happiness, p => p.Happiness > 4 ? p.Happiness - 4 : 0)
+                            .SetProperty(p => p.Energy, p => p.Energy > 3 ? p.Energy - 3 : 0)
+                            .SetProperty(p => p.Hygiene, p => p.Hygiene > 2 ? p.Hygiene - 2 : 0));
+
+                    // Step 2: trigger hibernation when 2+ stats fall below threshold (once only).
+                    var hibernatedAt = DateTime.UtcNow;
+                    await scopedDb.Pets
+                        .Where(p => !p.IsHibernating && p.HibernatedAt == null &&
+                            ((p.Hunger < 15 ? 1 : 0) + (p.Happiness < 15 ? 1 : 0) + (p.Energy < 15 ? 1 : 0)) >= 2)
+                        .ExecuteUpdateAsync(s => s
+                            .SetProperty(p => p.IsHibernating, true)
+                            .SetProperty(p => p.HibernatedAt, hibernatedAt));
+
+                    // Step 3: return only pets that just hibernated this tick (within last 2 min).
+                    var recentCutoff = DateTime.UtcNow.AddMinutes(-2);
+                    newlyHibernated = await scopedDb.Pets.AsNoTracking()
+                        .Where(p => p.IsHibernating && p.HibernatedAt >= recentCutoff)
+                        .Select(p => new ValueTuple<string, string, string>(p.UserId, p.Name, p.Species))
+                        .ToListAsync();
+                }
+
+                foreach (var (decayUserId, petName, species) in newlyHibernated)
                 {
                     try
                     {
-                        ulong ownerId = ulong.Parse(decayRow["UserID"].ToString()!);
+                        ulong ownerId = ulong.Parse(decayUserId);
                         var owner = await client.GetUserAsync(ownerId);
                         if (owner is null) continue;
-
-                        string petName = decayRow["Name"].ToString()!;
-                        string species = decayRow["Species"].ToString()!;
 
                         await owner.SendMessageAsync(embed: _embed.BuildSimpleEmbed(
                             "💤  Your pet is hibernating!",
@@ -1404,27 +1672,17 @@ internal sealed class BotHost(
 
                         if (!hasActivity) continue; // not showing a qualifying activity status right now
 
-                        var userPet = _sp.Select(Constants.discordBotConnStr, "GetActivePet",
-                            [new SqlParameter("@UserID", guildUser.Id.ToString())]);
+                        string activityUserId = guildUser.Id.ToString();
+                        using var scope = services.CreateScope();
+                        var scopedDb = scope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+                        var userPet = await scopedDb.Pets.FirstOrDefaultAsync(p => p.UserId == activityUserId && p.IsActive);
 
-                        if (userPet.Rows.Count == 0) continue;
+                        if (userPet is null) continue;
+                        if (userPet.IsHibernating) continue;
+                        if (userPet.Hunger <= 20) continue;
 
-                        var petRow = userPet.Rows[0];
-
-                        bool petHib = bool.TryParse(
-                            petRow["IsHibernating"].ToString(), out bool phibb) && phibb;
-                        if (petHib) continue;
-
-                        int petHunger = int.Parse(petRow["Hunger"].ToString()!);
-                        if (petHunger <= 20) continue;
-
-                        int activityPetId = int.Parse(petRow["PetID"].ToString()!);
-
-                        _sp.Select(Constants.discordBotConnStr, "AddPetXP",
-                        [
-                            new SqlParameter("@PetID",  activityPetId),
-                            new SqlParameter("@Amount", DiscordBot.Helper.PetHelper.XpActivity)
-                        ]);
+                        userPet.Xp += DiscordBot.Helper.PetHelper.XpActivity;
+                        await scopedDb.SaveChangesAsync();
                     }
                 }
             }
@@ -1432,25 +1690,42 @@ internal sealed class BotHost(
             // Runs once every 60 minutes — posts a new bonus word puzzle to every eligible guild.
             if (_schedulerTick % 60 == 0)
             {
-                // Pull a random word from the Words table
-                var wordDt = _sp.Select(Constants.discordBotConnStr, "GetRandomWord", []);
-                if (wordDt.Rows.Count == 0) goto skipPuzzle;
-                string puzzleWord = wordDt.Rows[0]["Word"].ToString()!.Trim();
+                // Pull a random word from the Words table — no clean server-side "random row"
+                // translation in EF/Postgres (same as source's ORDER BY NEWID()), so fetch all
+                // and pick client-side.
+                string? puzzleWord;
+                using (var scope = services.CreateScope())
+                {
+                    var scopedDb = scope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+                    var words = await scopedDb.Words.AsNoTracking().Select(w => w.Word1).ToListAsync();
+                    puzzleWord = words.Count == 0 ? null : words[Random.Shared.Next(words.Count)].Trim();
+                }
+                if (puzzleWord is null) goto skipPuzzle;
                 if (string.IsNullOrWhiteSpace(puzzleWord)) goto skipPuzzle;
 
                 foreach (var guild in client.Guilds)
                 {
-                    var serverDetails = ServerHelper.GetServerInfo(guild.Id);
+                    ServerHelper.ServerInfo? serverDetails;
+                    using (var serverScope = services.CreateScope())
+                    {
+                        var serverScopedDb = serverScope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+                        serverDetails = await ServerHelper.GetServerInfoAsync(serverScopedDb, guild.Id);
+                    }
                     if (serverDetails is null || !serverDetails.AnnouncementsEnabled) continue;
                     var channel = ResolveAnnouncementChannel(guild, serverDetails.DefaultChannelID);
                     if (channel is null) continue;
 
-                    _sp.UpdateCreate(Constants.discordBotConnStr, "AddPetWordPuzzle",
-                    [
-                        new SqlParameter("@ChannelID", serverDetails.DefaultChannelID),
-                        new SqlParameter("@Word",      puzzleWord),
-                        new SqlParameter("@ExpiresAt", DateTime.UtcNow.AddMinutes(55))
-                    ]);
+                    using (var scope = services.CreateScope())
+                    {
+                        var scopedDb = scope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+                        scopedDb.PetWordPuzzles.Add(new PetWordPuzzle
+                        {
+                            ChannelId = serverDetails.DefaultChannelID,
+                            Word = puzzleWord,
+                            ExpiresAt = DateTime.UtcNow.AddMinutes(55)
+                        });
+                        await scopedDb.SaveChangesAsync();
+                    }
 
                     string blankHint = $"{puzzleWord[0]}{new string('_', puzzleWord.Length - 1)}";
 
@@ -1477,9 +1752,16 @@ internal sealed class BotHost(
                     {
                         await Task.Delay(TimeSpan.FromMinutes(30));
 
-                        var stillActive = _sp.Select(Constants.discordBotConnStr, "GetPetWordPuzzle",
-                            [new SqlParameter("@ChannelID", capturedCh.Id.ToString())]);
-                        if (stillActive.Rows.Count == 0) return;
+                        bool stillActive;
+                        using (var scope = services.CreateScope())
+                        {
+                            var scopedDb = scope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+                            string chId = capturedCh.Id.ToString();
+                            var nowUtc = DateTime.UtcNow;
+                            stillActive = await scopedDb.PetWordPuzzles.AsNoTracking()
+                                .AnyAsync(p => p.ChannelId == chId && !p.Claimed && p.ExpiresAt > nowUtc);
+                        }
+                        if (!stillActive) return;
 
                         if (!hintState.TryRevealNext(out string hint30)) return; // all letters already shown
 
@@ -1502,9 +1784,16 @@ internal sealed class BotHost(
                     {
                         await Task.Delay(TimeSpan.FromMinutes(50));
 
-                        var stillActive = _sp.Select(Constants.discordBotConnStr, "GetPetWordPuzzle",
-                            [new SqlParameter("@ChannelID", capturedCh.Id.ToString())]);
-                        if (stillActive.Rows.Count == 0) return;
+                        bool stillActive;
+                        using (var scope = services.CreateScope())
+                        {
+                            var scopedDb = scope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+                            string chId = capturedCh.Id.ToString();
+                            var nowUtc = DateTime.UtcNow;
+                            stillActive = await scopedDb.PetWordPuzzles.AsNoTracking()
+                                .AnyAsync(p => p.ChannelId == chId && !p.Claimed && p.ExpiresAt > nowUtc);
+                        }
+                        if (!stillActive) return;
 
                         if (!hintState.TryRevealNext(out string hint50)) return; // all letters already shown
 
@@ -1531,12 +1820,19 @@ internal sealed class BotHost(
 
                         // GetPetWordPuzzle filters ExpiresAt > NOW — use GetPuzzleClaimedStatus
                         // instead so we can distinguish solved vs expired-unsolved.
-                        var statusDt = _sp.Select(Constants.discordBotConnStr, "GetPuzzleClaimedStatus",
-                            [new SqlParameter("@ChannelID", capturedCh.Id.ToString())]);
+                        bool wasClaimed;
+                        using (var scope = services.CreateScope())
+                        {
+                            var scopedDb = scope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+                            string chId = capturedCh.Id.ToString();
+                            wasClaimed = await scopedDb.PetWordPuzzles.AsNoTracking()
+                                .Where(p => p.ChannelId == chId)
+                                .OrderByDescending(p => p.PuzzleId)
+                                .Select(p => (bool?)p.Claimed)
+                                .FirstOrDefaultAsync() == true;
+                        }
 
-                        if (statusDt.Rows.Count > 0
-                            && bool.TryParse(statusDt.Rows[0]["Claimed"].ToString(), out bool wasClaimed)
-                            && wasClaimed)
+                        if (wasClaimed)
                             return;
 
                         try
@@ -1561,46 +1857,43 @@ internal sealed class BotHost(
             {
                 foreach (var guild in client.Guilds)
                 {
-                    var potDt = _sp.Select(Constants.discordBotConnStr, "GetJackpotTotal",
-                        [new SqlParameter("@ServerID", guild.Id.ToString())]);
+                    string guildIdStr = guild.Id.ToString();
+                    using var scope = services.CreateScope();
+                    var scopedDb = scope.ServiceProvider.GetRequiredService<DiscordbotContext>();
 
-                    if (potDt.Rows.Count == 0) continue;
-                    long pot = long.Parse(potDt.Rows[0]["Total"].ToString()!);
-                    int entries = int.Parse(potDt.Rows[0]["Entries"].ToString()!);
+                    var entries = await scopedDb.JackpotEntries.AsNoTracking()
+                        .Where(e => e.ServerId == guildIdStr).ToListAsync();
 
-                    if (pot <= 0 || entries == 0) continue;
+                    long pot = (long)entries.Sum(e => e.Amount);
+                    int entryCount = entries.Count;
 
-                    var serverDetails = ServerHelper.GetServerInfo(guild.Id);
+                    if (pot <= 0 || entryCount == 0) continue;
+
+                    var serverDetails = await ServerHelper.GetServerInfoAsync(scopedDb, guild.Id);
                     if (serverDetails is null || !serverDetails.AnnouncementsEnabled) continue;
-
-                    var entryDt = _sp.Select(Constants.discordBotConnStr, "GetJackpotEntries",
-                    [new SqlParameter("@ServerID", guild.Id.ToString())]);
-
-                    if (entryDt.Rows.Count == 0) continue;
 
                     // Weighted random draw: each entrant's odds are proportional to how much
                     // they contributed. Sum every contribution, roll a point in that range,
                     // then walk the running cumulative total until the roll falls inside it.
-                    long totalWeight = entryDt.AsEnumerable()
-                        .Sum(r => long.Parse(r["TotalContributed"].ToString()!));
+                    var byUser = entries.GroupBy(e => e.UserId)
+                        .Select(g => (userId: g.Key, total: g.Sum(e => e.Amount))).ToList();
+                    long totalWeight = (long)byUser.Sum(u => u.total);
 
                     long roll = (long)(Random.Shared.NextDouble() * totalWeight);
                     long cum = 0;
                     string? winnerId = null;
 
-                    foreach (System.Data.DataRow eRow in entryDt.Rows)
+                    foreach (var u in byUser)
                     {
-                        cum += long.Parse(eRow["TotalContributed"].ToString()!);
-                        if (roll < cum) { winnerId = eRow["UserID"].ToString()!; break; }
+                        cum += (long)u.total;
+                        if (roll < cum) { winnerId = u.userId; break; }
                     }
 
-                    winnerId ??= entryDt.Rows[0]["UserID"].ToString()!; // floating-point fallback — should be unreachable
+                    winnerId ??= byUser[0].userId; // floating-point fallback — should be unreachable
 
-                    var _eco = new DiscordBot.SlashCommands.Economy();
-                    _eco.AddCredits(winnerId, guild.Id.ToString(), pot, "jackpot_win");
+                    await CreditService.AddCreditsAsync(scopedDb, winnerId, guildIdStr, pot, "jackpot_win");
 
-                    _sp.UpdateCreate(Constants.discordBotConnStr, "ClearJackpot",
-                        [new SqlParameter("@ServerID", guild.Id.ToString())]);
+                    await scopedDb.JackpotEntries.Where(e => e.ServerId == guildIdStr).ExecuteDeleteAsync();
 
                     var channel = ResolveAnnouncementChannel(guild, serverDetails.DefaultChannelID);
                     if (channel is null) continue;
@@ -1614,7 +1907,7 @@ internal sealed class BotHost(
                         "🎰  Jackpot Winner!",
                         $"🎉 {winnerDisplay} won the jackpot!\n\n" +
                         $"💰 **Prize:** {CreditHelper.Format(pot)}\n" +
-                        $"🎟️ **Entries this round:** {entries}\n\n" +
+                        $"🎟️ **Entries this round:** {entryCount}\n\n" +
                         $"*The jackpot resets now — use `/jackpot` to enter the next round!*\n" +
                         $"*The jackpot will also add 1% of all gambling bets to the next round!*",
                         new Color(255, 215, 0)).Build());
@@ -1628,19 +1921,19 @@ internal sealed class BotHost(
             {
                 foreach (var guild in client.Guilds)
                 {
-                    var drawDt = _sp.Select(Constants.discordBotConnStr, "DrawPassiveJackpot",
-                        [new SqlParameter("@ServerID", (long)guild.Id)]);
+                    using var scope = services.CreateScope();
+                    var scopedDb = scope.ServiceProvider.GetRequiredService<DiscordbotContext>();
 
-                    if (drawDt.Rows.Count == 0) continue; // pool empty or no contributors
+                    var draw = await JackpotService.DrawAsync(scopedDb, (long)guild.Id);
+                    if (draw is null) continue; // pool empty or no contributors
 
-                    string passiveWinnerId = drawDt.Rows[0]["UserID"].ToString()!;
-                    decimal passivePool    = decimal.Parse(drawDt.Rows[0]["Pool"].ToString()!);
+                    string passiveWinnerId = draw.Value.userId;
+                    decimal passivePool    = draw.Value.pool;
 
-                    var passiveEco = new DiscordBot.SlashCommands.Economy();
-                    passiveEco.AddCredits(passiveWinnerId, guild.Id.ToString(), passivePool, "passive_jackpot_win");
+                    await CreditService.AddCreditsAsync(scopedDb, passiveWinnerId, guild.Id.ToString(), passivePool, "passive_jackpot_win");
 
                     // Announce in the server's announcement channel (if configured and enabled).
-                    var passiveDetails = ServerHelper.GetServerInfo(guild.Id);
+                    var passiveDetails = await ServerHelper.GetServerInfoAsync(scopedDb, guild.Id);
                     if (passiveDetails is null || !passiveDetails.AnnouncementsEnabled) continue;
 
                     var passiveChan = ResolveAnnouncementChannel(guild, passiveDetails.DefaultChannelID);
@@ -1670,12 +1963,101 @@ internal sealed class BotHost(
     /// (compressed first if over Discord's 8 MB limit), a live URL, or removes the entry if
     /// the link is dead. Failed sends are requeued for a minute later rather than dropped.
     /// </summary>
+    /// <summary>
+    /// Two hardcoded Discord user IDs that get a bonus themed video link piggybacked onto
+    /// their regular scheduled delivery on Mondays/Fridays — an intentional easter egg from
+    /// the source proc (GetUsersScheduledKeyword), not a bug. Preserved exactly.
+    /// </summary>
+    private static readonly string[] SpecialScheduleUserIds = ["233611778351824896", "171369791486033920"];
+
+    /// <summary>
+    /// Finds every due scheduled keyword delivery, reschedules each for a random time between
+    /// 12:00 PM and 11:00 PM the following day, and resolves each to one random matching
+    /// ChatKeyword entry (URL/file). Replicates GetUsersScheduledKeyword, including the
+    /// Monday/Friday special-case rows for <see cref="SpecialScheduleUserIds"/>.
+    ///
+    /// NOTE: the source used GETDATE() throughout (local server time, not UTC) — matched here
+    /// with DateTime.Now rather than DateTime.UtcNow, deliberately, since this subsystem's
+    /// stored ScheduledDateTime values are all on that same local-time basis (unlike the
+    /// Journal subsystem, which is UTC throughout).
+    /// </summary>
+    private List<(string UserId, string FilePath, string ThirstTable)> GetUsersScheduledKeyword()
+    {
+        using var scope = services.CreateScope();
+        var scopedDb = scope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+
+        // Npgsql requires UTC-Kind DateTimes for timestamptz (writes AND query comparisons) —
+        // all wall-clock math below stays in local time (to correctly match GETDATE()'s
+        // semantics), converted to UTC only at the point each value touches the database.
+        var now = DateTime.Now;
+        var nowUtc = now.ToUniversalTime();
+        // BUG FIX: UsersScheduledKeyword has no real primary key in the schema — the EF model's
+        // HasKey(UserId, ChatKeyword) doesn't hold in practice (a user can have 2+ rows for the
+        // same keyword; nothing prevents it — see HandleAddAsync). A tracked update against a
+        // duplicated "key" throws DbUpdateConcurrencyException ("expected to affect 1 row(s),
+        // but actually affected 0") — which is exactly what was spamming the owner DM every tick.
+        // Fetch AsNoTracking (read-only) and reschedule via ExecuteUpdate, which filters by the
+        // actual WHERE clause rather than resolving rows through key-based change tracking.
+        var due = scopedDb.UsersScheduledKeywords.AsNoTracking().Where(u => u.ScheduledDateTime <= nowUtc).ToList();
+        if (due.Count == 0) return [];
+
+        // Source computed ONE random reschedule time and applied it to every due row in this
+        // tick (not a distinct random value per row) — preserved exactly, quirky as that is.
+        var today = now.Date;
+        var fromDate = today.AddHours(12);
+        var toDate = today.AddHours(23);
+        int seconds = (int)(toDate - fromDate).TotalSeconds;
+        var randomTime = fromDate.AddDays(1).AddSeconds(Random.Shared.Next(seconds));
+        var randomTimeUtc = randomTime.ToUniversalTime();
+
+        scopedDb.UsersScheduledKeywords.Where(u => u.ScheduledDateTime <= nowUtc)
+            .ExecuteUpdate(s => s.SetProperty(u => u.ScheduledDateTime, randomTimeUtc));
+
+        var results = new List<(string UserId, string FilePath, string ThirstTable)>();
+        foreach (var d in due)
+        {
+            var candidates = scopedDb.ChatKeywords.AsNoTracking()
+                .Where(c => EF.Functions.ILike(c.ChatKeyword1, d.ChatKeyword))
+                .Select(c => c.FilePath)
+                .ToList();
+            if (candidates.Count == 0) continue; // source's CROSS APPLY drops non-matching rows too
+            results.Add((d.UserId, candidates[Random.Shared.Next(candidates.Count)], d.ChatKeyword));
+        }
+
+        var dueUserIds = due.Select(d => d.UserId).ToHashSet();
+        string weekday = now.DayOfWeek.ToString();
+        if (weekday == "Monday")
+            foreach (var u in SpecialScheduleUserIds.Where(dueUserIds.Contains))
+                results.Add((u, "https://www.youtube.com/watch?v=QxCSQ0j-SFM", "DOTO MONDAY"));
+        if (weekday == "Friday")
+            foreach (var u in SpecialScheduleUserIds.Where(dueUserIds.Contains))
+                results.Add((u, "https://www.youtube.com/watch?v=MGxMxko9hww", "MATIKANEFUKUKITARU FRIDAY"));
+
+        return results;
+    }
+
+    /// <summary>
+    /// Requeues every one of a user's scheduled keyword rows to fire again in 1 minute —
+    /// used after a failed delivery attempt. Matches the redeployed
+    /// UpdateUsersScheduledKeywordRequeue's local-time (GETDATE()) semantics.
+    /// </summary>
+    private void RequeueUserSchedule(string userId)
+    {
+        using var scope = services.CreateScope();
+        var scopedDb = scope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+        var newTime = DateTime.Now.AddMinutes(1).ToUniversalTime();
+        // Same duplicate-"key" concurrency issue as GetUsersScheduledKeyword above — bulk
+        // ExecuteUpdate instead of a tracked read/mutate/SaveChanges.
+        scopedDb.UsersScheduledKeywords.Where(u => u.UserId == userId)
+            .ExecuteUpdate(s => s.SetProperty(u => u.ScheduledDateTime, newTime));
+    }
+
     private async Task RunScheduledKeywordsAsync()
     {
-        System.Data.DataTable dt;
+        List<(string UserId, string FilePath, string ThirstTable)> dueList;
         try
         {
-            dt = _sp.Select(Constants.discordBotConnStr, "GetUsersScheduledKeyword", []);
+            dueList = GetUsersScheduledKeyword();
         }
         catch (Exception ex)
         {
@@ -1683,13 +2065,11 @@ internal sealed class BotHost(
             return;
         }
 
-        if (dt.Rows.Count == 0) return;
+        if (dueList.Count == 0) return;
 
-        foreach (DataRow row in dt.Rows)
+        foreach (var (userId, filePath, tableNameRaw) in dueList)
         {
-            string userId = row["UserID"].ToString()!;
-            string filePath = row["FilePath"].ToString()!;
-            string tableName = row["ThirstTable"].ToString()!;
+            string tableName = tableNameRaw;
             tableName = char.ToUpperInvariant(tableName[0]) + tableName[1..];
             string timestamp = DateTime.Now.ToString("MM/dd/yyyy hh:mm tt ET");
 
@@ -1712,7 +2092,7 @@ internal sealed class BotHost(
                 {
                     if (!File.Exists(filePath)) // file was moved/deleted since being registered
                     {
-                        _sp.Select(Constants.discordBotConnStr, "UpdateUsersScheduledKeywordRequeue", [new SqlParameter("@UserID", userId)]);
+                        RequeueUserSchedule(userId);
                     }
                     else if (new FileInfo(filePath).Length > 8 * 1024 * 1024) // exceeds Discord's non-boosted upload limit
                     {
@@ -1765,11 +2145,15 @@ internal sealed class BotHost(
                 }
                 else // link no longer resolves — remove it rather than keep re-attempting a dead send
                 {
-                    _sp.UpdateCreate(Constants.discordBotConnStr, "DeleteChatKeywordURL",
-                    [
-                        new SqlParameter("@FilePath", filePath),
-                        new SqlParameter("@Keyword",  "")
-                    ]);
+                    // FIX: same @Keyword='' bug as SendChatActionsAsync above — passing the
+                    // real keyword instead so the delete actually matches something.
+                    using (var scope = services.CreateScope())
+                    {
+                        var scopedDb = scope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+                        scopedDb.ChatKeywords.RemoveRange(scopedDb.ChatKeywords.Where(c =>
+                            EF.Functions.ILike(c.FilePath, filePath) && EF.Functions.ILike(c.ChatKeyword1, tableName)));
+                        scopedDb.SaveChanges();
+                    }
                     var deadEmbed = new EmbedBuilder()
                         .WithTitle(tableName)
                         .WithColor(Color.Red)
@@ -1786,8 +2170,7 @@ internal sealed class BotHost(
             }
             catch (Exception ex)
             {
-                _sp.UpdateCreate(Constants.discordBotConnStr, "UpdateUsersScheduledKeywordRequeue",
-                    [new SqlParameter("@UserID", userId)]);
+                RequeueUserSchedule(userId);
                 await NotifyOwnerAsync(
                     $"Scheduled send failed for user {userId}.\n{ex.StackTrace}\n" +
                     $"Requeued for {DateTime.Now.AddMinutes(1):yyyy-MM-dd hh:mm tt}.");
@@ -1807,7 +2190,7 @@ internal sealed class BotHost(
         // Price tick every 15 minutes
         _stockTimer = new System.Timers.Timer(
             TimeSpan.FromMinutes(StockHelper.TickIntervalMinutes).TotalMilliseconds);
-        _stockTimer.Elapsed += (_, _) => TickStockPrices(); // event-driven: fires automatically on each interval
+        _stockTimer.Elapsed += async (_, _) => await TickStockPricesAsync(); // event-driven: fires automatically on each interval
         _stockTimer.AutoReset = true;
         _stockTimer.Start();
 
@@ -1817,11 +2200,11 @@ internal sealed class BotHost(
         double initialDelay = (nextMidnight - now).TotalMilliseconds;
 
         _stockDayResetTimer = new System.Timers.Timer(initialDelay);
-        _stockDayResetTimer.Elapsed += (_, _) =>
+        _stockDayResetTimer.Elapsed += async (_, _) =>
         {
             // First firing lands exactly at midnight (initialDelay above); once it fires,
             // reconfigure the same timer to repeat every 24h from then on.
-            ResetStockDayRange();
+            await ResetStockDayRangeAsync();
             _stockDayResetTimer!.Interval = TimeSpan.FromHours(24).TotalMilliseconds;
             _stockDayResetTimer.AutoReset = true;
         };
@@ -1834,44 +2217,33 @@ internal sealed class BotHost(
     }
 
     /// <summary>Timer.Elapsed handler: advances every stock's price by one random-walk step and clears expired shop effects.</summary>
-    private void TickStockPrices()
+    private async Task TickStockPricesAsync()
     {
         try
         {
+            using var scope = services.CreateScope();
+            var scopedDb = scope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+
             // Clean expired shop effects on every tick (every 15 min)
-            try { _sp.UpdateCreate(Constants.discordBotConnStr, "CleanExpiredEffects", []); }
+            try
+            {
+                await scopedDb.UserActiveEffects
+                    .Where(e => e.ExpiresAt != null && e.ExpiresAt <= DateTime.UtcNow)
+                    .ExecuteDeleteAsync();
+            }
             catch { /* non-fatal */ }
 
-            var dt = _sp.Select(Constants.discordBotConnStr, "GetAllStocks", []);
+            var stocks = await scopedDb.Stocks.AsNoTracking().OrderBy(s => s.Ticker)
+                .Select(s => new { s.Ticker, s.Price, s.Volatility, s.Trend }).ToListAsync();
 
-            foreach (System.Data.DataRow row in dt.Rows)
+            foreach (var row in stocks)
             {
-                string ticker = row["Ticker"].ToString()!;
-                decimal price = decimal.Parse(row["Price"].ToString()!);
-
-                // Per-stock volatility and trend — both columns are now in GetAllStocks
-                double volatility = double.Parse(row["Volatility"].ToString()!);
-                double trend = double.Parse(row["Trend"].ToString()!);
-
-                decimal newPrice = StockHelper.NextPrice(price, volatility, trend);
-
-                _sp.UpdateCreate(Constants.discordBotConnStr, "ApplyStockTick",
-                [
-                    new SqlParameter("@Ticker",   ticker),
-                    // Explicitly typed to match DECIMAL(18,2) in ApplyStockTick.
-                    // Without explicit Precision/Scale ADO.NET infers them as 0,0
-                    // and SQL Server raises "Error converting data type numeric to decimal".
-                    new SqlParameter("@NewPrice", System.Data.SqlDbType.Decimal)
-                    {
-                        Value     = newPrice,
-                        Precision = 18,
-                        Scale     = 2
-                    }
-                ]);
+                decimal newPrice = StockHelper.NextPrice(row.Price, (double)row.Volatility, (double)row.Trend);
+                await StockService.ApplyTickAsync(scopedDb, row.Ticker, newPrice);
             }
 
             Console.WriteLine(
-                $"[StockMarket] Tick at {DateTime.UtcNow:HH:mm:ss} UTC — {dt.Rows.Count} stocks updated.");
+                $"[StockMarket] Tick at {DateTime.UtcNow:HH:mm:ss} UTC — {stocks.Count} stocks updated.");
         }
         catch (Exception ex)
         {
@@ -1880,11 +2252,15 @@ internal sealed class BotHost(
     }
 
     /// <summary>Timer.Elapsed handler (fires once at UTC midnight, then every 24h): resets each stock's recorded 24h high/low.</summary>
-    private void ResetStockDayRange()
+    private async Task ResetStockDayRangeAsync()
     {
         try
         {
-            _sp.UpdateCreate(Constants.discordBotConnStr, "ResetStockDayRange", []);
+            using var scope = services.CreateScope();
+            var scopedDb = scope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+            await scopedDb.Stocks.ExecuteUpdateAsync(s => s
+                .SetProperty(x => x.High24h, x => x.Price)
+                .SetProperty(x => x.Low24h, x => x.Price));
             Console.WriteLine($"[StockMarket] 24h high/low reset at {DateTime.UtcNow:yyyy-MM-dd}.");
         }
         catch (Exception ex)
@@ -2042,9 +2418,12 @@ internal sealed class BotHost(
 
     /// <summary>Downloads every attachment on a message and registers each as a value under the given keyword.</summary>
     private async Task AddAttachmentsAsync(
-        SocketMessage msg, string tablename, string connStr, string userId)
+        SocketMessage msg, string tablename, string userId)
     {
         tablename = tablename.Replace("KeywordMulti.", "");
+
+        using var scope = services.CreateScope();
+        var scopedDb = scope.ServiceProvider.GetRequiredService<DiscordbotContext>();
 
         foreach (var attachment in msg.Attachments)
         {
@@ -2052,12 +2431,16 @@ internal sealed class BotHost(
             string uniqueName = $"{parts[0]}_{DateTime.Now:yyyyMMdd_HHmmssfffff}";
             string path = $@"C:\Temp\DiscordBot\{tablename}\{uniqueName}.{parts[1]}";
 
-            _sp.UpdateCreate(connStr, "AddChatKeyword",
-            [
-                new SqlParameter("@FilePath",  path),
-                new SqlParameter("@TableName", tablename),
-                new SqlParameter("@UserID",    userId)
-            ]);
+            // Source did SET @FilePath = REPLACE(@FilePath, '''', '') before insert.
+            // CreatedOn: source used GETDATE() (local, not UTC); ChatKeyword has no DB default.
+            scopedDb.ChatKeywords.Add(new ChatKeyword
+            {
+                ChatKeyword1 = tablename,
+                FilePath = path.Replace("'", ""),
+                Nsfw = false,
+                CreatedOn = DateTime.Now.ToUniversalTime()
+            });
+            scopedDb.SaveChanges();
 
             using var http = httpClientFactory.CreateClient();
             var bytes = await http.GetByteArrayAsync(attachment.Url);

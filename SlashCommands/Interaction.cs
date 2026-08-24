@@ -3,8 +3,9 @@ using Discord.Interactions;
 using DiscordBot.Constants;
 using DiscordBot.Helper;
 using DiscordBot.Json;
-using System.Data;
-using Microsoft.Data.SqlClient;
+using DiscordBot.Models.Generated;
+using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 using System.Web;
 
 namespace DiscordBot.SlashCommands;
@@ -22,43 +23,54 @@ public partial class Games
     {
         await DeferAsync();
 
-        var stored = new StoredProcedure();
-        var connStr = Constants.Constants.discordBotConnStr;
+        // GetTriviaToken/GetTrivia were never real data-access operations — the SQL Server
+        // procs used sp_OACreate/sp_OAMethod (OLE Automation) to make outbound HTTP calls and
+        // OPENJSON to parse the response, entirely from within T-SQL. Postgres has no
+        // equivalent mechanism, and there's nothing to query against a database for either
+        // step, so this converts to doing the HTTP call and JSON parsing directly in C#
+        // (exactly the pattern already used two lines down for the question fetch itself).
+        string? token = null;
+        try
+        {
+            using var tokenClient = new HttpClient();
+            string tokenResponse = await tokenClient.GetStringAsync("https://opentdb.com/api_token.php?command=request");
+            using var tokenDoc = JsonDocument.Parse(tokenResponse);
+            token = tokenDoc.RootElement.GetProperty("token").GetString();
+        }
+        catch { /* token fetch failed */ }
 
-        var dtToken = stored.Select(connStr, "GetTriviaToken", new List<SqlParameter>());
-        if (dtToken.Rows.Count == 0)
+        if (string.IsNullOrEmpty(token))
         {
             await SendTriviaError("Unable to retrieve token");
             return;
         }
 
-        string token = dtToken.Rows[0]["Token"].ToString();
         HttpClient client = new HttpClient();
         string responseBody = await client.GetStringAsync($"https://opentdb.com/api.php?amount=1&multiple&token={token}");
 
         if (!string.IsNullOrEmpty(responseBody))
         {
-            DataTable dtTrivia = stored.Select(connStr, "GetTrivia", new List<SqlParameter> { new SqlParameter("@ResponseText", responseBody) });
+            using var triviaDoc = JsonDocument.Parse(responseBody);
+            var results = triviaDoc.RootElement.GetProperty("results");
 
-            if (dtTrivia.Rows.Count == 0)
+            if (results.GetArrayLength() == 0)
             {
                 await SendTriviaError("Unable to retrieve trivia.");
                 return;
             }
 
-            foreach (DataRow dr in dtTrivia.Rows)
+            foreach (var result in results.EnumerateArray())
             {
-                // Build and shuffle answers
-                var answers = new List<string>
-                {
-                    dr["CorrectAnswer"].ToString(),
-                    dr["FirstIncorrect"].ToString()
-                };
+                string category = result.GetProperty("category").GetString()!;
+                string difficulty = result.GetProperty("difficulty").GetString()!;
+                string question = result.GetProperty("question").GetString()!;
+                string correctAnswer = result.GetProperty("correct_answer").GetString()!;
+                var incorrectArr = result.GetProperty("incorrect_answers");
 
-                if (dr["SecondIncorrect"] != DBNull.Value)
-                    answers.Add(dr["SecondIncorrect"].ToString());
-                if (dr["ThirdIncorrect"] != DBNull.Value)
-                    answers.Add(dr["ThirdIncorrect"].ToString());
+                // Build and shuffle answers
+                var answers = new List<string> { correctAnswer, incorrectArr[0].GetString()! };
+                if (incorrectArr.GetArrayLength() > 1) answers.Add(incorrectArr[1].GetString()!);
+                if (incorrectArr.GetArrayLength() > 2) answers.Add(incorrectArr[2].GetString()!);
 
                 // Decode HTML entities and shuffle
                 answers = answers
@@ -75,9 +87,9 @@ public partial class Games
                     Footer = new EmbedFooterBuilder { Text = $"Command from: {Username}" }
                 };
 
-                embed.AddField("Category", dr["Category"].ToString());
-                embed.AddField("Difficulty", Capitalize(dr["Difficulty"].ToString()));
-                embed.AddField("Question", HttpUtility.HtmlDecode(dr["Question"].ToString()));
+                embed.AddField("Category", category);
+                embed.AddField("Difficulty", Capitalize(difficulty));
+                embed.AddField("Question", HttpUtility.HtmlDecode(question));
 
                 var optionLabels = new[] { "A. ", "B. ", "C. ", "D. " };
                 for (int i = 0; i < answers.Count; i++)
@@ -86,11 +98,12 @@ public partial class Games
                 var message = await FollowupAsync(embed: embed.Build());
                 long messageId = Int64.Parse(message.Id.ToString());
 
-                stored.UpdateCreate(connStr, "AddTriviaMessage", new List<SqlParameter>
+                db.TriviaMessages.Add(new TriviaMessage
                 {
-                    new SqlParameter("@TriviaMessageID", messageId),
-                    new SqlParameter("@CorrectAnswer", dr["CorrectAnswer"].ToString())
+                    TriviaMessageId = messageId,
+                    CorrectAnswer = correctAnswer
                 });
+                await db.SaveChangesAsync();
 
                 // Add emoji reactions
                 var emojiOptions = new[] { "🇦", "🇧", "🇨", "🇩" }

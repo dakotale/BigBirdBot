@@ -1,9 +1,11 @@
 ﻿using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
-using DiscordBot.Constants;
+using DiscordBot.Data;
 using DiscordBot.Helper;
-using Microsoft.Data.SqlClient;
+using DiscordBot.Models.Generated;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace DiscordBot.SlashCommands;
 
@@ -52,10 +54,10 @@ public partial class Games
         await DeferAsync();
 
         // Check if a game is already running in this channel.
-        var existing = _sp.Select(Constants.Constants.discordBotConnStr, "GetScrambleByChannel",
-            [new SqlParameter("@ChannelID", Context.Channel.Id.ToString())]);
+        string channelIdKey = Context.Channel.Id.ToString();
+        bool existing = await db.ScrambleGames.AnyAsync(g => g.ChannelId == channelIdKey);
 
-        if (existing.Rows.Count > 0)
+        if (existing)
         {
             await FollowupAsync(embed: _embed.BuildErrorEmbed(
                 "Scramble",
@@ -86,38 +88,38 @@ public partial class Games
             $"⏱️ You have **{TimeoutSeconds} seconds**.",
             style.colour, footer: $"Started by {Username}").Build());
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "AddScrambleGame",
-        [
-            new SqlParameter("@ChannelID",  Context.Channel.Id.ToString()),
-            new SqlParameter("@MessageID",  msg.Id.ToString()),
-            new SqlParameter("@Answer",     word),
-            new SqlParameter("@Difficulty", difficulty),
-            new SqlParameter("@StartedBy",  Context.User.Id.ToString()),
-            new SqlParameter("@ExpiresAt",  DateTime.UtcNow.AddSeconds(TimeoutSeconds))
-        ]);
+        db.ScrambleGames.Add(new ScrambleGame
+        {
+            ChannelId = channelIdKey, MessageId = msg.Id.ToString(), Answer = word,
+            Difficulty = difficulty, StartedBy = Context.User.Id.ToString(),
+            ExpiresAt = DateTime.UtcNow.AddSeconds(TimeoutSeconds)
+        });
+        await db.SaveChangesAsync();
 
-        // Capture these BEFORE Task.Run — Context is disposed after the interaction completes.
+        // Capture these BEFORE Task.Run — Context (and the request-scoped db) is disposed after
+        // the interaction completes; the closure below fires ~47s later and needs its own scope.
         var channelId = Context.Channel.Id;
         var messageId = msg.Id;
-        var connStr = Constants.Constants.discordBotConnStr;
         var client = Context.Client;
 
         _ = Task.Run(async () =>
         {
             await Task.Delay(TimeSpan.FromSeconds(TimeoutSeconds + 2));
 
-            var check = new StoredProcedure().Select(connStr, "GetScrambleByChannel",
-                [new SqlParameter("@ChannelID", channelId.ToString())]);
+            using var scope = services.CreateScope();
+            var scopedDb = scope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+
+            string channelIdStr = channelId.ToString();
+            var check = await scopedDb.ScrambleGames.AsNoTracking().FirstOrDefaultAsync(g => g.ChannelId == channelIdStr);
 
             // No row → already solved and deleted. Nothing to do.
-            if (check.Rows.Count == 0) return;
+            if (check is null) return;
 
             // A new game may have started in the same channel after this one expired.
             // Only act on the exact game we launched (match by MessageID).
-            if (check.Rows[0]["MessageID"].ToString() != messageId.ToString()) return;
+            if (check.MessageId != messageId.ToString()) return;
 
-            new StoredProcedure().UpdateCreate(connStr, "DeleteScrambleGame",
-                [new SqlParameter("@ChannelID", channelId.ToString())]);
+            await scopedDb.ScrambleGames.Where(g => g.ChannelId == channelIdStr).ExecuteDeleteAsync();
 
             try
             {

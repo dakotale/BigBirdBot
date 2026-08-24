@@ -2,9 +2,9 @@
 using Discord.Interactions;
 using Discord.WebSocket;
 using DiscordBot.Constants;
+using DiscordBot.Data;
+using Microsoft.EntityFrameworkCore;
 using DiscordBot.Helper;
-using System.Data;
-using Microsoft.Data.SqlClient;
 
 namespace DiscordBot.SlashCommands;
 
@@ -12,9 +12,8 @@ namespace DiscordBot.SlashCommands;
 /// Economy system — credit balance, earning, and transfer commands.
 /// Credits are per-user per-server.
 /// </summary>
-public class Economy : InteractionModuleBase<SocketInteractionContext>
+public class Economy(DiscordbotContext db) : InteractionModuleBase<SocketInteractionContext>
 {
-    private readonly StoredProcedure _sp = new();
     private readonly EmbedHelper _embed = new();
 
     private string Username => Context.User.Username;
@@ -39,21 +38,16 @@ public class Economy : InteractionModuleBase<SocketInteractionContext>
         var target = user ?? Context.User;
         var targetId = target.Id.ToString();
 
-        EnsureAccount(targetId);
+        await EnsureAccountAsync(targetId);
 
-        var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetCredits",
-        [
-            new SqlParameter("@UserID",   targetId),
-            new SqlParameter("@ServerID", ServerId)
-        ]);
+        var credit = await db.Credits.AsNoTracking().FirstOrDefaultAsync(c => c.UserId == targetId && c.ServerId == ServerId);
+        if (credit is null) { await ErrorAsync("Could not load balance."); return; }
 
-        if (dt.Rows.Count == 0) { await ErrorAsync("Could not load balance."); return; }
-
-        decimal balance = decimal.Parse(dt.Rows[0]["Balance"].ToString()!);
-        decimal totalEarned = decimal.Parse(dt.Rows[0]["TotalEarned"].ToString()!);
-        decimal totalSpent = decimal.Parse(dt.Rows[0]["TotalSpent"].ToString()!);
-        decimal lifetimeEarned = decimal.Parse(dt.Rows[0]["LifetimeEarned"].ToString()!);
-        int dailyStreak = int.Parse(dt.Rows[0]["DailyStreak"].ToString()!);
+        decimal balance = credit.Balance;
+        decimal totalEarned = credit.TotalEarned;
+        decimal totalSpent = credit.TotalSpent;
+        decimal lifetimeEarned = credit.LifetimeEarned;
+        int dailyStreak = credit.DailyStreak;
 
         string prestigeRank = CreditHelper.PrestigeRank(lifetimeEarned);
         var (_, streakLabel) = CreditHelper.StreakMultiplier(dailyStreak);
@@ -84,31 +78,19 @@ public class Economy : InteractionModuleBase<SocketInteractionContext>
     public async Task HandleDailyAsync()
     {
         await DeferAsync();
-        EnsureAccount(UserId);
+        await EnsureAccountAsync(UserId);
 
-        var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetCredits",
-        [
-            new SqlParameter("@UserID",   UserId),
-            new SqlParameter("@ServerID", ServerId)
-        ]);
-
-        if (dt.Rows.Count == 0) { await ErrorAsync("Could not load account."); return; }
+        var credit = await db.Credits.FirstOrDefaultAsync(c => c.UserId == UserId && c.ServerId == ServerId);
+        if (credit is null) { await ErrorAsync("Could not load account."); return; }
 
         // ── Cooldown check ─────────────────────────────────────────────────────
-        if (DateTime.TryParse(dt.Rows[0]["LastDaily"]?.ToString(), out var lastDaily))
+        if (credit.LastDaily is { } lastDaily)
         {
             var remaining = lastDaily.AddHours(CreditHelper.DailyCooldownHours) - DateTime.UtcNow;
             if (remaining > TimeSpan.Zero)
             {
                 // Still show current streak so they know what they'd be protecting
-                var streakDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetStreakInfo",
-                [
-                    new SqlParameter("@UserID",   UserId),
-                    new SqlParameter("@ServerID", ServerId)
-                ]);
-                int currentStreak = streakDt.Rows.Count > 0
-                    ? int.Parse(streakDt.Rows[0]["DailyStreak"].ToString()!)
-                    : 0;
+                int currentStreak = credit.DailyStreak;
                 var (_, streakLabel) = CreditHelper.StreakMultiplier(currentStreak);
 
                 await FollowupAsync(embed: _embed.BuildSimpleEmbed(
@@ -124,68 +106,57 @@ public class Economy : InteractionModuleBase<SocketInteractionContext>
         }
 
         // ── Update streak ──────────────────────────────────────────────────────
-        var streakResult = _sp.Select(Constants.Constants.discordBotConnStr, "UpdateDailyStreak",
-        [
-            new SqlParameter("@UserID",   UserId),
-            new SqlParameter("@ServerID", ServerId)
-        ]);
-        int newStreak = streakResult.Rows.Count > 0
-            ? int.Parse(streakResult.Rows[0]["DailyStreak"].ToString()!)
+        var previousLastDaily = credit.LastDaily;
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        int newStreak = credit.LastStreakDate is null ? 1
+            : credit.LastStreakDate.Value.DayNumber == today.DayNumber - 1 ? credit.DailyStreak + 1
             : 1;
+        credit.DailyStreak = newStreak;
+        credit.LastStreakDate = today;
+        await db.SaveChangesAsync();
+
         bool streakReset = newStreak == 1 &&
-            DateTime.TryParse(dt.Rows[0]["LastDaily"]?.ToString(), out var prev) &&
+            previousLastDaily is { } prev &&
             (DateTime.UtcNow - prev).TotalHours >= 48;
 
         // ── Compute payout ─────────────────────────────────────────────────────
         var (multiplier, streakBonusLabel) = CreditHelper.StreakMultiplier(newStreak);
 
-        bool hasDailyBoost = ShopHelper.HasActiveEffect(UserId, ServerId, "daily_boost");
+        bool hasDailyBoost = await ShopHelper.HasActiveEffectAsync(db, UserId, ServerId, "daily_boost");
         decimal basePayout = CreditHelper.DailyAmount;
         if (hasDailyBoost)
         {
             basePayout *= 2m;
-            ShopHelper.ConsumeActiveEffect(UserId, ServerId, "daily_boost");
+            await ShopHelper.ConsumeActiveEffectAsync(db, UserId, ServerId, "daily_boost");
         }
 
         // Golden Ticket: 2× | Golden Ticket II: 3× (checked after daily_boost)
-        if (ShopHelper.HasActiveEffect(UserId, ServerId, "golden_ticket_ii"))
+        if (await ShopHelper.HasActiveEffectAsync(db, UserId, ServerId, "golden_ticket_ii"))
             basePayout *= 3m;
-        else if (ShopHelper.HasActiveEffect(UserId, ServerId, "golden_ticket"))
+        else if (await ShopHelper.HasActiveEffectAsync(db, UserId, ServerId, "golden_ticket"))
             basePayout *= 2m;
 
         decimal finalPayout = Math.Floor(basePayout * multiplier);
 
-        decimal newBalance = AddCredits(UserId, finalPayout, "daily");
+        decimal newBalance = await CreditService.AddCreditsAsync(db, UserId, ServerId, finalPayout, "daily");
 
-        // Challenge tracking — pay out immediately if this completes a slot
+        // Challenge tracking — pay out immediately if this completes a slot. Only the "daily"
+        // GameType's caller (this one) actually checks Progress==Target and pays a reward — the
+        // other 17 challenge types elsewhere only ever increment progress. Confirmed pre-existing
+        // and intentionally left as-is (not something to fix here).
         try
         {
-            var challengeDt = _sp.Select(Constants.Constants.discordBotConnStr, "IncrementChallengeProgress",
-            [
-                new SqlParameter("@UserID",   UserId),
-                new SqlParameter("@ServerID", ServerId),
-                new SqlParameter("@GameType", "daily")
-            ]);
+            var challengeResult = await ChallengeService.IncrementProgressAsync(db, UserId, ServerId, "daily");
 
-            if (challengeDt.Rows.Count > 0)
+            if (challengeResult is not null)
             {
-                var cr = challengeDt.Rows[0];
-                (string p, string t, string r)[] slots = [("Progress1", "Target1", "Reward1"), ("Progress2", "Target2", "Reward2"), ("Progress3", "Target3", "Reward3")];
-                bool bonusClaimed = cr["BonusClaimed"].ToString() is "1" or "True";
-                foreach (var (p, t, r) in slots)
+                foreach (var slot in new[] { challengeResult.Slot1, challengeResult.Slot2, challengeResult.Slot3 })
                 {
-                    if (int.Parse(cr[p].ToString()!) == int.Parse(cr[t].ToString()!) && decimal.Parse(cr[r].ToString()!) > 0m)
-                        AddCredits(UserId, decimal.Parse(cr[r].ToString()!), "challenge_daily");
+                    if (slot.Progress == slot.Target && slot.Reward > 0m)
+                        await CreditService.AddCreditsAsync(db, UserId, ServerId, slot.Reward, "challenge_daily");
                 }
-                if (!bonusClaimed)
-                {
-                    int p1 = int.Parse(cr["Progress1"].ToString()!), t1 = int.Parse(cr["Target1"].ToString()!);
-                    int p2 = int.Parse(cr["Progress2"].ToString()!), t2 = int.Parse(cr["Target2"].ToString()!);
-                    int p3 = int.Parse(cr["Progress3"].ToString()!), t3 = int.Parse(cr["Target3"].ToString()!);
-                    if (p1 >= t1 && p2 >= t2 && p3 >= t3)
-                        _sp.Select(Constants.Constants.discordBotConnStr, "ClaimChallengeBonus",
-                            [new SqlParameter("@UserID", UserId), new SqlParameter("@ServerID", ServerId)]);
-                }
+
+                await ChallengeService.ClaimBonusIfEligibleAsync(db, UserId, ServerId);
             }
         }
         catch { }
@@ -232,17 +203,12 @@ public class Economy : InteractionModuleBase<SocketInteractionContext>
     public async Task HandleWorkAsync()
     {
         await DeferAsync();
-        EnsureAccount(UserId);
+        await EnsureAccountAsync(UserId);
 
-        var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetCredits",
-        [
-            new SqlParameter("@UserID",   UserId),
-            new SqlParameter("@ServerID", ServerId)
-        ]);
+        var credit = await db.Credits.AsNoTracking().FirstOrDefaultAsync(c => c.UserId == UserId && c.ServerId == ServerId);
+        if (credit is null) { await ErrorAsync("Could not load account."); return; }
 
-        if (dt.Rows.Count == 0) { await ErrorAsync("Could not load account."); return; }
-
-        if (DateTime.TryParse(dt.Rows[0]["LastWork"]?.ToString(), out var lastWork))
+        if (credit.LastWork is { } lastWork)
         {
             var remaining = lastWork.AddMinutes(CreditHelper.WorkCooldownMinutes) - DateTime.UtcNow;
             if (remaining > TimeSpan.Zero)
@@ -256,19 +222,19 @@ public class Economy : InteractionModuleBase<SocketInteractionContext>
 
         decimal earned = Math.Floor(CreditHelper.WorkMin + (decimal)Random.Shared.NextDouble() * (CreditHelper.WorkMax - CreditHelper.WorkMin + 1m));
         // work_boost: 2× payout, decrements stack count (3 uses total)
-        bool hasWorkBoost = ShopHelper.HasActiveEffect(UserId, ServerId, "work_boost");
+        bool hasWorkBoost = await ShopHelper.HasActiveEffectAsync(db, UserId, ServerId, "work_boost");
         if (hasWorkBoost)
         {
             earned *= 2m;
-            ShopHelper.ConsumeActiveEffect(UserId, ServerId, "work_boost");
+            await ShopHelper.ConsumeActiveEffectAsync(db, UserId, ServerId, "work_boost");
         }
 
         // Golden Ticket: 2× | Golden Ticket II: 3×
-        if (ShopHelper.HasActiveEffect(UserId, ServerId, "golden_ticket_ii"))
+        if (await ShopHelper.HasActiveEffectAsync(db, UserId, ServerId, "golden_ticket_ii"))
             earned *= 3m;
-        else if (ShopHelper.HasActiveEffect(UserId, ServerId, "golden_ticket"))
+        else if (await ShopHelper.HasActiveEffectAsync(db, UserId, ServerId, "golden_ticket"))
             earned *= 2m;
-        decimal newBalance = AddCredits(UserId, earned, "work");
+        decimal newBalance = await CreditService.AddCreditsAsync(db, UserId, ServerId, earned, "work");
 
         await FollowupAsync(embed: _embed.BuildSimpleEmbed(
             "💼  You Worked!",
@@ -302,11 +268,11 @@ public class Economy : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        EnsureAccount(UserId);
+        await EnsureAccountAsync(UserId);
         string recipientId = recipient.Id.ToString();
-        EnsureAccount(recipientId, ServerId);
+        await EnsureAccountAsync(recipientId, ServerId);
 
-        decimal senderBalance = GetBalance(UserId);
+        decimal senderBalance = await CreditService.GetBalanceAsync(db, UserId, ServerId);
 
         if (transferAmount > senderBalance)
         {
@@ -317,8 +283,8 @@ public class Economy : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        decimal newSenderBalance    = DeductCredits(UserId, transferAmount, "transfer_out");
-        decimal newRecipientBalance = AddCredits(recipientId, ServerId, transferAmount, "transfer_in");
+        decimal newSenderBalance    = await CreditService.DeductCreditsAsync(db, UserId, ServerId, transferAmount, "transfer_out");
+        decimal newRecipientBalance = await CreditService.AddCreditsAsync(db, recipientId, ServerId, transferAmount, "transfer_in");
 
         await FollowupAsync(embed: _embed.BuildSimpleEmbed(
             $"{CreditHelper.CurrencyEmoji}  Transfer Complete",
@@ -345,10 +311,10 @@ public class Economy : InteractionModuleBase<SocketInteractionContext>
         [MinValue(1)] long amount)
     {
         await DeferAsync();
-        EnsureAccount(UserId);
+        await EnsureAccountAsync(UserId);
 
         decimal donateAmount = (decimal)amount;
-        decimal balance = GetBalance(UserId);
+        decimal balance = await CreditService.GetBalanceAsync(db, UserId, ServerId);
 
         if (donateAmount > balance)
         {
@@ -359,13 +325,15 @@ public class Economy : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        // Fetch all server members who have credits, excluding the donor
-        var lbDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetCreditLeaderboard",
-            [new SqlParameter("@ServerID", ServerId)]);
-
-        var recipients = lbDt.Rows.Cast<System.Data.DataRow>()
-            .Where(r => r["UserID"]?.ToString() != UserId)
-            .ToList();
+        // Fetch server members who have credits, excluding the donor — source's
+        // GetCreditLeaderboard is TOP 20 by Balance DESC, so donations only ever reach the
+        // richest 20 other members even if more exist. Preserved exactly.
+        var recipients = await db.Credits.AsNoTracking()
+            .Where(c => c.ServerId == ServerId && c.UserId != UserId)
+            .OrderByDescending(c => c.Balance)
+            .Take(20)
+            .Select(c => c.UserId)
+            .ToListAsync();
 
         if (recipients.Count == 0)
         {
@@ -390,12 +358,11 @@ public class Economy : InteractionModuleBase<SocketInteractionContext>
         }
 
         decimal totalDistributed = share * recipients.Count;
-        decimal newBalance = DeductCredits(UserId, totalDistributed, "donate_out");
+        decimal newBalance = await CreditService.DeductCreditsAsync(db, UserId, ServerId, totalDistributed, "donate_out");
 
-        foreach (System.Data.DataRow row in recipients)
+        foreach (string recipientId in recipients)
         {
-            string recipientId = row["UserID"].ToString()!;
-            AddCredits(recipientId, ServerId, share, "donate_in");
+            await CreditService.AddCreditsAsync(db, recipientId, ServerId, share, "donate_in");
         }
 
         await FollowupAsync(embed: _embed.BuildSimpleEmbed(
@@ -415,10 +382,23 @@ public class Economy : InteractionModuleBase<SocketInteractionContext>
     {
         await DeferAsync();
 
-        var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetCreditLeaderboard",
-            [new SqlParameter("@ServerID", ServerId)]);
+        // Source (GetCreditLeaderboard) LEFT JOINs Users on UserID + TRY_CAST(@ServerID AS
+        // BIGINT), falling back to "User_{UserID}" when no Users row matches.
+        long? serverIdLong = long.TryParse(ServerId, out long sid) ? sid : null;
+        var rows = await (
+            from c in db.Credits.AsNoTracking()
+            where c.ServerId == ServerId
+            orderby c.Balance descending
+            select new
+            {
+                c.UserId,
+                c.Balance,
+                Username = db.Users.Where(u => u.UserId == c.UserId && u.ServerUid == serverIdLong)
+                    .Select(u => u.Username).FirstOrDefault()
+            }
+        ).Take(20).ToListAsync();
 
-        if (dt.Rows.Count == 0)
+        if (rows.Count == 0)
         {
             await FollowupAsync(embed: _embed.BuildErrorEmbed(
                 "Leaderboard", "No credit data found for this server.", Username).Build());
@@ -428,11 +408,11 @@ public class Economy : InteractionModuleBase<SocketInteractionContext>
         var sb = new System.Text.StringBuilder();
         var medals = new[] { "🥇", "🥈", "🥉" };
 
-        for (int i = 0; i < dt.Rows.Count; i++)
+        for (int i = 0; i < rows.Count; i++)
         {
             string medal = i < 3 ? medals[i] : $"**{i + 1}.**";
-            string userName = dt.Rows[i]["Username"].ToString()!;
-            decimal bal = decimal.Parse(dt.Rows[i]["Balance"].ToString()!);
+            string userName = rows[i].Username ?? $"User_{rows[i].UserId}";
+            decimal bal = rows[i].Balance;
             sb.AppendLine($"{medal} **{userName}** — {CreditHelper.Format(bal)}");
         }
 
@@ -451,18 +431,13 @@ public class Economy : InteractionModuleBase<SocketInteractionContext>
 
         var target = user ?? Context.User;
         var targetId = target.Id.ToString();
-        EnsureAccount(targetId);
+        await EnsureAccountAsync(targetId);
 
-        var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetCredits",
-        [
-            new SqlParameter("@UserID",   targetId),
-            new SqlParameter("@ServerID", ServerId)
-        ]);
+        var credit = await db.Credits.AsNoTracking().FirstOrDefaultAsync(c => c.UserId == targetId && c.ServerId == ServerId);
+        if (credit is null) { await ErrorAsync("Could not load account."); return; }
 
-        if (dt.Rows.Count == 0) { await ErrorAsync("Could not load account."); return; }
-
-        decimal lifetimeEarned = decimal.Parse(dt.Rows[0]["LifetimeEarned"].ToString()!);
-        int dailyStreak = int.Parse(dt.Rows[0]["DailyStreak"].ToString()!);
+        decimal lifetimeEarned = credit.LifetimeEarned;
+        int dailyStreak = credit.DailyStreak;
 
         // ── Build rank ladder ──────────────────────────────────────────────────
         var tiers = new (decimal threshold, string rank, string title)[]
@@ -533,80 +508,15 @@ public class Economy : InteractionModuleBase<SocketInteractionContext>
 
     // ── Private helpers ───────────────────────────────────────────────────────
 
-    /// <summary>Ensures a credit account row exists for the user (slash command context).</summary>
-    private void EnsureAccount(string userId) =>
-        EnsureAccount(userId, ServerId);
+    /// <summary>
+    /// Ensures a credit account row exists for the user (slash command context, ServerId from
+    /// Context). Actual credit read/write logic now lives in <see cref="CreditService"/> — other
+    /// files that used to reach it via <c>new Economy()</c> (Forge, Gambling, Blackjack, Poker,
+    /// Shop, Program.cs) call CreditService directly with their own DbContext instead.
+    /// </summary>
+    private Task EnsureAccountAsync(string userId) => EnsureAccountAsync(userId, ServerId);
 
-    /// <summary>Ensures a credit account row exists for the user in the given server, creating one with a zero balance if missing.</summary>
-    private void EnsureAccount(string userId, string serverId) =>
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "EnsureCreditAccount",
-        [
-            new SqlParameter("@UserID",   userId),
-            new SqlParameter("@ServerID", serverId)
-        ]);
-
-    /// <summary>Adds credits (slash command context — uses ServerId from Context).</summary>
-    public decimal AddCredits(string userId, decimal amount, string source) =>
-        AddCredits(userId, ServerId, amount, source);
-
-    /// <summary>Adds credits with explicit serverId — safe to call from BotHost.</summary>
-    public decimal AddCredits(string userId, string serverId, decimal amount, string source)
-    {
-        EnsureAccount(userId, serverId);
-        var result = _sp.Select(Constants.Constants.discordBotConnStr, "AddCredits",
-        [
-            new SqlParameter("@UserID",   userId),
-            new SqlParameter("@ServerID", serverId),
-            new SqlParameter("@Amount",   amount),
-            new SqlParameter("@Source",   source)
-        ]);
-
-        // Keep LifetimeEarned in sync for every positive credit flow
-        try
-        {
-            _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "AddLifetimeEarned",
-            [
-                new SqlParameter("@UserID",   userId),
-                new SqlParameter("@ServerID", serverId),
-                new SqlParameter("@Amount",   amount)
-            ]);
-        }
-        catch { }
-
-        return result.Rows.Count > 0 ? decimal.Parse(result.Rows[0]["Balance"].ToString()!) : 0m;
-    }
-
-    /// <summary>Deducts credits (slash command context).</summary>
-    public decimal DeductCredits(string userId, decimal amount, string source) =>
-        DeductCredits(userId, ServerId, amount, source);
-
-    /// <summary>Deducts credits with explicit serverId — safe to call from BotHost.</summary>
-    public decimal DeductCredits(string userId, string serverId, decimal amount, string source)
-    {
-        var result = _sp.Select(Constants.Constants.discordBotConnStr, "DeductCredits",
-        [
-            new SqlParameter("@UserID",   userId),
-            new SqlParameter("@ServerID", serverId),
-            new SqlParameter("@Amount",   amount),
-            new SqlParameter("@Source",   source)
-        ]);
-        return result.Rows.Count > 0 ? decimal.Parse(result.Rows[0]["Balance"].ToString()!) : -1m;
-    }
-
-    /// <summary>Gets balance (slash command context).</summary>
-    public decimal GetBalance(string userId) =>
-        GetBalance(userId, ServerId);
-
-    /// <summary>Gets balance with explicit serverId — safe to call from BotHost.</summary>
-    public decimal GetBalance(string userId, string serverId)
-    {
-        var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetCredits",
-        [
-            new SqlParameter("@UserID",   userId),
-            new SqlParameter("@ServerID", serverId)
-        ]);
-        return dt.Rows.Count > 0 ? decimal.Parse(dt.Rows[0]["Balance"].ToString()!) : 0m;
-    }
+    private Task EnsureAccountAsync(string userId, string serverId) => CreditService.EnsureAccountAsync(db, userId, serverId);
 
     /// <summary>Posts a standard Economy-branded error embed.</summary>
     private async Task ErrorAsync(string message) =>

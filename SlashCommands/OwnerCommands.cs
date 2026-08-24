@@ -1,18 +1,18 @@
-﻿using System.Data;
-using Microsoft.Data.SqlClient;
-using Discord;
+﻿using Discord;
 using Discord.Interactions;
 using Discord.Net.Extensions.Interactions;
 using Discord.WebSocket;
-using DiscordBot.Constants;
+using DiscordBot.Data;
 using DiscordBot.Helper;
+using DiscordBot.Models.Generated;
+using Microsoft.EntityFrameworkCore;
 
 namespace DiscordBot.SlashCommands
 {
     /// <summary>Bot-owner-only maintenance commands: cross-server announcements, schedule/connection listings, user table backfill, and manual keyword-image cleanup.</summary>
     // GuildModule decoration limits these commands to only show by the guild below.
     [GuildModule(880569055856185354)]
-    public class OwnerCommands : InteractionModuleBase<SocketInteractionContext>
+    public class OwnerCommands(DiscordbotContext db) : InteractionModuleBase<SocketInteractionContext>
     {
         /// <summary>Broadcasts a message (with optional attachment) to every server's default channel where the bot has permission to post, reporting which servers were skipped.</summary>
         [SlashCommand("announcement", "Broadcast a message to all servers.")]
@@ -25,21 +25,25 @@ namespace DiscordBot.SlashCommands
             List<string> serverListNoPerms = new List<string>();
             try
             {
-                StoredProcedure stored = new StoredProcedure();
                 string imageUrl = "";
 
                 if (attachment != null)
                     imageUrl = attachment.Url;
 
-                DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "GetServers", new List<SqlParameter>());
+                var servers = await db.Servers.AsNoTracking()
+                    .Where(s => s.IsActive)
+                    .Select(s => new { s.ServerUid, s.DefaultChannelId })
+                    .ToListAsync();
                 EmbedHelper embedHelper = new EmbedHelper();
-                foreach (DataRow dr in dt.Rows)
+                foreach (var dr in servers)
                 {
                     // Need to check if Guild exists
-                    if (Context.Client.GetGuild(ulong.Parse(dr["ServerUID"].ToString())) != null)
+                    if (Context.Client.GetGuild((ulong)dr.ServerUid) != null)
                     {
-                        SocketGuild guild = Context.Client.GetGuild(ulong.Parse(dr["ServerUID"].ToString()));
-                        SocketTextChannel textChannel = guild.GetTextChannel(ulong.Parse(dr["DefaultChannelID"].ToString()));
+                        SocketGuild guild = Context.Client.GetGuild((ulong)dr.ServerUid);
+                        SocketTextChannel textChannel = dr.DefaultChannelId.HasValue
+                            ? guild.GetTextChannel((ulong)dr.DefaultChannelId.Value)
+                            : null;
                         if (textChannel != null)
                         {
                             IUser bot = guild.Users.Where(s => s.IsBot && s.Username.Contains("BigBirdBot")).FirstOrDefault();
@@ -79,15 +83,20 @@ namespace DiscordBot.SlashCommands
         public async Task HandleServerList()
         {
             await DeferAsync(ephemeral: true);
-            StoredProcedure stored = new StoredProcedure();
 
-            DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "GetScheduledEventUsers", new List<SqlParameter>());
+            var rows = await (
+                from usk in db.UsersScheduledKeywords.AsNoTracking()
+                join u in db.Users.AsNoTracking() on usk.UserId equals u.UserId
+                orderby usk.ScheduledDateTime
+                select new { u.Username, ScheduledEventTable = usk.ChatKeyword, usk.ScheduledDateTime }
+            ).ToListAsync();
             EmbedHelper embedHelper = new EmbedHelper();
             string description = "";
 
-            if (dt.Rows.Count > 0)
-                foreach (DataRow dr in dt.Rows)
-                    description += "- " + dr["Username"].ToString() + " - " + dr["ScheduledEventTable"].ToString() + " - " + DateTime.Parse(dr["EventDateTime"].ToString()).ToString("MM/dd hh:mm tt") + "\n";
+            // ScheduledDateTime comes back from Npgsql as Kind=Utc; convert to local (Eastern)
+            // to reproduce the source GETDATE()-based wall-clock display (see Keyword.cs).
+            foreach (var dr in rows)
+                description += "- " + dr.Username + " - " + dr.ScheduledEventTable + " - " + dr.ScheduledDateTime.ToLocalTime().ToString("MM/dd hh:mm tt") + "\n";
 
             await FollowupAsync(embed: embedHelper.BuildMessageEmbed("Scheduled List", description, "", Context.User.Username, Discord.Color.Blue).Build(), ephemeral: true).ConfigureAwait(false);
         }
@@ -99,8 +108,13 @@ namespace DiscordBot.SlashCommands
         public async Task HandlePlayersConnected()
         {
             await DeferAsync(ephemeral: true);
-            StoredProcedure stored = new StoredProcedure();
-            DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "GetPlayerConnected", new List<SqlParameter>());
+
+            var serverNames = await (
+                from pc in db.PlayerConnecteds.AsNoTracking()
+                join s in db.Servers.AsNoTracking() on pc.ServerUid equals s.ServerUid
+                orderby s.ServerName
+                select s.ServerName
+            ).ToListAsync();
             EmbedHelper embed = new EmbedHelper();
 
             string title = "Players Connected";
@@ -109,12 +123,12 @@ namespace DiscordBot.SlashCommands
             string imageUrl = "";
             string embedCreatedBy = "Command from: " + Context.User.Username;
 
-            if (dt.Rows.Count > 0)
+            if (serverNames.Count > 0)
             {
-                desc = $"Total Players Connected: {dt.Rows.Count}\n";
-                foreach (DataRow dr in dt.Rows)
+                desc = $"Total Players Connected: {serverNames.Count}\n";
+                foreach (var name in serverNames)
                 {
-                    desc += "\n- " + dr["ServerName"];
+                    desc += "\n- " + name;
                 }
                 await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Blue, imageUrl).Build(), ephemeral: true);
             }
@@ -134,30 +148,42 @@ namespace DiscordBot.SlashCommands
             await DeferAsync(ephemeral: true);
             try
             {
-                StoredProcedure stored = new StoredProcedure();
-
                 // GetServer ulong IDs
                 // var test = Context.Client.GetGuild(id).Users.Where(s => s.IsBot == false).ToList();
-                DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "GetServers", new List<SqlParameter>());
+                var serverUids = await db.Servers.AsNoTracking().Where(s => s.IsActive).Select(s => s.ServerUid).ToListAsync();
 
-                foreach (DataRow dr in dt.Rows)
+                foreach (var serverUid in serverUids)
                 {
                     // Need to check if Guild exists
-                    if (Context.Client.GetGuild(ulong.Parse(dr["ServerUID"].ToString())) != null)
+                    if (Context.Client.GetGuild((ulong)serverUid) != null)
                     {
-                        List<SocketGuildUser> users = Context.Client.GetGuild(ulong.Parse(dr["ServerUID"].ToString())).Users.Where(s => s.IsBot == false && s.IsWebhook == false).ToList() ?? new List<SocketGuildUser>();
+                        List<SocketGuildUser> users = Context.Client.GetGuild((ulong)serverUid).Users.Where(s => s.IsBot == false && s.IsWebhook == false).ToList() ?? new List<SocketGuildUser>();
                         if (users.Count > 0)
                         {
                             foreach (SocketGuildUser? u in users)
                             {
-                                stored.UpdateCreate(Constants.Constants.discordBotConnStr, "AddUser", new List<SqlParameter>
+                                // Source's AddUser proc guards with IF NOT EXISTS (UserID, ServerUID)
+                                // before inserting — same idempotency check here, one round-trip
+                                // per user to match the source's per-user proc-call granularity.
+                                bool exists = await db.Users.AnyAsync(x => x.UserId == u.Id.ToString() && x.ServerUid == (long)u.Guild.Id);
+                                if (!exists)
                                 {
-                                    new SqlParameter("@UserID", u.Id.ToString()),
-                                    new SqlParameter("@Username", u.Username),
-                                    new SqlParameter("@JoinDate", u.JoinedAt),
-                                    new SqlParameter("@ServerUID", Int64.Parse(u.Guild.Id.ToString())),
-                                    new SqlParameter("@Nickname", u.Nickname)
-                                });
+                                    // Source's @JoinDate param was a DateTimeOffset passed into a
+                                    // `datetime` column; SQL Server's implicit datetimeoffset→datetime
+                                    // cast converts to UTC first — .UtcDateTime matches that exactly
+                                    // (this field is not on the GETDATE()-local convention used
+                                    // elsewhere in Users/CreatedOn).
+                                    db.Users.Add(new User
+                                    {
+                                        UserId = u.Id.ToString(),
+                                        Username = u.Username,
+                                        JoinDate = u.JoinedAt!.Value.UtcDateTime,
+                                        ServerUid = (long)u.Guild.Id,
+                                        Nickname = u.Nickname,
+                                        CreatedOn = DateTime.Now.ToUniversalTime()
+                                    });
+                                    await db.SaveChangesAsync();
+                                }
                             }
                         }
                     }
@@ -183,13 +209,10 @@ namespace DiscordBot.SlashCommands
             EmbedHelper embedHelper = new EmbedHelper();
             string tableName = chatName.Trim();
             fileName = @"C:\Temp\DiscordBot\" + tableName + @"\" + fileName.Trim();
-            StoredProcedure stored = new StoredProcedure();
 
-            stored.UpdateCreate(Constants.Constants.discordBotConnStr, "DeleteChatKeywordURL", new List<SqlParameter>
-            {
-                new SqlParameter("@FilePath", fileName),
-                new SqlParameter("@Keyword", tableName)
-            });
+            db.ChatKeywords.RemoveRange(db.ChatKeywords.Where(c =>
+                EF.Functions.ILike(c.FilePath, fileName) && EF.Functions.ILike(c.ChatKeyword1, tableName)));
+            await db.SaveChangesAsync();
 
             EmbedBuilder embed = embedHelper.BuildMessageEmbed("Delete Successful", $"Image {fileName} was successfully deleted from the {tableName} table.", "", Context.User.Username, Color.Blue, "");
             await FollowupAsync(embed: embed.Build(), ephemeral: true);

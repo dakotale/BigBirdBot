@@ -1,6 +1,6 @@
-﻿using System.Data;
-using Microsoft.Data.SqlClient;
-using DiscordBot.Constants;
+﻿using DiscordBot.Data;
+using DiscordBot.Models.Generated;
+using Microsoft.EntityFrameworkCore;
 
 namespace DiscordBot.Helper;
 
@@ -331,21 +331,18 @@ public static class ShopHelper
 
     // ── DB helpers ────────────────────────────────────────────────────────────
     //
-    //  These are called from Gambling.cs, Economy.cs, and Pet.cs to check and
-    //  consume effects without depending on Shop.cs.
+    //  These are called from Shop.cs, Gambling.cs, Economy.cs, and Pet.cs to check and
+    //  consume inventory/effects. All take DiscordbotContext explicitly (same pattern as
+    //  CreditService/ChallengeService/JackpotService) since this is a static class with
+    //  no DI container of its own.
 
     /// <summary>Returns true if the user owns at least 1 of this item in their inventory.</summary>
-    public static bool HasItem(string userId, string serverId, string itemKey)
+    public static async Task<bool> HasItemAsync(DiscordbotContext db, string userId, string serverId, string itemKey)
     {
         try
         {
-            var dt = new StoredProcedure().Select(Constants.Constants.discordBotConnStr, "GetInventoryItem",
-            [
-                new SqlParameter("@UserID",   userId),
-                new SqlParameter("@ServerID", serverId),
-                new SqlParameter("@ItemKey",  itemKey)
-            ]);
-            return dt.Rows.Count > 0;
+            return await db.UserInventories.AsNoTracking()
+                .AnyAsync(i => i.UserId == userId && i.ServerId == serverId && i.ItemKey == itemKey && i.Quantity > 0);
         }
         catch { return false; }
     }
@@ -354,17 +351,17 @@ public static class ShopHelper
     /// Decrements inventory by 1.
     /// Returns <c>true</c> if the item was present and consumed.
     /// </summary>
-    public static bool ConsumeItem(string userId, string serverId, string itemKey)
+    public static async Task<bool> ConsumeItemAsync(DiscordbotContext db, string userId, string serverId, string itemKey)
     {
         try
         {
-            var dt = new StoredProcedure().Select(Constants.Constants.discordBotConnStr, "DeductFromInventory",
-            [
-                new SqlParameter("@UserID",   userId),
-                new SqlParameter("@ServerID", serverId),
-                new SqlParameter("@ItemKey",  itemKey)
-            ]);
-            return dt.Rows.Count > 0 && int.Parse(dt.Rows[0]["Success"].ToString()!) == 1;
+            var row = await db.UserInventories
+                .FirstOrDefaultAsync(i => i.UserId == userId && i.ServerId == serverId && i.ItemKey == itemKey && i.Quantity > 0);
+            if (row is null) return false;
+
+            row.Quantity--;
+            await db.SaveChangesAsync();
+            return true;
         }
         catch { return false; }
     }
@@ -372,17 +369,14 @@ public static class ShopHelper
     /// <summary>
     /// Returns true if the user has an active (non-expired) effect with this key.
     /// </summary>
-    public static bool HasActiveEffect(string userId, string serverId, string effectKey)
+    public static async Task<bool> HasActiveEffectAsync(DiscordbotContext db, string userId, string serverId, string effectKey)
     {
         try
         {
-            var dt = new StoredProcedure().Select(Constants.Constants.discordBotConnStr, "GetActiveEffect",
-            [
-                new SqlParameter("@UserID",    userId),
-                new SqlParameter("@ServerID",  serverId),
-                new SqlParameter("@EffectKey", effectKey)
-            ]);
-            return dt.Rows.Count > 0;
+            var now = DateTime.UtcNow;
+            return await db.UserActiveEffects.AsNoTracking().AnyAsync(e =>
+                e.UserId == userId && e.ServerId == serverId && e.EffectKey == effectKey &&
+                e.StackCount > 0 && (e.ExpiresAt == null || e.ExpiresAt > now));
         }
         catch { return false; }
     }
@@ -391,52 +385,63 @@ public static class ShopHelper
     /// Decrements StackCount on the active effect; removes it when exhausted.
     /// Returns <c>true</c> if the effect existed and was consumed.
     /// </summary>
-    public static bool ConsumeActiveEffect(string userId, string serverId, string effectKey)
+    public static async Task<bool> ConsumeActiveEffectAsync(DiscordbotContext db, string userId, string serverId, string effectKey)
     {
         try
         {
-            var dt = new StoredProcedure().Select(Constants.Constants.discordBotConnStr, "ConsumeActiveEffect",
-            [
-                new SqlParameter("@UserID",    userId),
-                new SqlParameter("@ServerID",  serverId),
-                new SqlParameter("@EffectKey", effectKey)
-            ]);
-            return dt.Rows.Count > 0 && int.Parse(dt.Rows[0]["Success"].ToString()!) == 1;
+            var now = DateTime.UtcNow;
+            var row = await db.UserActiveEffects.FirstOrDefaultAsync(e =>
+                e.UserId == userId && e.ServerId == serverId && e.EffectKey == effectKey &&
+                e.StackCount > 0 && (e.ExpiresAt == null || e.ExpiresAt > now));
+            if (row is null) return false;
+
+            row.StackCount--;
+            if (row.StackCount <= 0)
+                db.UserActiveEffects.Remove(row);
+            await db.SaveChangesAsync();
+            return true;
         }
         catch { return false; }
     }
 
     /// <summary>Writes (or overwrites) an active effect to UserActiveEffects.</summary>
-    public static void SetActiveEffect(
-        string userId, string serverId, string effectKey,
+    public static async Task SetActiveEffectAsync(
+        DiscordbotContext db, string userId, string serverId, string effectKey,
         DateTime? expiresAt = null, int stackCount = 1)
     {
         try
         {
-            new StoredProcedure().UpdateCreate(Constants.Constants.discordBotConnStr, "AddActiveEffect",
-            [
-                new SqlParameter("@UserID",     userId),
-                new SqlParameter("@ServerID",   serverId),
-                new SqlParameter("@EffectKey",  effectKey),
-                new SqlParameter("@ExpiresAt",  (object?)expiresAt ?? DBNull.Value),
-                new SqlParameter("@StackCount", stackCount)
-            ]);
+            var row = await db.UserActiveEffects
+                .FirstOrDefaultAsync(e => e.UserId == userId && e.ServerId == serverId && e.EffectKey == effectKey);
+            if (row is not null)
+            {
+                row.ExpiresAt = expiresAt;
+                row.StackCount = stackCount;
+                row.CreatedAt = DateTime.UtcNow;
+            }
+            else
+            {
+                db.UserActiveEffects.Add(new UserActiveEffect
+                {
+                    UserId = userId, ServerId = serverId, EffectKey = effectKey,
+                    ExpiresAt = expiresAt, StackCount = stackCount
+                });
+            }
+            await db.SaveChangesAsync();
         }
         catch { /* non-fatal */ }
     }
 
     /// <summary>Returns the remaining StackCount of an active effect (0 if not present / expired).</summary>
-    public static int GetEffectStack(string userId, string serverId, string effectKey)
+    public static async Task<int> GetEffectStackAsync(DiscordbotContext db, string userId, string serverId, string effectKey)
     {
         try
         {
-            var dt = new StoredProcedure().Select(Constants.Constants.discordBotConnStr, "GetActiveEffect",
-            [
-                new SqlParameter("@UserID",    userId),
-                new SqlParameter("@ServerID",  serverId),
-                new SqlParameter("@EffectKey", effectKey)
-            ]);
-            return dt.Rows.Count > 0 ? int.Parse(dt.Rows[0]["StackCount"].ToString()!) : 0;
+            var now = DateTime.UtcNow;
+            var row = await db.UserActiveEffects.AsNoTracking().FirstOrDefaultAsync(e =>
+                e.UserId == userId && e.ServerId == serverId && e.EffectKey == effectKey &&
+                e.StackCount > 0 && (e.ExpiresAt == null || e.ExpiresAt > now));
+            return row?.StackCount ?? 0;
         }
         catch { return 0; }
     }

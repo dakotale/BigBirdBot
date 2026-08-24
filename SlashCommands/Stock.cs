@@ -1,8 +1,10 @@
 ﻿using Discord;
 using Discord.Interactions;
 using DiscordBot.Constants;
+using DiscordBot.Data;
 using DiscordBot.Helper;
-using Microsoft.Data.SqlClient;
+using DiscordBot.Models.Generated;
+using Microsoft.EntityFrameworkCore;
 using System.Text;
 
 namespace DiscordBot.SlashCommands;
@@ -12,11 +14,9 @@ namespace DiscordBot.SlashCommands;
 /// Prices tick every 15 minutes via BotHost timer.
 /// </summary>
 [Group("stock", "The Big Bird Stock Exchange.")]
-public class Stock : InteractionModuleBase<SocketInteractionContext>
+public class Stock(DiscordbotContext db) : InteractionModuleBase<SocketInteractionContext>
 {
-    private readonly StoredProcedure _sp = new();
     private readonly EmbedHelper _embed = new();
-    private readonly Economy _eco = new();
 
     private string Username => Context.User.Username;
     private string AvatarUrl => Context.User.GetAvatarUrl();
@@ -37,9 +37,9 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
     {
         await DeferAsync();
 
-        var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetAllStocks", []);
+        var stocks = await db.Stocks.AsNoTracking().OrderBy(s => s.Ticker).ToListAsync();
 
-        if (dt.Rows.Count == 0)
+        if (stocks.Count == 0)
         {
             await ErrorAsync("No stocks found. The market may not be initialised.");
             return;
@@ -50,11 +50,11 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
         sb.AppendLine($"{"TICKER",-7} {"PRICE",8} {"CHANGE",13}  {"TREND"}");
         sb.AppendLine(new string('─', 42));
 
-        foreach (System.Data.DataRow row in dt.Rows)
+        foreach (var row in stocks)
         {
-            string ticker = row["Ticker"].ToString()!;
-            decimal price = decimal.Parse(row["Price"].ToString()!);
-            decimal prev = decimal.Parse(row["PrevPrice"].ToString()!);
+            string ticker = row.Ticker;
+            decimal price = row.Price;
+            decimal prev = row.PrevPrice;
             decimal change = price - prev;
             decimal pct = prev == 0 ? 0 : change / prev * 100;
             string sign = change >= 0 ? "+" : "";
@@ -84,10 +84,11 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
 
         ticker = ticker.ToUpperInvariant();
 
-        var stockDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetAllStocks", []);
-        System.Data.DataRow? row = null;
-        foreach (System.Data.DataRow r in stockDt.Rows)
-            if (r["Ticker"].ToString() == ticker) { row = r; break; }
+        // Source called GetStockDetail here but discarded its result entirely (comment: "returns
+        // multiple result sets — use raw stock table check") and re-fetched via GetAllStocks
+        // filtered client-side instead. Querying by ticker directly is behaviorally identical
+        // and skips the dead call + full-table fetch.
+        var row = await db.Stocks.AsNoTracking().FirstOrDefaultAsync(s => s.Ticker == ticker);
 
         if (row == null)
         {
@@ -95,22 +96,17 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        string company = row["CompanyName"].ToString()!;
-        string sector = row["Sector"].ToString()!;
-        decimal price = decimal.Parse(row["Price"].ToString()!);
-        decimal prev = decimal.Parse(row["PrevPrice"].ToString()!);
-        decimal high = decimal.Parse(row["High24h"].ToString()!);
-        decimal low = decimal.Parse(row["Low24h"].ToString()!);
+        string company = row.CompanyName;
+        string sector = row.Sector;
+        decimal price = row.Price;
+        decimal prev = row.PrevPrice;
+        decimal high = row.High24h;
+        decimal low = row.Low24h;
 
         // Fetch price history separately
-        var histDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetStockHistory",
-        [
-            new SqlParameter("@Ticker", ticker)
-        ]);
-
-        var histPrices = new List<decimal>();
-        foreach (System.Data.DataRow h in histDt.Rows)
-            histPrices.Add(decimal.Parse(h["Price"].ToString()!));
+        var histPrices = await db.StockHistories.AsNoTracking()
+            .Where(h => h.Ticker == ticker).OrderByDescending(h => h.RecordedAt)
+            .Take(10).Select(h => h.Price).ToListAsync();
         histPrices.Reverse(); // oldest first for sparkline
         histPrices.Add(price);
 
@@ -148,17 +144,8 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
 
         ticker = ticker.ToUpperInvariant();
 
-        // Look up current price
-        var stockDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetStockDetail",
-        [
-            new SqlParameter("@Ticker", ticker)
-        ]);
-
-        // GetStockDetail returns multiple result sets — use raw stock table check
-        var allDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetAllStocks", []);
-        System.Data.DataRow? stockRow = null;
-        foreach (System.Data.DataRow r in allDt.Rows)
-            if (r["Ticker"].ToString() == ticker) { stockRow = r; break; }
+        // Look up current price (source's separate GetStockDetail call was dead — see HandleInfoAsync)
+        var stockRow = await db.Stocks.AsNoTracking().FirstOrDefaultAsync(s => s.Ticker == ticker);
 
         if (stockRow == null)
         {
@@ -166,9 +153,9 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        decimal priceEach = decimal.Parse(stockRow["Price"].ToString()!);
+        decimal priceEach = stockRow.Price;
         decimal totalCost = Math.Ceiling(priceEach * shares);
-        decimal balance = _eco.GetBalance(UserId, ServerId);
+        decimal balance = await CreditService.GetBalanceAsync(db, UserId, ServerId);
 
         if (balance < totalCost)
         {
@@ -178,24 +165,33 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
         }
 
         // Deduct credits
-        _eco.DeductCredits(UserId, ServerId, totalCost, $"stock_buy_{ticker}");
+        await CreditService.DeductCreditsAsync(db, UserId, ServerId, totalCost, $"stock_buy_{ticker}");
 
-        // Record purchase
-        var result = _sp.Select(Constants.Constants.discordBotConnStr, "BuyStock",
-        [
-            new SqlParameter("@UserID",    UserId),
-            new SqlParameter("@ServerID",  ServerId),
-            new SqlParameter("@Ticker",    ticker),
-            new SqlParameter("@Shares",    shares),
-            new SqlParameter("@PriceEach", priceEach),
-            new SqlParameter("@TotalCost", totalCost)
-        ]);
+        // Record purchase — source (BuyStock) upserts the holding (weighted-average buy price
+        // if one already exists) and logs a BUY transaction, in one proc call.
+        var holding = await db.StockHoldings.FirstOrDefaultAsync(h => h.UserId == UserId && h.ServerId == ServerId && h.Ticker == ticker);
+        if (holding is not null)
+        {
+            holding.AvgBuyPrice = ((holding.AvgBuyPrice * holding.Shares) + (priceEach * shares)) / (holding.Shares + shares);
+            holding.Shares += shares;
+        }
+        else
+        {
+            holding = new StockHolding { UserId = UserId, ServerId = ServerId, Ticker = ticker, Shares = shares, AvgBuyPrice = priceEach };
+            db.StockHoldings.Add(holding);
+        }
+        db.StockTransactions.Add(new StockTransaction
+        {
+            UserId = UserId, ServerId = ServerId, Ticker = ticker, TxType = "BUY",
+            Shares = shares, PriceEach = priceEach, TotalCost = totalCost
+        });
+        await db.SaveChangesAsync();
 
-        int totalShares = result.Rows.Count > 0 ? int.Parse(result.Rows[0]["Shares"].ToString()!) : shares;
-        decimal avgBuy = result.Rows.Count > 0 ? decimal.Parse(result.Rows[0]["AvgBuyPrice"].ToString()!) : priceEach;
-        decimal newBalance = _eco.GetBalance(UserId, ServerId);
+        int totalShares = holding.Shares;
+        decimal avgBuy = holding.AvgBuyPrice;
+        decimal newBalance = await CreditService.GetBalanceAsync(db, UserId, ServerId);
 
-        string company = stockRow["CompanyName"].ToString()!;
+        string company = stockRow.CompanyName;
 
         await FollowupAsync(embed: _embed.BuildSimpleEmbed(
             $"📈  Bought {ticker}", $"Purchased **{shares:N0} share{(shares == 1 ? "" : "s")}** of **{company}**.",
@@ -221,21 +217,16 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
 
         ticker = ticker.ToUpperInvariant();
 
-        var holdingDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetHolding",
-        [
-            new SqlParameter("@UserID",   UserId),
-        new SqlParameter("@ServerID", ServerId),
-        new SqlParameter("@Ticker",   ticker)
-        ]);
+        var holding = await db.StockHoldings.FirstOrDefaultAsync(h => h.UserId == UserId && h.ServerId == ServerId && h.Ticker == ticker);
 
-        if (holdingDt.Rows.Count == 0)
+        if (holding is null)
         {
             await ErrorAsync($"You don't own any shares of **{ticker}**.");
             return;
         }
 
-        int owned = int.Parse(holdingDt.Rows[0]["Shares"].ToString()!);
-        decimal avgBuy = decimal.Parse(holdingDt.Rows[0]["AvgBuyPrice"].ToString()!);
+        int owned = holding.Shares;
+        decimal avgBuy = holding.AvgBuyPrice;
 
         // Resolve quantity — sell_all overrides the shares param
         int qty = sellAll ? owned : shares;
@@ -246,30 +237,31 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        var allDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetAllStocks", []);
-        System.Data.DataRow? stockRow = null;
-        foreach (System.Data.DataRow r in allDt.Rows)
-            if (r["Ticker"].ToString() == ticker) { stockRow = r; break; }
+        var stockRow = await db.Stocks.AsNoTracking().FirstOrDefaultAsync(s => s.Ticker == ticker);
 
         if (stockRow == null) { await ErrorAsync($"Ticker **{ticker}** not found."); return; }
 
-        decimal priceEach = decimal.Parse(stockRow["Price"].ToString()!);
+        decimal priceEach = stockRow.Price;
         decimal totalGain = Math.Floor(priceEach * qty);
         decimal pnl = (priceEach - avgBuy) * qty;
-        string company = stockRow["CompanyName"].ToString()!;
+        string company = stockRow.CompanyName;
 
-        _sp.Select(Constants.Constants.discordBotConnStr, "SellStock",
-        [
-            new SqlParameter("@UserID",    UserId),
-        new SqlParameter("@ServerID",  ServerId),
-        new SqlParameter("@Ticker",    ticker),
-        new SqlParameter("@Shares",    qty),
-        new SqlParameter("@PriceEach", priceEach),
-        new SqlParameter("@TotalGain", totalGain)
-        ]);
+        // Source (SellStock) deletes the holding outright if selling the whole position,
+        // otherwise decrements it, and logs a SELL transaction.
+        if (qty == owned)
+            db.StockHoldings.Remove(holding);
+        else
+            holding.Shares -= qty;
 
-        _eco.AddCredits(UserId, ServerId, totalGain, $"stock_sell_{ticker}");
-        decimal newBalance = _eco.GetBalance(UserId, ServerId);
+        db.StockTransactions.Add(new StockTransaction
+        {
+            UserId = UserId, ServerId = ServerId, Ticker = ticker, TxType = "SELL",
+            Shares = qty, PriceEach = priceEach, TotalCost = totalGain
+        });
+        await db.SaveChangesAsync();
+
+        await CreditService.AddCreditsAsync(db, UserId, ServerId, totalGain, $"stock_sell_{ticker}");
+        decimal newBalance = await CreditService.GetBalanceAsync(db, UserId, ServerId);
 
         int remain = owned - qty;
 
@@ -300,13 +292,15 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
         var target = user ?? Context.User;
         string tid = target.Id.ToString();
 
-        var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetPortfolio",
-        [
-            new SqlParameter("@UserID",   tid),
-            new SqlParameter("@ServerID", ServerId)
-        ]);
+        var rows = await (
+            from h in db.StockHoldings.AsNoTracking()
+            join s in db.Stocks.AsNoTracking() on h.Ticker equals s.Ticker
+            where h.UserId == tid && h.ServerId == ServerId && h.Shares > 0
+            orderby h.Ticker
+            select new { h.Ticker, h.Shares, h.AvgBuyPrice, CurrentPrice = s.Price, s.CompanyName, UnrealizedPnL = (s.Price - h.AvgBuyPrice) * h.Shares }
+        ).ToListAsync();
 
-        if (dt.Rows.Count == 0)
+        if (rows.Count == 0)
         {
             await FollowupAsync(embed: _embed.BuildSimpleEmbed(
                 "📂  Portfolio", $"**{target.Username}** owns no stocks. Use `/stock buy` to invest!",
@@ -326,13 +320,13 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
         sb.AppendLine($"{"TKR",-5} {"SHARES",6}  {"PRICE",8}  {"CHG%",6}  {"P&L",9}");
         sb.AppendLine(new string('─', 44));
 
-        foreach (System.Data.DataRow row in dt.Rows)
+        foreach (var row in rows)
         {
-            string tkr = row["Ticker"].ToString()!;
-            long shrs = long.Parse(row["Shares"].ToString()!);
-            decimal avg = decimal.Parse(row["AvgBuyPrice"].ToString()!);
-            decimal cur = decimal.Parse(row["CurrentPrice"].ToString()!);
-            decimal pnl = decimal.Parse(row["UnrealizedPnL"].ToString()!);
+            string tkr = row.Ticker;
+            long shrs = row.Shares;
+            decimal avg = row.AvgBuyPrice;
+            decimal cur = row.CurrentPrice;
+            decimal pnl = row.UnrealizedPnL;
 
             decimal chgPct = avg == 0 ? 0 : (cur - avg) / avg * 100;
             string arrow = pnl > 0 ? "▲" : pnl < 0 ? "▼" : " ";
@@ -368,10 +362,8 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
         bool isSelf = target.Id == Context.User.Id;
 
         // Win/loss counts for the summary line
-        int winners = dt.Rows.Cast<System.Data.DataRow>()
-            .Count(r => decimal.Parse(r["UnrealizedPnL"].ToString()!) > 0);
-        int losers = dt.Rows.Cast<System.Data.DataRow>()
-            .Count(r => decimal.Parse(r["UnrealizedPnL"].ToString()!) < 0);
+        int winners = rows.Count(r => r.UnrealizedPnL > 0);
+        int losers = rows.Count(r => r.UnrealizedPnL < 0);
 
         await FollowupAsync(embed: _embed.BuildSimpleEmbed(
             $"📂  {target.Username}'s Portfolio", sb.ToString(), colour,
@@ -392,13 +384,11 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
     {
         await DeferAsync();
 
-        var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetStockTransactions",
-        [
-            new SqlParameter("@UserID",   UserId),
-            new SqlParameter("@ServerID", ServerId)
-        ]);
+        var rows = await db.StockTransactions.AsNoTracking()
+            .Where(t => t.UserId == UserId && t.ServerId == ServerId)
+            .OrderByDescending(t => t.TxTime).Take(10).ToListAsync();
 
-        if (dt.Rows.Count == 0)
+        if (rows.Count == 0)
         {
             await FollowupAsync(embed: _embed.BuildSimpleEmbed(
                 "🧾  Transaction History", "No transactions yet.", ColourMarket).Build());
@@ -410,14 +400,14 @@ public class Stock : InteractionModuleBase<SocketInteractionContext>
         sb.AppendLine($"{"TYPE",-5} {"TICKER",-7} {"SHARES",6} {"EACH",9} {"TOTAL",12}  DATE");
         sb.AppendLine(new string('─', 56));
 
-        foreach (System.Data.DataRow row in dt.Rows)
+        foreach (var row in rows)
         {
-            string type = row["TxType"].ToString()!;
-            string tkr = row["Ticker"].ToString()!;
-            int shrs = int.Parse(row["Shares"].ToString()!);
-            decimal each = decimal.Parse(row["PriceEach"].ToString()!);
-            decimal total = decimal.Parse(row["TotalCost"].ToString()!);
-            string date = DateTime.Parse(row["TxTime"].ToString()!).ToString("MM/dd HH:mm");
+            string type = row.TxType;
+            string tkr = row.Ticker;
+            int shrs = row.Shares;
+            decimal each = row.PriceEach;
+            decimal total = row.TotalCost;
+            string date = row.TxTime.ToString("MM/dd HH:mm");
             string arrow = type == "BUY" ? "▲" : "▼";
 
             sb.AppendLine(

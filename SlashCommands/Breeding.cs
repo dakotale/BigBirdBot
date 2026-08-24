@@ -1,10 +1,12 @@
 ﻿using Discord;
 using Discord.Interactions;
 using DiscordBot.Constants;
+using DiscordBot.Data;
 using DiscordBot.Helper;
-using System.Data;
-using Microsoft.Data.SqlClient;
+using DiscordBot.Models.Generated;
+using Microsoft.EntityFrameworkCore;
 using System.Text;
+using PetEntity = DiscordBot.Models.Generated.Pet;
 
 namespace DiscordBot.SlashCommands;
 
@@ -15,9 +17,8 @@ namespace DiscordBot.SlashCommands;
 /// /hatchegg — hatch a ready egg into a new pet.
 /// Requirements: both pets must be level 10+, same species, not hibernating.
 /// </summary>
-public class Breeding : InteractionModuleBase<SocketInteractionContext>
+public class Breeding(DiscordbotContext db) : InteractionModuleBase<SocketInteractionContext>
 {
-    private readonly StoredProcedure _sp = new();
     private readonly EmbedHelper _embed = new();
 
     private string Username => Context.User.Username;
@@ -55,116 +56,88 @@ public class Breeding : InteractionModuleBase<SocketInteractionContext>
         }
 
         // ── Load both pets ─────────────────────────────────────────────────────
-        var p1Dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetPetByID",
-        [
-            new SqlParameter("@PetID",  pet1Id),
-            new SqlParameter("@UserID", UserId)
-        ]);
-        var p2Dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetPetByID",
-        [
-            new SqlParameter("@PetID",  pet2Id),
-            new SqlParameter("@UserID", UserId)
-        ]);
+        var p1 = await db.Pets.FirstOrDefaultAsync(x => x.PetId == pet1Id && x.UserId == UserId);
+        var p2 = await db.Pets.FirstOrDefaultAsync(x => x.PetId == pet2Id && x.UserId == UserId);
 
-        if (p1Dt.Rows.Count == 0) { await ErrorAsync($"Pet #{pet1Id} not found or doesn't belong to you."); return; }
-        if (p2Dt.Rows.Count == 0) { await ErrorAsync($"Pet #{pet2Id} not found or doesn't belong to you."); return; }
-
-        var p1 = p1Dt.Rows[0];
-        var p2 = p2Dt.Rows[0];
+        if (p1 is null) { await ErrorAsync($"Pet #{pet1Id} not found or doesn't belong to you."); return; }
+        if (p2 is null) { await ErrorAsync($"Pet #{pet2Id} not found or doesn't belong to you."); return; }
 
         // ── Validation ─────────────────────────────────────────────────────────
-        string species1 = p1["Species"].ToString()!;
-        string species2 = p2["Species"].ToString()!;
+        string species1 = p1.Species;
+        string species2 = p2.Species;
 
         if (species1 != species2)
         {
-            await ErrorAsync($"Both pets must be the same species to breed.\n**{p1["Name"]}** is a {species1}, **{p2["Name"]}** is a {species2}.");
+            await ErrorAsync($"Both pets must be the same species to breed.\n**{p1.Name}** is a {species1}, **{p2.Name}** is a {species2}.");
             return;
         }
 
-        int xp1 = int.Parse(p1["XP"].ToString()!);
-        int xp2 = int.Parse(p2["XP"].ToString()!);
+        int xp1 = p1.Xp;
+        int xp2 = p2.Xp;
         int level1 = PetHelper.LevelFromXp(xp1);
         int level2 = PetHelper.LevelFromXp(xp2);
 
         if (level1 < MinBreedLevel)
         {
-            await ErrorAsync($"**{p1["Name"]}** is level {level1}. Both pets must be at least level {MinBreedLevel} to breed.");
+            await ErrorAsync($"**{p1.Name}** is level {level1}. Both pets must be at least level {MinBreedLevel} to breed.");
             return;
         }
         if (level2 < MinBreedLevel)
         {
-            await ErrorAsync($"**{p2["Name"]}** is level {level2}. Both pets must be at least level {MinBreedLevel} to breed.");
+            await ErrorAsync($"**{p2.Name}** is level {level2}. Both pets must be at least level {MinBreedLevel} to breed.");
             return;
         }
 
-        bool hib1 = p1["IsHibernating"].ToString() is "1" or "True";
-        bool hib2 = p2["IsHibernating"].ToString() is "1" or "True";
-
-        if (hib1) { await ErrorAsync($"**{p1["Name"]}** is hibernating and can't breed right now."); return; }
-        if (hib2) { await ErrorAsync($"**{p2["Name"]}** is hibernating and can't breed right now."); return; }
+        if (p1.IsHibernating) { await ErrorAsync($"**{p1.Name}** is hibernating and can't breed right now."); return; }
+        if (p2.IsHibernating) { await ErrorAsync($"**{p2.Name}** is hibernating and can't breed right now."); return; }
 
         // ── Check egg cap ──────────────────────────────────────────────────────
-        var eggsDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetPendingEggs",
-        [
-            new SqlParameter("@UserID",   UserId),
-            new SqlParameter("@ServerID", ServerId)
-        ]);
+        int pendingEggCount = await db.PetEggs.CountAsync(e => e.UserId == UserId && e.ServerId == ServerId && !e.IsHatched);
 
-        if (eggsDt.Rows.Count >= MaxEggs)
+        if (pendingEggCount >= MaxEggs)
         {
-            await ErrorAsync($"You already have {eggsDt.Rows.Count} unhatched egg{(eggsDt.Rows.Count == 1 ? "" : "s")}. Hatch them first with `/hatchegg`.");
+            await ErrorAsync($"You already have {pendingEggCount} unhatched egg{(pendingEggCount == 1 ? "" : "s")}. Hatch them first with `/hatchegg`.");
             return;
         }
 
         // ── Compute inherited stats (average ± up to 10% variance) ────────────
-        int InheritStat(string col)
+        int InheritStat(int a, int b)
         {
-            int a = int.Parse(p1[col].ToString()!);
-            int b = int.Parse(p2[col].ToString()!);
             int avg = (a + b) / 2;
             int vary = (int)(avg * 0.10);
             return Math.Clamp(avg + Random.Shared.Next(-vary, vary + 1), 0, 100);
         }
 
-        int baseHunger = InheritStat("Hunger");
-        int baseHappiness = InheritStat("Happiness");
-        int baseEnergy = InheritStat("Energy");
-        int baseHygiene = InheritStat("Hygiene");
+        int baseHunger = InheritStat(p1.Hunger, p2.Hunger);
+        int baseHappiness = InheritStat(p1.Happiness, p2.Happiness);
+        int baseEnergy = InheritStat(p1.Energy, p2.Energy);
+        int baseHygiene = InheritStat(p1.Hygiene, p2.Hygiene);
 
         // Head-start XP: 10% of the lower parent's XP
         int baseXp = (int)(Math.Min(xp1, xp2) * 0.10);
 
         // Breed: pick one parent's breed at random
-        string breed = Random.Shared.Next(2) == 0
-            ? p1["Breed"].ToString()!
-            : p2["Breed"].ToString()!;
+        string breed = Random.Shared.Next(2) == 0 ? p1.Breed : p2.Breed;
 
         // ── Create the egg ─────────────────────────────────────────────────────
-        var eggDt = _sp.Select(Constants.Constants.discordBotConnStr, "CreatePetEgg",
-        [
-            new SqlParameter("@UserID",        UserId),
-            new SqlParameter("@ServerID",      ServerId),
-            new SqlParameter("@Parent1ID",     pet1Id),
-            new SqlParameter("@Parent2ID",     pet2Id),
-            new SqlParameter("@Species",       species1),
-            new SqlParameter("@Breed",         breed),
-            new SqlParameter("@BaseHunger",    baseHunger),
-            new SqlParameter("@BaseHappiness", baseHappiness),
-            new SqlParameter("@BaseEnergy",    baseEnergy),
-            new SqlParameter("@BaseHygiene",   baseHygiene),
-            new SqlParameter("@BaseXP",        baseXp)
-        ]);
+        // Source (CreatePetEgg) computes HatchAt server-side as GETUTCDATE() + 24h.
+        DateTime hatchAt = DateTime.UtcNow.AddHours(24);
+        var egg = new PetEgg
+        {
+            UserId = UserId, ServerId = ServerId, Parent1Id = pet1Id, Parent2Id = pet2Id,
+            Species = species1, Breed = breed,
+            BaseHunger = baseHunger, BaseHappiness = baseHappiness, BaseEnergy = baseEnergy,
+            BaseHygiene = baseHygiene, BaseXp = baseXp, HatchAt = hatchAt
+        };
+        db.PetEggs.Add(egg);
+        await db.SaveChangesAsync();
 
-        if (eggDt.Rows.Count == 0) { await ErrorAsync("Failed to create egg. Please try again."); return; }
-
-        int eggId = int.Parse(eggDt.Rows[0]["EggID"].ToString()!);
-        DateTime hatchAt = DateTime.Parse(eggDt.Rows[0]["HatchAt"].ToString()!);
+        int eggId = egg.EggId;
         long hatchTs = new DateTimeOffset(hatchAt).ToUnixTimeSeconds();
 
         string emoji = PetHelper.PetEmoji(species1, 100, 100, false, false);
-        string p1Name = p1["Name"].ToString()!;
-        string p2Name = p2["Name"].ToString()!;
+        string p1Name = p1.Name;
+        string p2Name = p2.Name;
 
         var statLines = new StringBuilder();
         statLines.AppendLine($"🍖 Hunger:    **{baseHunger}**");
@@ -194,13 +167,11 @@ public class Breeding : InteractionModuleBase<SocketInteractionContext>
     {
         await DeferAsync();
 
-        var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetPendingEggs",
-        [
-            new SqlParameter("@UserID",   UserId),
-            new SqlParameter("@ServerID", ServerId)
-        ]);
+        var eggs = await db.PetEggs.AsNoTracking()
+            .Where(e => e.UserId == UserId && e.ServerId == ServerId && !e.IsHatched)
+            .OrderBy(e => e.HatchAt).ToListAsync();
 
-        if (dt.Rows.Count == 0)
+        if (eggs.Count == 0)
         {
             await FollowupAsync(embed: _embed.BuildSimpleEmbed(
                 "🥚  No Pending Eggs", "You don't have any eggs incubating right now.\nUse `/breed` to produce one!",
@@ -209,16 +180,17 @@ public class Breeding : InteractionModuleBase<SocketInteractionContext>
         }
 
         var desc = new StringBuilder();
+        var now = DateTime.UtcNow;
 
-        foreach (DataRow row in dt.Rows)
+        foreach (var row in eggs)
         {
-            int eggId = int.Parse(row["EggID"].ToString()!);
-            string species = row["Species"].ToString()!;
-            string breed = row["Breed"].ToString()!;
-            int secsLeft = int.Parse(row["SecondsRemaining"].ToString()!);
+            int eggId = row.EggId;
+            string species = row.Species;
+            string breed = row.Breed;
+            int secsLeft = (int)(row.HatchAt - now).TotalSeconds;
             bool ready = secsLeft <= 0;
-            long hatchTs = new DateTimeOffset(DateTime.Parse(row["HatchAt"].ToString()!)).ToUnixTimeSeconds();
-            int headXp = int.Parse(row["BaseXP"].ToString()!);
+            long hatchTs = new DateTimeOffset(row.HatchAt).ToUnixTimeSeconds();
+            int headXp = row.BaseXp;
             string emoji = PetHelper.PetEmoji(species, 100, 100, false, false);
 
             desc.AppendLine(ready
@@ -232,7 +204,7 @@ public class Breeding : InteractionModuleBase<SocketInteractionContext>
         desc.AppendLine($"-# You can hold up to {MaxEggs} unhatched eggs at once.");
 
         await FollowupAsync(embed: _embed.BuildSimpleEmbed(
-            $"🥚  Your Eggs ({dt.Rows.Count}/{MaxEggs})", desc.ToString(),
+            $"🥚  Your Eggs ({eggs.Count}/{MaxEggs})", desc.ToString(),
             ColourGold, footer: Username, footerIconUrl: AvatarUrl).Build());
     }
 
@@ -250,27 +222,21 @@ public class Breeding : InteractionModuleBase<SocketInteractionContext>
         name = name.Trim();
 
         // ── Load and validate egg ──────────────────────────────────────────────
-        var eggDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetEggByID",
-        [
-            new SqlParameter("@EggID",  eggId),
-            new SqlParameter("@UserID", UserId)
-        ]);
+        var egg = await db.PetEggs.FirstOrDefaultAsync(e => e.EggId == eggId && e.UserId == UserId);
 
-        if (eggDt.Rows.Count == 0)
+        if (egg is null)
         {
             await ErrorAsync($"Egg #{eggId} not found or doesn't belong to you.");
             return;
         }
 
-        var egg = eggDt.Rows[0];
-
-        if (egg["IsHatched"].ToString() is "1" or "True")
+        if (egg.IsHatched)
         {
             await ErrorAsync($"Egg #{eggId} has already hatched.");
             return;
         }
 
-        int secsLeft = int.Parse(egg["SecondsRemaining"].ToString()!);
+        int secsLeft = (int)(egg.HatchAt - DateTime.UtcNow).TotalSeconds;
         if (secsLeft > 0)
         {
             int h = secsLeft / 3600;
@@ -281,77 +247,53 @@ public class Breeding : InteractionModuleBase<SocketInteractionContext>
         }
 
         // ── Check pet cap ──────────────────────────────────────────────────────
-        var allPets = _sp.Select(Constants.Constants.discordBotConnStr, "GetPetsByUser",
-            [new SqlParameter("@UserID", UserId)]);
+        int existingPetCount = await db.Pets.CountAsync(p => p.UserId == UserId);
 
-        if (allPets.Rows.Count >= 100)
+        if (existingPetCount >= 100)
         {
             await ErrorAsync("You already have 100 pets! Release one before hatching.");
             return;
         }
 
         // ── Hatch: create the pet ──────────────────────────────────────────────
-        string species = egg["Species"].ToString()!;
-        string breed = egg["Breed"].ToString()!;
-        int baseHunger = int.Parse(egg["BaseHunger"].ToString()!);
-        int baseHappiness = int.Parse(egg["BaseHappiness"].ToString()!);
-        int baseEnergy = int.Parse(egg["BaseEnergy"].ToString()!);
-        int baseHygiene = int.Parse(egg["BaseHygiene"].ToString()!);
-        int baseXp = int.Parse(egg["BaseXP"].ToString()!);
-        bool hasActive = allPets.Rows.Count == 0;
+        string species = egg.Species;
+        string breed = egg.Breed;
+        int baseHunger = egg.BaseHunger;
+        int baseHappiness = egg.BaseHappiness;
+        int baseEnergy = egg.BaseEnergy;
+        int baseHygiene = egg.BaseHygiene;
+        int baseXp = egg.BaseXp;
+        bool hasActive = existingPetCount == 0;
 
-        // We need a custom AddPet call that sets initial stats and XP
-        // Use the existing AddPet SP then a secondary UpdatePetXP call
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "AddPet",
-        [
-            new SqlParameter("@UserID",   UserId),
-            new SqlParameter("@ServerID", ServerId),
-            new SqlParameter("@Name",     name),
-            new SqlParameter("@Species",  species),
-            new SqlParameter("@Breed",    breed),
-            new SqlParameter("@IsActive", hasActive)
-        ]);
+        // Source made a plain AddPet call, then re-fetched all the user's pets and guessed
+        // which one was new by picking the highest PetID, then a second ApplyEggStats call to
+        // set the inherited stats/XP — a workaround for AddPet's proc not returning the new ID.
+        // EF gives the identity value back directly from the insert, and the entity being
+        // inserted can just carry the final stats/XP from the start — no re-fetch, no guess,
+        // no second write. Source (deactivate-all-others-if-active) preserved.
+        if (hasActive)
+            await db.Pets.Where(p => p.UserId == UserId).ExecuteUpdateAsync(s => s.SetProperty(p => p.IsActive, false));
 
-        // Get the newly created pet's ID so we can set XP and inherited stats
-        var newPetDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetPetsByUser",
-            [new SqlParameter("@UserID", UserId)]);
-
-        // Find the new pet (most recently added — highest PetID among this user)
-        int newPetId = 0;
-        foreach (DataRow r in newPetDt.Rows)
+        var newPet = new PetEntity
         {
-            int id = int.Parse(r["PetID"].ToString()!);
-            if (id > newPetId) newPetId = id;
-        }
+            UserId = UserId, ServerId = ServerId, Name = name, Species = species, Breed = breed,
+            IsActive = hasActive,
+            Hunger = baseHunger, Happiness = baseHappiness, Energy = baseEnergy, Hygiene = baseHygiene, Xp = baseXp
+        };
+        db.Pets.Add(newPet);
+        egg.IsHatched = true;
+        await db.SaveChangesAsync(); // generates newPet.PetId
 
-        if (newPetId > 0)
-        {
-            // Apply inherited stats and head-start XP via ApplyEggStats SP
-            _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "ApplyEggStats",
-            [
-                new SqlParameter("@PetID",     newPetId),
-                new SqlParameter("@UserID",    UserId),
-                new SqlParameter("@Hunger",    baseHunger),
-                new SqlParameter("@Happiness", baseHappiness),
-                new SqlParameter("@Energy",    baseEnergy),
-                new SqlParameter("@Hygiene",   baseHygiene),
-                new SqlParameter("@XP",        baseXp)
-            ]);
-
-            // Mark egg as hatched
-            _sp.Select(Constants.Constants.discordBotConnStr, "HatchEgg",
-            [
-                new SqlParameter("@EggID",        eggId),
-                new SqlParameter("@UserID",        UserId),
-                new SqlParameter("@HatchedPetID",  newPetId)
-            ]);
-        }
+        // HatchedPetId is a plain int column, not a configured navigation/FK, so it can't be
+        // fixed up automatically pre-save — set it now that the real ID exists and save again.
+        egg.HatchedPetId = newPet.PetId;
+        await db.SaveChangesAsync();
 
         // ── Build response ─────────────────────────────────────────────────────
         string emoji = PetHelper.PetEmoji(species, baseHappiness, baseHunger, false, false);
         int level = PetHelper.LevelFromXp(baseXp);
-        int parent1 = int.Parse(egg["Parent1ID"].ToString()!);
-        int parent2 = int.Parse(egg["Parent2ID"].ToString()!);
+        int parent1 = egg.Parent1Id;
+        int parent2 = egg.Parent2Id;
 
         var statLines = new StringBuilder();
         statLines.AppendLine($"🍖 Hunger:    **{baseHunger}**");

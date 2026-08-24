@@ -1,8 +1,10 @@
 ﻿using Discord;
 using Discord.Interactions;
 using DiscordBot.Constants;
+using DiscordBot.Data;
 using DiscordBot.Helper;
-using Microsoft.Data.SqlClient;
+using DiscordBot.Models.Generated;
+using Microsoft.EntityFrameworkCore;
 using System.Text;
 
 namespace DiscordBot.SlashCommands;
@@ -15,10 +17,8 @@ namespace DiscordBot.SlashCommands;
 /// displayed on /pet card alongside regular shop cosmetics.
 /// </summary>
 [Group("forge", "Burn credits to craft custom cosmetics for your active pet.")]
-public class Forge : InteractionModuleBase<SocketInteractionContext>
+public class Forge(DiscordbotContext db) : InteractionModuleBase<SocketInteractionContext>
 {
-    private readonly StoredProcedure _sp = new();
-    private readonly Economy _eco = new();
     private readonly EmbedHelper _embed = new();
 
     private string Username => Context.User.Username;
@@ -90,25 +90,22 @@ public class Forge : InteractionModuleBase<SocketInteractionContext>
     {
         await DeferAsync();
 
-        var petDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetActivePet",
-            [new SqlParameter("@UserID", UserId)]);
+        var pet = await db.Pets.AsNoTracking().FirstOrDefaultAsync(p => p.UserId == UserId && p.IsActive);
 
-        if (petDt.Rows.Count == 0)
+        if (pet is null)
         {
             await ErrorAsync("You don't have an active pet.");
             return;
         }
 
-        int petId = int.Parse(petDt.Rows[0]["PetID"].ToString()!);
-        string petName = petDt.Rows[0]["Name"].ToString()!;
+        int petId = pet.PetId;
+        string petName = pet.Name;
 
-        var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetForgedCosmetics",
-        [
-            new SqlParameter("@PetID",  petId),
-            new SqlParameter("@UserID", UserId)
-        ]);
+        var cosmetics = await db.ForgedCosmetics.AsNoTracking()
+            .Where(c => c.PetId == petId && c.UserId == UserId)
+            .OrderByDescending(c => c.CreatedAt).ToListAsync();
 
-        if (dt.Rows.Count == 0)
+        if (cosmetics.Count == 0)
         {
             await FollowupAsync(embed: _embed.BuildSimpleEmbed(
                 $"Forge — {petName}",
@@ -121,13 +118,13 @@ public class Forge : InteractionModuleBase<SocketInteractionContext>
         var desc = new StringBuilder();
         decimal totalBurned = 0m;
 
-        foreach (System.Data.DataRow row in dt.Rows)
+        foreach (var row in cosmetics)
         {
-            string type = row["Type"].ToString()!;
-            string tier = TierName(int.Parse(row["Tier"].ToString()!));
-            string display = row["DisplayText"].ToString()!;
-            string hex = row["ColourHex"].ToString()!;
-            decimal cost = decimal.Parse(row["CreditsCost"].ToString()!);
+            string type = row.Type;
+            string tier = TierName(row.Tier);
+            string display = row.DisplayText;
+            string hex = row.ColourHex;
+            decimal cost = row.CreditsCost;
             totalBurned += cost;
 
             string colourNote = hex != "#FFFFFF" ? $" `{hex}`" : "";
@@ -138,7 +135,7 @@ public class Forge : InteractionModuleBase<SocketInteractionContext>
         desc.AppendLine($"-# Total burned on {petName}: **{CreditHelper.Format(totalBurned)}**");
 
         await FollowupAsync(embed: _embed.BuildSimpleEmbed(
-            $"Forge — {petName}'s Cosmetics ({dt.Rows.Count})", desc.ToString(),
+            $"Forge — {petName}'s Cosmetics ({cosmetics.Count})", desc.ToString(),
             ColourForge, footer: Username, footerIconUrl: AvatarUrl).Build());
     }
 
@@ -213,20 +210,19 @@ public class Forge : InteractionModuleBase<SocketInteractionContext>
         }
 
         // ── Check active pet ───────────────────────────────────────────────────
-        var petDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetActivePet",
-            [new SqlParameter("@UserID", UserId)]);
+        var pet = await db.Pets.AsNoTracking().FirstOrDefaultAsync(p => p.UserId == UserId && p.IsActive);
 
-        if (petDt.Rows.Count == 0)
+        if (pet is null)
         {
             await ErrorAsync("You don't have an active pet to forge a cosmetic for.");
             return;
         }
 
-        int petId = int.Parse(petDt.Rows[0]["PetID"].ToString()!);
-        string petName = petDt.Rows[0]["Name"].ToString()!;
+        int petId = pet.PetId;
+        string petName = pet.Name;
 
         // ── Check balance ──────────────────────────────────────────────────────
-        decimal balance = _eco.GetBalance(UserId, ServerId);
+        decimal balance = await CreditService.GetBalanceAsync(db, UserId, ServerId);
         if (balance < tier.cost)
         {
             await ErrorAsync(
@@ -236,21 +232,16 @@ public class Forge : InteractionModuleBase<SocketInteractionContext>
         }
 
         // ── Deduct and record ──────────────────────────────────────────────────
-        _eco.DeductCredits(UserId, ServerId, tier.cost, $"forge_{type}_{tier.name.ToLower()}");
+        await CreditService.DeductCreditsAsync(db, UserId, ServerId, tier.cost, $"forge_{type}_{tier.name.ToLower()}");
 
-        var forgeDt = _sp.Select(Constants.Constants.discordBotConnStr, "AddForgedCosmetic",
-        [
-            new SqlParameter("@UserID",      UserId),
-            new SqlParameter("@ServerID",    ServerId),
-            new SqlParameter("@PetID",       petId),
-            new SqlParameter("@Type",        type),
-            new SqlParameter("@Tier",        (byte)tierIdx),
-            new SqlParameter("@DisplayText", text),
-            new SqlParameter("@ColourHex",   resolvedColour),
-            new SqlParameter("@CreditsCost", tier.cost)
-        ]);
+        db.ForgedCosmetics.Add(new ForgedCosmetic
+        {
+            UserId = UserId, ServerId = ServerId, PetId = petId, Type = type,
+            Tier = (short)tierIdx, DisplayText = text, ColourHex = resolvedColour, CreditsCost = tier.cost
+        });
+        await db.SaveChangesAsync();
 
-        decimal newBalance = _eco.GetBalance(UserId, ServerId);
+        decimal newBalance = await CreditService.GetBalanceAsync(db, UserId, ServerId);
 
         // ── Build result embed ─────────────────────────────────────────────────
         string colourDisplay = resolvedColour != "#FFFFFF"

@@ -2,10 +2,12 @@
 using Discord.Interactions;
 using Discord.WebSocket;
 using DiscordBot.Constants;
+using DiscordBot.Data;
 using DiscordBot.Helper;
+using DiscordBot.Models.Generated;
+using Microsoft.EntityFrameworkCore;
 using System.Collections.Concurrent;
-using System.Data;
-using Microsoft.Data.SqlClient;
+using PetEntity = DiscordBot.Models.Generated.Pet;
 
 namespace DiscordBot.SlashCommands;
 
@@ -16,9 +18,8 @@ namespace DiscordBot.SlashCommands;
 /// Up to 5 pets per user — one is "active" at a time.
 /// </summary>
 [Group("pet", "Pet commands")]
-public class Pet : InteractionModuleBase<SocketInteractionContext>
+public class Pet(DiscordbotContext db) : InteractionModuleBase<SocketInteractionContext>
 {
-    private readonly StoredProcedure _sp = new();
     private readonly EmbedHelper _embed = new();
 
     private string Username => Context.User.Username;
@@ -73,25 +74,27 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        var existing = _sp.Select(Constants.Constants.discordBotConnStr, "GetPetsByUser",
-            [new SqlParameter("@UserID", UserId)]);
+        int existingCount = await db.Pets.CountAsync(p => p.UserId == UserId);
 
-        if (existing.Rows.Count >= 100)
+        if (existingCount >= 100)
         {
             await FollowupAsync(embed: _embed.BuildErrorEmbed(
                 "Adopt", "You already have 100 pets! Use `/release` to make room.", Username).Build());
             return;
         }
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "AddPet",
-        [
-            new SqlParameter("@UserID",   UserId),
-            new SqlParameter("@ServerID", ServerId),
-            new SqlParameter("@Name",     name),
-            new SqlParameter("@Species",  species),
-            new SqlParameter("@Breed",    breed),
-            new SqlParameter("@IsActive", existing.Rows.Count == 0)
-        ]);
+        bool makeActive = existingCount == 0;
+        // Source (AddPet) deactivates all of the user's other pets first when the new one is
+        // active, preserving the "exactly one active pet" invariant.
+        if (makeActive)
+            await db.Pets.Where(p => p.UserId == UserId).ExecuteUpdateAsync(s => s.SetProperty(p => p.IsActive, false));
+
+        db.Pets.Add(new PetEntity
+        {
+            UserId = UserId, ServerId = ServerId, Name = name, Species = species, Breed = breed,
+            IsActive = makeActive
+        });
+        await db.SaveChangesAsync();
 
         string emoji = PetHelper.PetEmoji(species, 100, 100, false, false);
 
@@ -114,10 +117,10 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
     {
         await DeferAsync();
 
-        var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetPetsByUser",
-            [new SqlParameter("@UserID", UserId)]);
+        var pets = await db.Pets.AsNoTracking().Where(p => p.UserId == UserId)
+            .OrderByDescending(p => p.IsActive).ThenBy(p => p.BirthDate).ToListAsync();
 
-        if (dt.Rows.Count == 0)
+        if (pets.Count == 0)
         {
             await FollowupAsync(embed: _embed.BuildErrorEmbed(
                 "Pets", "You don't have any pets yet! Use `/adopt` to get one.", Username).Build());
@@ -125,8 +128,8 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
         }
 
         await FollowupAsync(
-            embed: PetPageHelper.BuildPetsPageEmbed(dt, 0, Username).Build(),
-            components: PetPageHelper.BuildPetsPageButtons(UserId, 0, dt.Rows.Count));
+            embed: PetPageHelper.BuildPetsPageEmbed(pets, 0, Username).Build(),
+            components: PetPageHelper.BuildPetsPageButtons(UserId, 0, pets.Count));
     }
 
 
@@ -137,37 +140,32 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
     {
         await DeferAsync();
 
-        var (row, error) = GetActivePet();
+        var (row, error) = await GetActivePetAsync();
         if (row is null) { await ErrorAsync(error!); return; }
 
-        int petId = int.Parse(row["PetID"].ToString()!);
+        int petId = row.PetId;
 
-        // Fetch last journal entry to show in the card
-        var journal = _sp.Select(Constants.Constants.discordBotConnStr, "GetPetJournal",
-            [new SqlParameter("@PetID", petId)]);
+        // Fetch last journal entry to show in the card (source's GetPetJournal returns TOP 20
+        // ORDER BY JournalID DESC, but the caller only ever used row[0] — just fetch that one).
+        var lastJournal = await db.PetJournals.AsNoTracking()
+            .Where(j => j.PetId == petId).OrderByDescending(j => j.JournalId).FirstOrDefaultAsync();
 
         string? lastActivity = null;
-        if (journal.Rows.Count > 0)
+        if (lastJournal is not null)
         {
-            var lastRow = journal.Rows[0];
-            string details = lastRow["Details"].ToString()!;
-            string emoji = PetHelper.JournalEventEmoji(lastRow["Event"].ToString()!);
-            string relTime = DateTime.TryParse(lastRow["CreatedAt"].ToString(), out var ca)
-                ? $"<t:{new DateTimeOffset(ca, TimeSpan.Zero).ToUnixTimeSeconds()}:R>"
-                : "recently";
-            lastActivity = $"{emoji} {details} ({relTime})";
+            string emoji = PetHelper.JournalEventEmoji(lastJournal.Event);
+            string relTime = $"<t:{new DateTimeOffset(lastJournal.CreatedAt, TimeSpan.Zero).ToUnixTimeSeconds()}:R>";
+            lastActivity = $"{emoji} {lastJournal.Details} ({relTime})";
         }
 
         // Fetch cosmetics applied to this pet
-        var cosmeticsDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetPetCosmetics",
-            [new SqlParameter("@PetID", petId)]);
+        var cosmetics = await db.PetCosmetics.AsNoTracking().Where(c => c.PetId == petId).ToListAsync();
 
         string? titleKey = null, auraKey = null;
-        foreach (System.Data.DataRow cr in cosmeticsDt.Rows)
+        foreach (var cr in cosmetics)
         {
-            string ct = cr["CosmeticType"].ToString()!;
-            if (ct == "title") titleKey = cr["CosmeticKey"].ToString();
-            if (ct == "aura") auraKey = cr["CosmeticKey"].ToString();
+            if (cr.CosmeticType == "title") titleKey = cr.CosmeticKey;
+            if (cr.CosmeticType == "aura") auraKey = cr.CosmeticKey;
         }
 
         var (_, embed) = BuildPetEmbed(row, detailed: true, lastActivity: lastActivity,
@@ -184,10 +182,10 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
     {
         await DeferAsync();
 
-        var (row, error) = GetActivePet();
+        var (row, error) = await GetActivePetAsync();
         if (row is null) { await ErrorAsync(error!); return; }
 
-        int level = PetHelper.LevelFromXp(int.Parse(row["XP"].ToString()!));
+        int level = PetHelper.LevelFromXp(row.Xp);
         var foodItem = PetHelper.Foods.FirstOrDefault(f => f.name == food);
 
         if (foodItem == default)
@@ -202,7 +200,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        if (DateTime.TryParse(row["LastFed"].ToString(), out var lastFed))
+        if (row.LastFed is { } lastFed)
         {
             var remaining = lastFed.AddMinutes(PetHelper.FeedCooldownMinutes) - DateTime.UtcNow;
             if (remaining > TimeSpan.Zero)
@@ -212,48 +210,23 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
             }
         }
 
-        int petId = int.Parse(row["PetID"].ToString()!);
-        int hunger = Math.Min(100, int.Parse(row["Hunger"].ToString()!) + foodItem.hungerRestore);
-        int happiness = Math.Min(100, int.Parse(row["Happiness"].ToString()!) + foodItem.happyBonus);
-        int energy = int.Parse(row["Energy"].ToString()!);
-        int hygiene = int.Parse(row["Hygiene"].ToString()!);
-        int oldXp = int.Parse(row["XP"].ToString()!);
+        int petId = row.PetId;
+        int hunger = Math.Min(100, row.Hunger + foodItem.hungerRestore);
+        int happiness = Math.Min(100, row.Happiness + foodItem.happyBonus);
+        int energy = row.Energy;
+        int hygiene = row.Hygiene;
+        int oldXp = row.Xp;
         int newXp = oldXp + PetHelper.XpFeed;
-        bool wasHibernating = bool.TryParse(row["IsHibernating"].ToString(), out bool hib) && hib;
-        string petName = row["Name"].ToString()!;
+        bool wasHibernating = row.IsHibernating;
+        string petName = row.Name;
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "UpdatePetStats",
-        [
-            new SqlParameter("@PetID",         petId),
-            new SqlParameter("@Hunger",        hunger),
-            new SqlParameter("@Happiness",     happiness),
-            new SqlParameter("@Energy",        energy),
-            new SqlParameter("@Hygiene",       hygiene),
-            new SqlParameter("@XP",            newXp),
-            new SqlParameter("@IsHibernating", false),
-            new SqlParameter("@LastFed",       DateTime.UtcNow),
-            new SqlParameter("@LastPetted",    DBNull.Value),
-            new SqlParameter("@LastGroomed",   DBNull.Value),
-            new SqlParameter("@LastPlayed",    DBNull.Value),
-            new SqlParameter("@LastSlept",     DBNull.Value)
-        ]);
+        ApplyPetStats(row, hunger, happiness, energy, hygiene, newXp, isHibernating: false, lastFed: DateTime.UtcNow);
+        if (wasHibernating) row.HibernatedAt = null; // WakePet also clears this
+        await db.SaveChangesAsync();
 
-        // Clear HibernatedAt if waking up
-        if (wasHibernating)
-        {
-            _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "WakePet",
-                [new SqlParameter("@PetID", petId)]);
-        }
-
-        // Journal entry
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "AddPetJournalEntry",
-        [
-            new SqlParameter("@PetID",   petId),
-            new SqlParameter("@Event",   wasHibernating ? "wake" : "feed"),
-            new SqlParameter("@Details", wasHibernating
-                ? $"{Username} fed {petName} {foodItem.emoji} {food} and woke them from hibernation!"
-                : $"{Username} fed {petName} {foodItem.emoji} {food}.")
-        ]);
+        await AddJournalEntryAsync(db, petId, wasHibernating ? "wake" : "feed", wasHibernating
+            ? $"{Username} fed {petName} {foodItem.emoji} {food} and woke them from hibernation!"
+            : $"{Username} fed {petName} {foodItem.emoji} {food}.");
 
         var (_, levelUp) = CheckLevelUp(oldXp, newXp);
 
@@ -275,10 +248,10 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
     {
         await DeferAsync();
 
-        var (row, error) = GetActivePet();
+        var (row, error) = await GetActivePetAsync();
         if (row is null) { await ErrorAsync(error!); return; }
 
-        if (DateTime.TryParse(row["LastPetted"].ToString(), out var lastPetted))
+        if (row.LastPetted is { } lastPetted)
         {
             var remaining = lastPetted.AddMinutes(PetHelper.PetCooldownMinutes) - DateTime.UtcNow;
             if (remaining > TimeSpan.Zero)
@@ -288,31 +261,18 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
             }
         }
 
-        int petId = int.Parse(row["PetID"].ToString()!);
-        int happiness = Math.Min(100, int.Parse(row["Happiness"].ToString()!) + 15);
-        int hunger = int.Parse(row["Hunger"].ToString()!);
-        int energy = int.Parse(row["Energy"].ToString()!);
-        int hygiene = int.Parse(row["Hygiene"].ToString()!);
-        int oldXp = int.Parse(row["XP"].ToString()!);
+        int happiness = Math.Min(100, row.Happiness + 15);
+        int hunger = row.Hunger;
+        int energy = row.Energy;
+        int hygiene = row.Hygiene;
+        int oldXp = row.Xp;
         int newXp = oldXp + PetHelper.XpPet;
-        string petName = row["Name"].ToString()!;
-        string species = row["Species"].ToString()!;
+        string petName = row.Name;
+        string species = row.Species;
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "UpdatePetStats",
-        [
-            new SqlParameter("@PetID",         petId),
-            new SqlParameter("@Hunger",        hunger),
-            new SqlParameter("@Happiness",     happiness),
-            new SqlParameter("@Energy",        energy),
-            new SqlParameter("@Hygiene",       hygiene),
-            new SqlParameter("@XP",            newXp),
-            new SqlParameter("@IsHibernating", PetHelper.ShouldHibernate(hunger, happiness, energy)),
-            new SqlParameter("@LastFed",       DBNull.Value),
-            new SqlParameter("@LastPetted",    DateTime.UtcNow),
-            new SqlParameter("@LastGroomed",   DBNull.Value),
-            new SqlParameter("@LastPlayed",    DBNull.Value),
-            new SqlParameter("@LastSlept",     DBNull.Value)
-        ]);
+        ApplyPetStats(row, hunger, happiness, energy, hygiene, newXp,
+            isHibernating: PetHelper.ShouldHibernate(hunger, happiness, energy), lastPetted: DateTime.UtcNow);
+        await db.SaveChangesAsync();
 
         string[] reactions = species.ToLower() switch
         {
@@ -488,10 +448,10 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
     {
         await DeferAsync();
 
-        var (row, error) = GetActivePet();
+        var (row, error) = await GetActivePetAsync();
         if (row is null) { await ErrorAsync(error!); return; }
 
-        if (DateTime.TryParse(row["LastGroomed"].ToString(), out var lastGroomed))
+        if (row.LastGroomed is { } lastGroomed)
         {
             var remaining = lastGroomed.AddMinutes(PetHelper.GroomCooldownMinutes) - DateTime.UtcNow;
             if (remaining > TimeSpan.Zero)
@@ -501,31 +461,19 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
             }
         }
 
-        int petId = int.Parse(row["PetID"].ToString()!);
-        int hygiene = Math.Min(100, int.Parse(row["Hygiene"].ToString()!) + 40);
-        int happy = Math.Min(100, int.Parse(row["Happiness"].ToString()!) + 10);
-        int hunger = int.Parse(row["Hunger"].ToString()!);
-        int energy = int.Parse(row["Energy"].ToString()!);
-        int oldXp = int.Parse(row["XP"].ToString()!);
+        int petId = row.PetId;
+        int hygiene = Math.Min(100, row.Hygiene + 40);
+        int happy = Math.Min(100, row.Happiness + 10);
+        int hunger = row.Hunger;
+        int energy = row.Energy;
+        int oldXp = row.Xp;
         int newXp = oldXp + PetHelper.XpGroom;
-        string petName = row["Name"].ToString()!;
-        string species = row["Species"].ToString()!;
+        string petName = row.Name;
+        string species = row.Species;
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "UpdatePetStats",
-        [
-            new SqlParameter("@PetID",         petId),
-            new SqlParameter("@Hunger",        hunger),
-            new SqlParameter("@Happiness",     happy),
-            new SqlParameter("@Energy",        energy),
-            new SqlParameter("@Hygiene",       hygiene),
-            new SqlParameter("@XP",            newXp),
-            new SqlParameter("@IsHibernating", PetHelper.ShouldHibernate(hunger, happy, energy)),
-            new SqlParameter("@LastFed",       DBNull.Value),
-            new SqlParameter("@LastPetted",    DBNull.Value),
-            new SqlParameter("@LastGroomed",   DateTime.UtcNow),
-            new SqlParameter("@LastPlayed",    DBNull.Value),
-            new SqlParameter("@LastSlept",     DBNull.Value)
-        ]);
+        ApplyPetStats(row, hunger, happy, energy, hygiene, newXp,
+            isHibernating: PetHelper.ShouldHibernate(hunger, happy, energy), lastGroomed: DateTime.UtcNow);
+        await db.SaveChangesAsync();
 
         string groomVerb = species.ToLower() switch
         {
@@ -547,13 +495,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
             _ => "cleaned"
         };
 
-        // Journal entry
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "AddPetJournalEntry",
-        [
-            new SqlParameter("@PetID",   petId),
-            new SqlParameter("@Event",   "groom"),
-            new SqlParameter("@Details", $"{Username} {groomVerb} {petName}. Squeaky clean! 🛁")
-        ]);
+        await AddJournalEntryAsync(db, petId, "groom", $"{Username} {groomVerb} {petName}. Squeaky clean! 🛁");
 
         var (_, levelUp) = CheckLevelUp(oldXp, newXp);
 
@@ -574,16 +516,16 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
     {
         await DeferAsync();
 
-        var (row, error) = GetActivePet();
+        var (row, error) = await GetActivePetAsync();
         if (row is null) { await ErrorAsync(error!); return; }
 
-        if (bool.TryParse(row["IsHibernating"].ToString(), out bool hib) && hib)
+        if (row.IsHibernating)
         {
             await ErrorAsync("Your pet is hibernating! Feed them first to wake them up.");
             return;
         }
 
-        if (DateTime.TryParse(row["LastPlayed"].ToString(), out var lastPlayed))
+        if (row.LastPlayed is { } lastPlayed)
         {
             var remaining = lastPlayed.AddMinutes(PetHelper.PlayCooldownMinutes) - DateTime.UtcNow;
             if (remaining > TimeSpan.Zero)
@@ -593,31 +535,19 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
             }
         }
 
-        int petId = int.Parse(row["PetID"].ToString()!);
-        int happiness = Math.Min(100, int.Parse(row["Happiness"].ToString()!) + 25);
-        int energy = Math.Max(0, int.Parse(row["Energy"].ToString()!) - 15);
-        int hunger = Math.Max(0, int.Parse(row["Hunger"].ToString()!) - 10);
-        int hygiene = int.Parse(row["Hygiene"].ToString()!);
-        int oldXp = int.Parse(row["XP"].ToString()!);
+        int petId = row.PetId;
+        int happiness = Math.Min(100, row.Happiness + 25);
+        int energy = Math.Max(0, row.Energy - 15);
+        int hunger = Math.Max(0, row.Hunger - 10);
+        int hygiene = row.Hygiene;
+        int oldXp = row.Xp;
         int newXp = oldXp + PetHelper.XpPlay;
-        string petName = row["Name"].ToString()!;
-        string species = row["Species"].ToString()!;
+        string petName = row.Name;
+        string species = row.Species;
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "UpdatePetStats",
-        [
-            new SqlParameter("@PetID",         petId),
-            new SqlParameter("@Hunger",        hunger),
-            new SqlParameter("@Happiness",     happiness),
-            new SqlParameter("@Energy",        energy),
-            new SqlParameter("@Hygiene",       hygiene),
-            new SqlParameter("@XP",            newXp),
-            new SqlParameter("@IsHibernating", PetHelper.ShouldHibernate(hunger, happiness, energy)),
-            new SqlParameter("@LastFed",       DBNull.Value),
-            new SqlParameter("@LastPetted",    DBNull.Value),
-            new SqlParameter("@LastGroomed",   DBNull.Value),
-            new SqlParameter("@LastPlayed",    DateTime.UtcNow),
-            new SqlParameter("@LastSlept",     DBNull.Value)
-        ]);
+        ApplyPetStats(row, hunger, happiness, energy, hygiene, newXp,
+            isHibernating: PetHelper.ShouldHibernate(hunger, happiness, energy), lastPlayed: DateTime.UtcNow);
+        await db.SaveChangesAsync();
 
         string[] activities = species.ToLower() switch
         {
@@ -777,13 +707,7 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
         string activity = activities[Random.Shared.Next(activities.Length)];
         var (_, levelUp) = CheckLevelUp(oldXp, newXp);
 
-        // Journal entry
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "AddPetJournalEntry",
-        [
-            new SqlParameter("@PetID",   petId),
-            new SqlParameter("@Event",   "play"),
-            new SqlParameter("@Details", $"{petName} {activity}! 🎮")
-        ]);
+        await AddJournalEntryAsync(db, petId, "play", $"{petName} {activity}! 🎮");
 
         await FollowupAsync(embed: _embed.BuildSimpleEmbed(
             $"🎮  Playtime with {petName}!",
@@ -803,50 +727,32 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
     {
         await DeferAsync();
 
-        var (row, error) = GetActivePet();
+        var (row, error) = await GetActivePetAsync();
         if (row is null) { await ErrorAsync(error!); return; }
 
-        int currentEnergy = int.Parse(row["Energy"].ToString()!);
+        int currentEnergy = row.Energy;
         const int sleepThreshold = 50;
 
         if (currentEnergy >= sleepThreshold)
         {
             await ErrorAsync(
-                $"**{row["Name"]}** isn't tired yet! Energy is at **{currentEnergy}/100**.\n" +
+                $"**{row.Name}** isn't tired yet! Energy is at **{currentEnergy}/100**.\n" +
                 $"Sleep is only available below **{sleepThreshold} energy**.");
             return;
         }
 
-        int petId = int.Parse(row["PetID"].ToString()!);
+        int petId = row.PetId;
         int energy = Math.Min(100, currentEnergy + 50);
-        int hunger = int.Parse(row["Hunger"].ToString()!);
-        int happy = int.Parse(row["Happiness"].ToString()!);
-        int hygiene = int.Parse(row["Hygiene"].ToString()!);
-        int xp = int.Parse(row["XP"].ToString()!);
-        string petName = row["Name"].ToString()!;
+        int hunger = row.Hunger;
+        int happy = row.Happiness;
+        int hygiene = row.Hygiene;
+        int xp = row.Xp;
+        string petName = row.Name;
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "UpdatePetStats",
-        [
-            new SqlParameter("@PetID",         petId),
-            new SqlParameter("@Hunger",        hunger),
-            new SqlParameter("@Happiness",     happy),
-            new SqlParameter("@Energy",        energy),
-            new SqlParameter("@Hygiene",       hygiene),
-            new SqlParameter("@XP",            xp),
-            new SqlParameter("@IsHibernating", false),
-            new SqlParameter("@LastFed",       DBNull.Value),
-            new SqlParameter("@LastPetted",    DBNull.Value),
-            new SqlParameter("@LastGroomed",   DBNull.Value),
-            new SqlParameter("@LastPlayed",    DBNull.Value),
-            new SqlParameter("@LastSlept",     DateTime.UtcNow)
-        ]);
+        ApplyPetStats(row, hunger, happy, energy, hygiene, xp, isHibernating: false, lastSlept: DateTime.UtcNow);
+        await db.SaveChangesAsync();
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "AddPetJournalEntry",
-        [
-            new SqlParameter("@PetID",   petId),
-            new SqlParameter("@Event",   "sleep"),
-            new SqlParameter("@Details", $"{petName} took a nap and restored some energy. 💤")
-        ]);
+        await AddJournalEntryAsync(db, petId, "sleep", $"{petName} took a nap and restored some energy. 💤");
 
         await FollowupAsync(embed: _embed.BuildSimpleEmbed(
             $"💤  {petName} is napping!",
@@ -863,11 +769,11 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
     {
         await DeferAsync();
 
-        var (row, error) = GetActivePet();
+        var (row, error) = await GetActivePetAsync();
         if (row is null) { await ErrorAsync(error!); return; }
 
         // 1 minute cooldown — intentionally short, pure flavour
-        if (DateTime.TryParse(row["LastPetted"].ToString(), out var lastPetted))
+        if (row.LastPetted is { } lastPetted)
         {
             var remaining = lastPetted.AddMinutes(1) - DateTime.UtcNow;
             if (remaining > TimeSpan.Zero)
@@ -877,38 +783,21 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
             }
         }
 
-        int petId = int.Parse(row["PetID"].ToString()!);
-        int happiness = Math.Min(100, int.Parse(row["Happiness"].ToString()!) + 5);
-        int hunger = int.Parse(row["Hunger"].ToString()!);
-        int energy = int.Parse(row["Energy"].ToString()!);
-        int hygiene = int.Parse(row["Hygiene"].ToString()!);
-        int xp = int.Parse(row["XP"].ToString()!);
-        string petName = row["Name"].ToString()!;
-        string species = row["Species"].ToString()!;
+        int petId = row.PetId;
+        int happiness = Math.Min(100, row.Happiness + 5);
+        int hunger = row.Hunger;
+        int energy = row.Energy;
+        int hygiene = row.Hygiene;
+        int xp = row.Xp;
+        string petName = row.Name;
+        string species = row.Species;
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "UpdatePetStats",
-        [
-            new SqlParameter("@PetID",         petId),
-            new SqlParameter("@Hunger",        hunger),
-            new SqlParameter("@Happiness",     happiness),
-            new SqlParameter("@Energy",        energy),
-            new SqlParameter("@Hygiene",       hygiene),
-            new SqlParameter("@XP",            xp),
-            new SqlParameter("@IsHibernating", PetHelper.ShouldHibernate(hunger, happiness, energy)),
-            new SqlParameter("@LastFed",       DBNull.Value),
-            new SqlParameter("@LastPetted",    DateTime.UtcNow),
-            new SqlParameter("@LastGroomed",   DBNull.Value),
-            new SqlParameter("@LastPlayed",    DBNull.Value),
-            new SqlParameter("@LastSlept",     DBNull.Value)
-        ]);
+        ApplyPetStats(row, hunger, happiness, energy, hygiene, xp,
+            isHibernating: PetHelper.ShouldHibernate(hunger, happiness, energy), lastPetted: DateTime.UtcNow);
+        await db.SaveChangesAsync();
 
         // Log to journal
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "AddPetJournalEntry",
-        [
-            new SqlParameter("@PetID",   petId),
-            new SqlParameter("@Event",   "hug"),
-            new SqlParameter("@Details", $"{Username} gave {petName} a hug! 🤗")
-        ]);
+        await AddJournalEntryAsync(db, petId, "hug", $"{Username} gave {petName} a hug! 🤗");
 
         string[] hugReactions = species.ToLower() switch
         {
@@ -1081,21 +970,21 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
     {
         await DeferAsync();
 
-        var (row, error) = GetActivePet();
+        var (row, error) = await GetActivePetAsync();
         if (row is null) { await ErrorAsync(error!); return; }
 
-        int petId = int.Parse(row["PetID"].ToString()!);
-        string petName = row["Name"].ToString()!;
-        string species = row["Species"].ToString()!;
-        int level = PetHelper.LevelFromXp(int.Parse(row["XP"].ToString()!));
+        int petId = row.PetId;
+        string petName = row.Name;
+        string species = row.Species;
+        int level = PetHelper.LevelFromXp(row.Xp);
         bool evolved = level >= 50;
 
-        var entries = _sp.Select(Constants.Constants.discordBotConnStr, "GetPetJournal",
-            [new SqlParameter("@PetID", petId)]);
+        var entries = await db.PetJournals.AsNoTracking()
+            .Where(j => j.PetId == petId).OrderByDescending(j => j.JournalId).Take(20).ToListAsync();
 
         string emoji = PetHelper.PetEmoji(species, 80, 80, false, evolved);
 
-        if (entries.Rows.Count == 0)
+        if (entries.Count == 0)
         {
             await FollowupAsync(embed: _embed.BuildSimpleEmbed(
                 $"📓  {petName}'s Journal", "No journal entries yet — go interact with your pet!",
@@ -1105,16 +994,12 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
 
         var sb = new System.Text.StringBuilder();
 
-        foreach (DataRow entry in entries.Rows)
+        foreach (var entry in entries)
         {
-            string eventType = entry["Event"].ToString()!;
-            string details = entry["Details"].ToString()!;
-            string eventEmoji = PetHelper.JournalEventEmoji(eventType);
-            string timestamp = DateTime.TryParse(entry["CreatedAt"].ToString(), out var ts)
-                ? $"<t:{new DateTimeOffset(ts, TimeSpan.Zero).ToUnixTimeSeconds()}:R>"
-                : "";
+            string eventEmoji = PetHelper.JournalEventEmoji(entry.Event);
+            string timestamp = $"<t:{new DateTimeOffset(entry.CreatedAt, TimeSpan.Zero).ToUnixTimeSeconds()}:R>";
 
-            sb.AppendLine($"{eventEmoji} {details} {timestamp}");
+            sb.AppendLine($"{eventEmoji} {entry.Details} {timestamp}");
         }
 
         await FollowupAsync(embed: _embed.BuildSimpleEmbed(
@@ -1135,18 +1020,18 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
     {
         await DeferAsync();
 
-        var (row, error) = GetActivePet();
+        var (row, error) = await GetActivePetAsync();
         if (row is null) { await ErrorAsync(error!); return; }
 
-        int level = PetHelper.LevelFromXp(int.Parse(row["XP"].ToString()!));
+        int level = PetHelper.LevelFromXp(row.Xp);
 
         if (slot == "1" && level < 5) { await ErrorAsync($"Trick slot 1 unlocks at **level 5**! Your pet is level {level}."); return; }
         if (slot == "2" && level < 20) { await ErrorAsync($"Trick slot 2 unlocks at **level 20**! Your pet is level {level}."); return; }
         if (slot == "3" && level < 50) { await ErrorAsync($"Trick slot 3 unlocks at **level 50**! Your pet is level {level}."); return; }
         if (slot == "4" && level < 75) { await ErrorAsync($"Trick slot 4 unlocks at **level 75**! Your pet is level {level}."); return; }
 
-        string petName = row["Name"].ToString()!;
-        string species = row["Species"].ToString()!;
+        string petName = row.Name;
+        string species = row.Species;
         string trick = PetHelper.PerformTrick(species, int.Parse(slot));
 
         await FollowupAsync(embed: _embed.BuildSimpleEmbed(
@@ -1166,25 +1051,19 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
     {
         await DeferAsync();
 
-        var (row, error) = GetActivePet();
+        var (row, error) = await GetActivePetAsync();
         if (row is null) { await ErrorAsync(error!); return; }
 
-        int level = PetHelper.LevelFromXp(int.Parse(row["XP"].ToString()!));
+        int level = PetHelper.LevelFromXp(row.Xp);
 
         if (slot == "slot1" && level < 10) { await ErrorAsync("Accessory slot 1 unlocks at **level 10**!"); return; }
         if (slot == "slot2" && level < 15) { await ErrorAsync("Accessory slot 2 unlocks at **level 15**!"); return; }
 
-        int petId = int.Parse(row["PetID"].ToString()!);
-        string slotCol = slot == "slot1" ? "Accessory1" : "Accessory2";
+        if (slot == "slot1") row.Accessory1 = item.Trim();
+        else row.Accessory2 = item.Trim();
+        await db.SaveChangesAsync();
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "UpdatePetAccessory",
-        [
-            new SqlParameter("@PetID",    petId),
-            new SqlParameter("@SlotName", slotCol),
-            new SqlParameter("@Item",     item.Trim())
-        ]);
-
-        string petName = row["Name"].ToString()!;
+        string petName = row.Name;
 
         await FollowupAsync(embed: _embed.BuildSimpleEmbed(
             "👗  Accessory Equipped!", $"**{petName}** is now wearing **{item.Trim()}**! Looking good! ✨",
@@ -1199,22 +1078,22 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
     {
         await DeferAsync();
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "SetActivePet",
-        [
-            new SqlParameter("@UserID", UserId),
-            new SqlParameter("@PetID",  petId)
-        ]);
+        // NOTE (flagged, not fixed): source (SetActivePet) unconditionally deactivates ALL of
+        // the caller's pets FIRST, then tries to activate the given petId scoped to UserID, and
+        // only afterward checks whether that pet actually belongs to them (via GetPetByID). If
+        // petId is invalid or belongs to someone else, step 2 matches nothing — the user is left
+        // with NO active pet at all, silently, before the "Pet not found" error is even shown.
+        // Pre-existing in the source proc's design; replicated exactly here rather than
+        // reordered to validate-before-mutate.
+        await db.Pets.Where(p => p.UserId == UserId).ExecuteUpdateAsync(s => s.SetProperty(p => p.IsActive, false));
+        await db.Pets.Where(p => p.PetId == petId && p.UserId == UserId).ExecuteUpdateAsync(s => s.SetProperty(p => p.IsActive, true));
 
-        var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetPetByID",
-        [
-            new SqlParameter("@PetID",  petId),
-            new SqlParameter("@UserID", UserId)
-        ]);
+        var pet = await db.Pets.AsNoTracking().FirstOrDefaultAsync(p => p.PetId == petId && p.UserId == UserId);
 
-        if (dt.Rows.Count == 0) { await ErrorAsync("Pet not found."); return; }
+        if (pet is null) { await ErrorAsync("Pet not found."); return; }
 
-        string name = dt.Rows[0]["Name"].ToString()!;
-        string species = dt.Rows[0]["Species"].ToString()!;
+        string name = pet.Name;
+        string species = pet.Species;
         string emoji = PetHelper.PetEmoji(species, 50, 50, false, false);
 
         await FollowupAsync(embed: _embed.BuildSimpleEmbed(
@@ -1230,17 +1109,12 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
     {
         await DeferAsync();
 
-        var (row, error) = GetActivePet();
+        var (row, error) = await GetActivePetAsync();
         if (row is null) { await ErrorAsync(error!); return; }
 
-        int petId = int.Parse(row["PetID"].ToString()!);
-        string oldName = row["Name"].ToString()!;
-
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "RenamePet",
-        [
-            new SqlParameter("@PetID", petId),
-            new SqlParameter("@Name",  newName.Trim())
-        ]);
+        string oldName = row.Name;
+        row.Name = newName.Trim();
+        await db.SaveChangesAsync();
 
         await FollowupAsync(embed: _embed.BuildSimpleEmbed(
             "✏️  Pet Renamed!", $"**{oldName}** is now known as **{newName.Trim()}**!",
@@ -1255,17 +1129,13 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
     {
         await DeferAsync();
 
-        var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetPetByID",
-        [
-            new SqlParameter("@PetID",  petId),
-            new SqlParameter("@UserID", UserId)
-        ]);
+        var pet = await db.Pets.AsNoTracking().FirstOrDefaultAsync(p => p.PetId == petId && p.UserId == UserId);
 
-        if (dt.Rows.Count == 0) { await ErrorAsync("Pet not found or doesn't belong to you."); return; }
+        if (pet is null) { await ErrorAsync("Pet not found or doesn't belong to you."); return; }
 
-        string name = dt.Rows[0]["Name"].ToString()!;
-        string species = dt.Rows[0]["Species"].ToString()!;
-        int level = PetHelper.LevelFromXp(int.Parse(dt.Rows[0]["XP"].ToString()!));
+        string name = pet.Name;
+        string species = pet.Species;
+        int level = PetHelper.LevelFromXp(pet.Xp);
         string emoji = PetHelper.PetEmoji(species, 80, 80, false, level >= 50);
 
         var components = new ComponentBuilder()
@@ -1290,10 +1160,27 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
     {
         await DeferAsync();
 
-        var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetPetLeaderboard",
-            [new SqlParameter("@ServerID", ServerId)]);
+        // Source (GetPetLeaderboard) LEFT JOINs Users on UserID + TRY_CAST(@ServerID AS BIGINT)
+        // — tolerant of a non-numeric ServerID (yields no match rather than erroring). This
+        // command is guild-only so ServerId is always numeric in practice; the TryParse below
+        // preserves the same tolerance regardless.
+        long? serverIdLong = long.TryParse(ServerId, out long sid) ? sid : null;
 
-        if (dt.Rows.Count == 0)
+        var results = await (
+            from p in db.Pets.AsNoTracking()
+            where p.ServerId == ServerId
+            orderby p.Xp descending
+            select new
+            {
+                p.Name,
+                p.Species,
+                p.Xp,
+                Username = db.Users.Where(u => u.UserId == p.UserId && u.ServerUid == serverIdLong)
+                    .Select(u => u.Username).FirstOrDefault()
+            }
+        ).Take(10).ToListAsync();
+
+        if (results.Count == 0)
         {
             await FollowupAsync(embed: _embed.BuildErrorEmbed(
                 "Leaderboard", "No pets found in this server yet!", Username).Build());
@@ -1304,14 +1191,14 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
         int rank = 0;
         string[] medals = ["🥇", "🥈", "🥉"];
 
-        foreach (DataRow row in dt.Rows)
+        foreach (var row in results)
         {
             string medal = rank < 3 ? medals[rank] : $"**{rank + 1}.**";
-            string petName = row["Name"].ToString()!;
-            string petSpecies = row["Species"].ToString()!;
-            int xp = int.Parse(row["XP"].ToString()!);
+            string petName = row.Name;
+            string petSpecies = row.Species;
+            int xp = row.Xp;
             int level = PetHelper.LevelFromXp(xp);
-            string owner = row["Username"].ToString()!;
+            string owner = row.Username ?? "";
             bool evolved = level >= 50;
             string crown = level >= 100 ? " 👑" : "";
             string evolvedStr = evolved ? $" *({PetHelper.EvolvedName(petSpecies)})*" : "";
@@ -1332,10 +1219,10 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
     {
         await DeferAsync();
 
-        var (row, error) = GetActivePet();
+        var (row, error) = await GetActivePetAsync();
         if (row is null) { await ErrorAsync(error!); return; }
 
-        int level = PetHelper.LevelFromXp(int.Parse(row["XP"].ToString()!));
+        int level = PetHelper.LevelFromXp(row.Xp);
 
         await FollowupAsync(embed: _embed.BuildSimpleEmbed(
             "🍽️  Available Food", PetHelper.ListFoods(level),
@@ -1350,77 +1237,56 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
     {
         await DeferAsync();
 
-        var (row, error) = GetActivePet();
+        var (row, error) = await GetActivePetAsync();
         if (row is null) { await ErrorAsync(error!); return; }
 
-        if (bool.TryParse(row["IsHibernating"].ToString(), out bool hib) && hib)
+        if (row.IsHibernating)
         {
             await ErrorAsync("Your pet is hibernating! Feed them first before sending them exploring.");
             return;
         }
 
-        string petName = row["Name"].ToString()!;
-        string species = row["Species"].ToString()!;
-        int petId = int.Parse(row["PetID"].ToString()!);
-        int oldXp = int.Parse(row["XP"].ToString()!);
+        string petName = row.Name;
+        string species = row.Species;
+        int petId = row.PetId;
+        int oldXp = row.Xp;
         int level = PetHelper.LevelFromXp(oldXp);
 
-        // Check if already exploring
-        var exploreStatus = _sp.Select(Constants.Constants.discordBotConnStr, "GetPetExplore",
-            [new SqlParameter("@PetID", petId)]);
-
-        if (exploreStatus.Rows.Count > 0)
+        // Check if already exploring — source (GetPetExplore) re-queried the Pet row for its own
+        // ExploreReturnsAt/ExploreRewardKey columns; already have them on the tracked entity.
+        if (row.ExploreReturnsAt is { } returnsAt)
         {
-            var returnsAt = DateTime.Parse(exploreStatus.Rows[0]["ReturnsAt"].ToString()!);
-
             // Ready to claim
             if (DateTime.UtcNow >= returnsAt)
             {
-                string rewardKey = exploreStatus.Rows[0]["RewardKey"].ToString()!;
+                string rewardKey = row.ExploreRewardKey!;
                 var reward = PetHelper.ExploreRewards.First(r => r.key == rewardKey);
 
                 // xp_boost: 2× XP for the duration
-                bool hasXpBoost = ShopHelper.HasActiveEffect(UserId, ServerId, "xp_boost");
+                bool hasXpBoost = await ShopHelper.HasActiveEffectAsync(db, UserId, ServerId, "xp_boost");
                 int bonusXp = hasXpBoost ? reward.xp : 0;
                 int newXp = oldXp + reward.xp + bonusXp;
-                int hunger = Math.Max(0, int.Parse(row["Hunger"].ToString()!) - reward.hungerCost);
-                int happiness = Math.Min(100, int.Parse(row["Happiness"].ToString()!) + reward.happyBonus);
-                int energy = Math.Max(0, int.Parse(row["Energy"].ToString()!) - reward.energyCost);
-                int hygiene = int.Parse(row["Hygiene"].ToString()!);
+                int hunger = Math.Max(0, row.Hunger - reward.hungerCost);
+                int happiness = Math.Min(100, row.Happiness + reward.happyBonus);
+                int energy = Math.Max(0, row.Energy - reward.energyCost);
+                int hygiene = row.Hygiene;
 
-                _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "UpdatePetStats",
-                [
-                    new SqlParameter("@PetID",         petId),
-                    new SqlParameter("@Hunger",        hunger),
-                    new SqlParameter("@Happiness",     happiness),
-                    new SqlParameter("@Energy",        energy),
-                    new SqlParameter("@Hygiene",       hygiene),
-                    new SqlParameter("@XP",            newXp),
-                    new SqlParameter("@IsHibernating", PetHelper.ShouldHibernate(hunger, happiness, energy)),
-                    new SqlParameter("@LastFed",       DBNull.Value),
-                    new SqlParameter("@LastPetted",    DBNull.Value),
-                    new SqlParameter("@LastGroomed",   DBNull.Value),
-                    new SqlParameter("@LastPlayed",    DBNull.Value),
-                    new SqlParameter("@LastSlept",     DBNull.Value)
-                ]);
-
-                _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "ClearPetExplore",
-                    [new SqlParameter("@PetID", petId)]);
+                ApplyPetStats(row, hunger, happiness, energy, hygiene, newXp,
+                    isHibernating: PetHelper.ShouldHibernate(hunger, happiness, energy));
+                row.ExploreReturnsAt = null;
+                row.ExploreRewardKey = null;
+                await db.SaveChangesAsync();
 
                 // Journal entry
                 string rewardDesc = PetHelper.ExploreRewardDescription(rewardKey, species, reward.description);
-                _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "AddPetJournalEntry",
-                [
-                    new SqlParameter("@PetID",   petId),
-                    new SqlParameter("@Event",   "explore"),
-                    new SqlParameter("@Details", $"{petName} returned from an adventure and found {reward.emoji} {rewardDesc} (+{reward.xp} XP)!")
-                ]);
+                await AddJournalEntryAsync(db, petId, "explore",
+                    $"{petName} returned from an adventure and found {reward.emoji} {rewardDesc} (+{reward.xp} XP)!");
 
                 var (_, levelUp) = CheckLevelUp(oldXp, newXp);
 
                 string adventure = PetHelper.ExploreNarrative(species, rewardKey);
                 string opener = PetHelper.ExploreReturnOpener(petName);
-                string? picUrl = row["PictureUrl"] as string;
+                string? picUrl = row.PictureUrl;
 
                 var eb = _embed.BuildSimpleEmbed(
                     $"{reward.emoji}  {petName} returned from their adventure!",
@@ -1458,27 +1324,20 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
         int durationMinutes = Math.Min(60, 30 + (level / 10) * 5);
 
         // explore_boost: guarantees a rare+ reward tier
-        bool hasExploreBoost = ShopHelper.HasActiveEffect(UserId, ServerId, "explore_boost");
+        bool hasExploreBoost = await ShopHelper.HasActiveEffectAsync(db, UserId, ServerId, "explore_boost");
         var rewardPick = hasExploreBoost
             ? PetHelper.PickExploreRewardBoosted(level)
             : PetHelper.PickExploreReward(level);
-        if (hasExploreBoost) ShopHelper.ConsumeActiveEffect(UserId, ServerId, "explore_boost");
+        if (hasExploreBoost) await ShopHelper.ConsumeActiveEffectAsync(db, UserId, ServerId, "explore_boost");
 
         var returnsAtNew = DateTime.UtcNow.AddMinutes(durationMinutes);
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "SetPetExplore",
-        [
-            new SqlParameter("@PetID",     petId),
-            new SqlParameter("@ReturnsAt", returnsAtNew),
-            new SqlParameter("@RewardKey", rewardPick.key)
-        ]);
+        row.ExploreReturnsAt = returnsAtNew;
+        row.ExploreRewardKey = rewardPick.key;
+        await db.SaveChangesAsync();
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "AddPetJournalEntry",
-        [
-            new SqlParameter("@PetID",   petId),
-            new SqlParameter("@Event",   "explore_depart"),
-            new SqlParameter("@Details", $"{petName} set off on an adventure! Returns <t:{new DateTimeOffset(returnsAtNew, TimeSpan.Zero).ToUnixTimeSeconds()}:R>.")
-        ]);
+        await AddJournalEntryAsync(db, petId, "explore_depart",
+            $"{petName} set off on an adventure! Returns <t:{new DateTimeOffset(returnsAtNew, TimeSpan.Zero).ToUnixTimeSeconds()}:R>.");
 
         string departureMsg = PetHelper.ExploreDeparture(species);
 
@@ -1523,50 +1382,46 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
         }
         _battleCooldowns[UserId] = DateTime.UtcNow;
 
-        var (challengerRow, challengerError) = GetActivePet();
+        var (challengerRow, challengerError) = await GetActivePetAsync();
         if (challengerRow is null) { await ErrorAsync(challengerError!); return; }
 
-        if (bool.TryParse(challengerRow["IsHibernating"].ToString(), out bool chib) && chib)
+        if (challengerRow.IsHibernating)
         {
             await ErrorAsync("Your pet is hibernating! Feed them first before battling.");
             return;
         }
 
-        var opponentPetDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetActivePet",
-            [new SqlParameter("@UserID", opponent.Id.ToString())]);
+        string opponentIdStr = opponent.Id.ToString();
+        var opponentRow = await db.Pets.FirstOrDefaultAsync(p => p.UserId == opponentIdStr && p.IsActive);
 
-        if (opponentPetDt.Rows.Count == 0)
+        if (opponentRow is null)
         {
             await ErrorAsync($"**{opponent.Username}** doesn't have an active pet!");
             return;
         }
 
-        var opponentRow = opponentPetDt.Rows[0];
-
-        if (bool.TryParse(opponentRow["IsHibernating"].ToString(), out bool ohib) && ohib)
+        if (opponentRow.IsHibernating)
         {
             await ErrorAsync($"**{opponent.Username}**'s pet is hibernating and can't battle right now!");
             return;
         }
 
 
-        string challengerName = challengerRow["Name"].ToString()!;
-        string challengerSpecies = challengerRow["Species"].ToString()!;
-        int challengerXp = int.Parse(challengerRow["XP"].ToString()!);
+        string challengerName = challengerRow.Name;
+        string challengerSpecies = challengerRow.Species;
+        int challengerXp = challengerRow.Xp;
         int challengerLevel = PetHelper.LevelFromXp(challengerXp);
-        int challengerHunger = int.Parse(challengerRow["Hunger"].ToString()!);
-        int challengerHappy = int.Parse(challengerRow["Happiness"].ToString()!);
-        int challengerEnergy = int.Parse(challengerRow["Energy"].ToString()!);
-        int challengerPetId = int.Parse(challengerRow["PetID"].ToString()!);
+        int challengerHunger = challengerRow.Hunger;
+        int challengerHappy = challengerRow.Happiness;
+        int challengerEnergy = challengerRow.Energy;
 
-        string opponentName = opponentRow["Name"].ToString()!;
-        string opponentSpecies = opponentRow["Species"].ToString()!;
-        int opponentXp = int.Parse(opponentRow["XP"].ToString()!);
+        string opponentName = opponentRow.Name;
+        string opponentSpecies = opponentRow.Species;
+        int opponentXp = opponentRow.Xp;
         int opponentLevel = PetHelper.LevelFromXp(opponentXp);
-        int opponentHunger = int.Parse(opponentRow["Hunger"].ToString()!);
-        int opponentHappy = int.Parse(opponentRow["Happiness"].ToString()!);
-        int opponentEnergy = int.Parse(opponentRow["Energy"].ToString()!);
-        int opponentPetId = int.Parse(opponentRow["PetID"].ToString()!);
+        int opponentHunger = opponentRow.Hunger;
+        int opponentHappy = opponentRow.Happiness;
+        int opponentEnergy = opponentRow.Energy;
 
         // Power score = weighted sum of level, stats, and a luck roll
 
@@ -1585,39 +1440,29 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
         int hungerCost = 10;
 
         // Apply costs to both pets
-        void ApplyBattleCost(int petId, int oldXp, int xpGain, int hunger, int happy, int energy, int hygiene)
+        void ApplyBattleCost(PetEntity pet, int oldXp, int xpGain, int hunger, int happy, int energy, int hygiene)
         {
             int newXp = oldXp + xpGain;
             int newHunger = Math.Max(0, hunger - hungerCost);
             int newEnergy = Math.Max(0, energy - energyCost);
 
-            _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "UpdatePetStats",
-            [
-                new SqlParameter("@PetID",         petId),
-                new SqlParameter("@Hunger",        newHunger),
-                new SqlParameter("@Happiness",     happy),
-                new SqlParameter("@Energy",        newEnergy),
-                new SqlParameter("@Hygiene",       hygiene),
-                new SqlParameter("@XP",            newXp),
-                new SqlParameter("@IsHibernating", PetHelper.ShouldHibernate(newHunger, happy, newEnergy)),
-                new SqlParameter("@LastFed",       DBNull.Value),
-                new SqlParameter("@LastPetted",    DBNull.Value),
-                new SqlParameter("@LastGroomed",   DBNull.Value),
-                new SqlParameter("@LastPlayed",    DBNull.Value),
-                new SqlParameter("@LastSlept",     DBNull.Value)
-            ]);
+            ApplyPetStats(pet, newHunger, happy, newEnergy, hygiene, newXp,
+                isHibernating: PetHelper.ShouldHibernate(newHunger, happy, newEnergy));
         }
 
         int cXpGain = draw ? loserXpGain : challengerWon ? winnerXpGain : loserXpGain;
         int oXpGain = draw ? loserXpGain : challengerWon ? loserXpGain : winnerXpGain;
 
-        ApplyBattleCost(challengerPetId, challengerXp, cXpGain,
-            challengerHunger, challengerHappy, challengerEnergy,
-            int.Parse(challengerRow["Hygiene"].ToString()!));
+        ApplyBattleCost(challengerRow, challengerXp, cXpGain,
+            challengerHunger, challengerHappy, challengerEnergy, challengerRow.Hygiene);
 
-        ApplyBattleCost(opponentPetId, opponentXp, oXpGain,
-            opponentHunger, opponentHappy, opponentEnergy,
-            int.Parse(opponentRow["Hygiene"].ToString()!));
+        ApplyBattleCost(opponentRow, opponentXp, oXpGain,
+            opponentHunger, opponentHappy, opponentEnergy, opponentRow.Hygiene);
+
+        // Both pets' battle costs commit together — same reasoning as the other Pet-care
+        // commands (see ApplyPetStats): source called two independent auto-committing
+        // UpdatePetStats proc calls, bundled here into one transaction.
+        await db.SaveChangesAsync();
 
 
         var (_, cLevelUp) = CheckLevelUp(challengerXp, challengerXp + cXpGain);
@@ -1626,8 +1471,8 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
 
         string challengerEmoji = PetHelper.PetEmoji(challengerSpecies, challengerHappy, challengerHunger, false, challengerLevel >= 50);
         string opponentEmoji = PetHelper.PetEmoji(opponentSpecies, opponentHappy, opponentHunger, false, opponentLevel >= 50);
-        string? challengerPic = challengerRow["PictureUrl"] as string;
-        string? opponentPic = opponentRow["PictureUrl"] as string;
+        string? challengerPic = challengerRow.PictureUrl;
+        string? opponentPic = opponentRow.PictureUrl;
 
         string resultTitle = draw
             ? $"🤝  Draw! {challengerName} vs {opponentName}"
@@ -1726,18 +1571,17 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
     {
         await DeferAsync();
 
-        var (row, error) = GetActivePet();
+        var (row, error) = await GetActivePetAsync();
         if (row is null) { await ErrorAsync(error!); return; }
 
-        int petId = int.Parse(row["PetID"].ToString()!);
-        string petName = row["Name"].ToString()!;
-        string species = row["Species"].ToString()!;
-        int level = PetHelper.LevelFromXp(int.Parse(row["XP"].ToString()!));
+        string petName = row.Name;
+        string species = row.Species;
+        int level = PetHelper.LevelFromXp(row.Xp);
 
         // If no attachment — show current picture or instructions
         if (picture is null)
         {
-            string? current = row["PictureUrl"] as string;
+            string? current = row.PictureUrl;
             if (!string.IsNullOrWhiteSpace(current))
             {
                 await FollowupAsync(embed: _embed.BuildSimpleEmbed(
@@ -1772,12 +1616,8 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
         // Discord CDN URLs are permanent for attachments posted in messages
         string url = picture.Url;
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "UpdatePetPicture",
-        [
-            new SqlParameter("@PetID",      petId),
-            new SqlParameter("@UserID",     UserId),
-            new SqlParameter("@PictureUrl", url)
-        ]);
+        row.PictureUrl = url;
+        await db.SaveChangesAsync();
 
         string emoji = PetHelper.PetEmoji(species, 80, 80, false, level >= 50);
 
@@ -1795,18 +1635,13 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
     {
         await DeferAsync();
 
-        var (row, error) = GetActivePet();
+        var (row, error) = await GetActivePetAsync();
         if (row is null) { await ErrorAsync(error!); return; }
 
-        int petId = int.Parse(row["PetID"].ToString()!);
-        string petName = row["Name"].ToString()!;
+        string petName = row.Name;
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "UpdatePetPicture",
-        [
-            new SqlParameter("@PetID",      petId),
-            new SqlParameter("@UserID",     UserId),
-            new SqlParameter("@PictureUrl", DBNull.Value)
-        ]);
+        row.PictureUrl = null;
+        await db.SaveChangesAsync();
 
         await FollowupAsync(embed: _embed.BuildSimpleEmbed(
             $"🖼️  Picture cleared",
@@ -1823,18 +1658,14 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
     {
         await DeferAsync();
 
-        var (row, error) = GetActivePet();
+        var (row, error) = await GetActivePetAsync();
         if (row is null) { await ErrorAsync(error!); return; }
 
-        int petId = int.Parse(row["PetID"].ToString()!);
-        string petName = row["Name"].ToString()!;
+        string petName = row.Name;
         string cleaned = bio.Trim();
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "UpdatePetBio",
-        [
-            new SqlParameter("@PetID", petId),
-            new SqlParameter("@Bio",   cleaned)
-        ]);
+        row.Bio = cleaned;
+        await db.SaveChangesAsync();
 
         if (string.IsNullOrEmpty(cleaned))
         {
@@ -1890,20 +1721,66 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
     }
 
 
-    /// <summary>Fetches the user's currently active pet row, or an error message if they have none.</summary>
-    private (DataRow? row, string? error) GetActivePet()
+    /// <summary>Fetches the user's currently active pet (tracked, so callers can mutate and save it), or an error message if they have none.</summary>
+    private async Task<(PetEntity? pet, string? error)> GetActivePetAsync()
     {
-        var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetActivePet",
-            [new SqlParameter("@UserID", UserId)]);
+        var pet = await db.Pets.FirstOrDefaultAsync(p => p.UserId == UserId && p.IsActive);
 
-        return dt.Rows.Count == 0
+        return pet is null
             ? (null, "You don't have an active pet! Use `/adopt` to get one.")
-            : (dt.Rows[0], null);
+            : (pet, null);
     }
 
     /// <summary>Posts a standard pet error embed as the interaction followup.</summary>
     private async Task ErrorAsync(string message) =>
         await FollowupAsync(embed: _embed.BuildErrorEmbed("Pet", message, Username).Build());
+
+    /// <summary>
+    /// Applies a stat update to a tracked pet entity — mirrors the source UpdatePetStats proc's
+    /// signature exactly, including its CASE-WHEN-NOT-NULL pattern: a null "last activity"
+    /// timestamp leaves that field untouched rather than clearing it. Does not save; caller
+    /// calls SaveChangesAsync (often bundled with a journal entry — see AddJournalEntryAsync).
+    /// </summary>
+    private static void ApplyPetStats(
+        PetEntity pet, int hunger, int happiness, int energy, int hygiene, int xp, bool isHibernating,
+        DateTime? lastFed = null, DateTime? lastPetted = null, DateTime? lastGroomed = null,
+        DateTime? lastPlayed = null, DateTime? lastSlept = null)
+    {
+        pet.Hunger = hunger;
+        pet.Happiness = happiness;
+        pet.Energy = energy;
+        pet.Hygiene = hygiene;
+        pet.Xp = xp;
+        pet.IsHibernating = isHibernating;
+        if (lastFed is not null) pet.LastFed = lastFed;
+        if (lastPetted is not null) pet.LastPetted = lastPetted;
+        if (lastGroomed is not null) pet.LastGroomed = lastGroomed;
+        if (lastPlayed is not null) pet.LastPlayed = lastPlayed;
+        if (lastSlept is not null) pet.LastSlept = lastSlept;
+    }
+
+    /// <summary>
+    /// Adds a pet journal entry and prunes to the 50 most recent for that pet — mirrors the
+    /// source AddPetJournalEntry proc exactly. Saves the new entry first (the prune query needs
+    /// it to already exist in the DB), then prunes as a second save.
+    /// </summary>
+    private static async Task AddJournalEntryAsync(DiscordbotContext db, int petId, string eventType, string details)
+    {
+        db.PetJournals.Add(new PetJournal { PetId = petId, Event = eventType, Details = details });
+        await db.SaveChangesAsync();
+
+        var oldIds = await db.PetJournals.AsNoTracking()
+            .Where(j => j.PetId == petId)
+            .OrderByDescending(j => j.JournalId)
+            .Skip(50)
+            .Select(j => j.JournalId)
+            .ToListAsync();
+        if (oldIds.Count > 0)
+        {
+            db.PetJournals.RemoveRange(db.PetJournals.Where(j => oldIds.Contains(j.JournalId)));
+            await db.SaveChangesAsync();
+        }
+    }
 
     /// <summary>Compares XP before/after a change and, if the pet leveled up, builds the celebratory level-up message (including any unlock text).</summary>
     private static (int newLevel, string? unlockMessage) CheckLevelUp(int oldXp, int newXp)
@@ -1917,23 +1794,23 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
     }
 
     /// <summary>Builds the pet stat embed shared by /pet card and other commands — species/level/XP always shown, hunger/happiness/energy/hygiene only when <paramref name="detailed"/>, plus accessories, bio, and cosmetics when present.</summary>
-    private (string petName, EmbedBuilder embed) BuildPetEmbed(DataRow row, bool detailed, string? lastActivity = null, string? titleKey = null, string? auraKey = null)
+    private (string petName, EmbedBuilder embed) BuildPetEmbed(PetEntity row, bool detailed, string? lastActivity = null, string? titleKey = null, string? auraKey = null)
     {
-        string petName = row["Name"].ToString()!;
-        string species = row["Species"].ToString()!;
-        string breed = row["Breed"].ToString()!;
-        int hunger = int.Parse(row["Hunger"].ToString()!);
-        int happiness = int.Parse(row["Happiness"].ToString()!);
-        int energy = int.Parse(row["Energy"].ToString()!);
-        int hygiene = int.Parse(row["Hygiene"].ToString()!);
-        int xp = int.Parse(row["XP"].ToString()!);
+        string petName = row.Name;
+        string species = row.Species;
+        string breed = row.Breed;
+        int hunger = row.Hunger;
+        int happiness = row.Happiness;
+        int energy = row.Energy;
+        int hygiene = row.Hygiene;
+        int xp = row.Xp;
         int level = PetHelper.LevelFromXp(xp);
-        bool hibernating = bool.TryParse(row["IsHibernating"].ToString(), out bool h) && h;
+        bool hibernating = row.IsHibernating;
         bool evolved = level >= 50;
-        string acc1 = row["Accessory1"].ToString()!;
-        string acc2 = row["Accessory2"].ToString()!;
-        string bio = row["Bio"].ToString()!;
-        string? picUrl = row["PictureUrl"] as string;
+        string acc1 = row.Accessory1;
+        string acc2 = row.Accessory2;
+        string bio = row.Bio;
+        string? picUrl = row.PictureUrl;
 
         string emoji = PetHelper.PetEmoji(species, happiness, hunger, hibernating, evolved);
         bool veteran = level >= 20;
@@ -2004,9 +1881,9 @@ public class Pet : InteractionModuleBase<SocketInteractionContext>
 internal static class PetPageHelper
 {
     /// <summary>Builds one page of the user's pet list embed (5 pets per page).</summary>
-    internal static EmbedBuilder BuildPetsPageEmbed(System.Data.DataTable dt, int page, string username)
+    internal static EmbedBuilder BuildPetsPageEmbed(System.Collections.Generic.List<DiscordBot.Models.Generated.Pet> pets, int page, string username)
     {
-        int total      = dt.Rows.Count;
+        int total      = pets.Count;
         int totalPages = (total + Pet.PetsPerPage - 1) / Pet.PetsPerPage;
         int start      = page * Pet.PetsPerPage;
         int end        = Math.Min(start + Pet.PetsPerPage, total);
@@ -2015,18 +1892,18 @@ internal static class PetPageHelper
 
         for (int i = start; i < end; i++)
         {
-            var row        = dt.Rows[i];
-            string petName = row["Name"].ToString()!;
-            string species = row["Species"].ToString()!;
-            string breed   = row["Breed"].ToString()!;
-            int xp         = int.Parse(row["XP"].ToString()!);
+            var row        = pets[i];
+            string petName = row.Name;
+            string species = row.Species;
+            string breed   = row.Breed;
+            int xp         = row.Xp;
             int level      = PetHelper.LevelFromXp(xp);
-            bool active      = bool.TryParse(row["IsActive"].ToString(),      out bool a) && a;
-            bool hibernating = bool.TryParse(row["IsHibernating"].ToString(), out bool h) && h;
+            bool active      = row.IsActive;
+            bool hibernating = row.IsHibernating;
             bool evolved     = level >= 50;
-            int petId        = int.Parse(row["PetID"].ToString()!);
-            int happiness    = int.Parse(row["Happiness"].ToString()!);
-            int hunger       = int.Parse(row["Hunger"].ToString()!);
+            int petId        = row.PetId;
+            int happiness    = row.Happiness;
+            int hunger       = row.Hunger;
 
             string emoji       = PetHelper.PetEmoji(species, happiness, hunger, hibernating, evolved);
             string status      = hibernating ? "💤 Hibernating" : active ? "✅ Active" : "💤 Resting";
@@ -2056,10 +1933,9 @@ internal static class PetPageHelper
 // ── Component interaction handlers for the pet list (must be outside [Group]) ──
 
 /// <summary>Button handlers for the pet list and release-confirmation flow — declared outside [Group] since component interaction IDs aren't routed through the slash-command group.</summary>
-public class PetComponentHandlers : InteractionModuleBase<SocketInteractionContext>
+public class PetComponentHandlers(DiscordbotContext db) : InteractionModuleBase<SocketInteractionContext>
 {
-    private readonly StoredProcedure _sp  = new();
-    private readonly EmbedHelper     _embed = new();
+    private readonly EmbedHelper _embed = new();
 
     private string UserId    => Context.User.Id.ToString();
     private string Username  => Context.User.Username;
@@ -2078,25 +1954,18 @@ public class PetComponentHandlers : InteractionModuleBase<SocketInteractionConte
 
         if (!int.TryParse(petIdStr, out int petId)) return;
 
-        var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetPetByID",
-        [
-            new SqlParameter("@PetID",  petId),
-            new SqlParameter("@UserID", UserId)
-        ]);
+        var pet = await db.Pets.FirstOrDefaultAsync(p => p.PetId == petId && p.UserId == UserId);
 
-        if (dt.Rows.Count == 0)
+        if (pet is null)
         {
             await FollowupAsync(embed: _embed.BuildErrorEmbed("Pet", "Pet not found.", Username).Build());
             return;
         }
 
-        string name = dt.Rows[0]["Name"].ToString()!;
+        string name = pet.Name;
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "DeletePet",
-        [
-            new SqlParameter("@PetID",  petId),
-            new SqlParameter("@UserID", UserId)
-        ]);
+        db.Pets.Remove(pet);
+        await db.SaveChangesAsync();
 
         await ModifyOriginalResponseAsync(m =>
         {
@@ -2141,17 +2010,17 @@ public class PetComponentHandlers : InteractionModuleBase<SocketInteractionConte
 
         int page = int.TryParse(pageStr, out int p) ? p : 0;
 
-        var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetPetsByUser",
-            [new SqlParameter("@UserID", UserId)]);
+        var pets = await db.Pets.AsNoTracking().Where(x => x.UserId == UserId)
+            .OrderByDescending(x => x.IsActive).ThenBy(x => x.BirthDate).ToListAsync();
 
-        if (dt.Rows.Count == 0) return;
+        if (pets.Count == 0) return;
 
-        page = Math.Clamp(page, 0, (dt.Rows.Count - 1) / Pet.PetsPerPage);
+        page = Math.Clamp(page, 0, (pets.Count - 1) / Pet.PetsPerPage);
 
         await ModifyOriginalResponseAsync(m =>
         {
-            m.Embed      = PetPageHelper.BuildPetsPageEmbed(dt, page, Username).Build();
-            m.Components = PetPageHelper.BuildPetsPageButtons(UserId, page, dt.Rows.Count);
+            m.Embed      = PetPageHelper.BuildPetsPageEmbed(pets, page, Username).Build();
+            m.Components = PetPageHelper.BuildPetsPageButtons(UserId, page, pets.Count);
         });
     }
 }

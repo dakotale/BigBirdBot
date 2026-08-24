@@ -1,6 +1,6 @@
 # BigBirdBot
 
-A feature-rich Discord bot built with [Discord.Net](https://github.com/discord-net/Discord.Net) and C# (.NET 8). BigBirdBot provides a full virtual economy, gambling games, a Tamagotchi-style pet system, a stock market, music playback, mini-games, and general server utilities — all integrated into a single bot with per-server data stored in SQL Server.
+A feature-rich Discord bot built with [Discord.Net](https://github.com/discord-net/Discord.Net) and C# (.NET 10). BigBirdBot provides a full virtual economy, gambling games, a Tamagotchi-style pet system, a stock market, music playback, mini-games, and general server utilities — all integrated into a single bot with per-server data stored in PostgreSQL.
 
 ---
 
@@ -405,14 +405,14 @@ These commands require elevated permissions.
 | Language | C# (.NET 10) |
 | Discord library | [Discord.Net](https://github.com/discord-net/Discord.Net) (Interaction Framework) |
 | Music | [Lavalink4NET](https://github.com/angelobreuer/Lavalink4NET) |
-| Database | SQL Server (stored procedures via `SqlClient`) |
+| Database | PostgreSQL (via [Entity Framework Core](https://learn.microsoft.com/en-us/ef/core/) / [Npgsql](https://www.npgsql.org/)) |
 | Credit type | `decimal` (precision arithmetic throughout) |
 
 ### Architecture Notes
 
 - All credit operations use `decimal` for precision — Discord slash command parameters use `long` (INTEGER) for bot-facing input and are explicitly cast to `decimal` inside handlers.
 - Shop items, fishing tables, slot symbols, horse odds, and wheel segments are all defined as static arrays in `CreditHelper.cs` and `ShopHelper.cs` — no database lookups needed for game logic.
-- Active effects (boosts, timed buffs, stack-count items) are stored in a `UserActiveEffects` table and checked/consumed via stored procedures.
+- Active effects (boosts, timed buffs, stack-count items) are stored in a `UserActiveEffects` table and checked/consumed via EF Core (`ShopHelper`).
 - Per-user gambling cooldowns are tracked in memory (intentionally reset on restart).
-- The passive jackpot pool is stored in the database and claimed atomically via a stored procedure with a pre-check pattern to avoid post-reset ambiguity.
+- The passive jackpot pool is stored in the database and claimed atomically via `JackpotService`, using a pre-check pattern to avoid post-reset ambiguity.
 - Playlists are stored per-user per-server and reference the original track URI for re-resolution by Lavalink on load.
