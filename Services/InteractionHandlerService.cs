@@ -337,17 +337,7 @@ public sealed class InteractionHandlerService
                 });
             }
 
-            // DIAGNOSTIC: bracketing ExecuteCommandAsync to pin down whether dispatch is
-            // hanging inside Discord.Net's own module resolution / the command's DeferAsync
-            // HTTP call, vs. returning (successfully or not) and something after this point
-            // silently failing. Remove once the "did not respond" root cause is found.
-            if (logging is not null)
-                _ = logging.DebugAsync($"[Dispatch] BEGIN ExecuteCommandAsync for {interaction.Type} from {interaction.User.Id}");
-
             var result = await _handler.ExecuteCommandAsync(context, scope.ServiceProvider);
-
-            if (logging is not null)
-                _ = logging.DebugAsync($"[Dispatch] END ExecuteCommandAsync — IsSuccess={result.IsSuccess} Error={result.Error} Reason={(result.IsSuccess ? "" : result.ErrorReason)}");
 
             if (!result.IsSuccess)
                 await SendErrorAsync(interaction, result);
