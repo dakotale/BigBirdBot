@@ -2,14 +2,14 @@
 using Discord.Interactions;
 using Discord.WebSocket;
 using DiscordBot.Constants;
+using DiscordBot.Data;
 using DiscordBot.Helper;
 using Lavalink4NET;
 using Lavalink4NET.Players;
 using Lavalink4NET.Players.Queued;
 using Lavalink4NET.Rest.Entities.Tracks;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using System.Data;
-using Microsoft.Data.SqlClient;
 using System.Reflection;
 
 namespace DiscordBot.Services;
@@ -142,15 +142,24 @@ public sealed class InteractionHandlerService
     /// </summary>
     private async Task RestorePlayersAsync(LoggingService logging)
     {
-        var dt = new StoredProcedure().Select(
-            Constants.Constants.discordBotConnStr, "GetPlayerConnected", []);
-        if (dt.Rows.Count == 0) return;
-
-        foreach (DataRow row in dt.Rows)
+        List<(long voiceChannelId, long textChannelId)> connections;
+        using (var scope = _services.CreateScope())
         {
-            if (!ulong.TryParse(row["VoiceChannelID"]?.ToString(), out var voiceId) ||
-                !ulong.TryParse(row["TextChannelID"]?.ToString(), out var textId))
-                continue;
+            var scopedDb = scope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+            var rows = await (
+                from pc in scopedDb.PlayerConnecteds.AsNoTracking()
+                join s in scopedDb.Servers.AsNoTracking() on pc.ServerUid equals s.ServerUid
+                orderby s.ServerName
+                select new { pc.VoiceChannelId, pc.TextChannelId }
+            ).ToListAsync();
+            connections = rows.Select(r => (r.VoiceChannelId, r.TextChannelId)).ToList();
+        }
+        if (connections.Count == 0) return;
+
+        foreach (var (voiceChannelId, textChannelId) in connections)
+        {
+            ulong voiceId = (ulong)voiceChannelId;
+            ulong textId = (ulong)textChannelId;
 
             foreach (var guild in _client.Guilds)
             {
@@ -164,16 +173,20 @@ public sealed class InteractionHandlerService
                     continue;
                 }
 
-                // Snapshot URLs on the main thread — DataTable is not thread-safe.
-                var queueUrls = new StoredProcedure()
-                    .Select(Constants.Constants.discordBotConnStr, "GetMusicQueue",
-                    [
-                        new SqlParameter("@ServerID", guild.Id.ToString())
-                    ])
-                    .Rows.Cast<DataRow>()
-                    .Select(r => r["URL"].ToString()!)
-                    .Where(url => !string.IsNullOrWhiteSpace(url))
-                    .ToList();
+                // Snapshot URLs before the Task.Run closure — its own DbContext scope
+                // must be short-lived and can't outlive this loop iteration.
+                List<string> queueUrls;
+                using (var scope = _services.CreateScope())
+                {
+                    var scopedDb = scope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+                    long guildIdLong = (long)guild.Id;
+                    queueUrls = await scopedDb.MusicQueues.AsNoTracking()
+                        .Where(m => m.ServerUid == guildIdLong)
+                        .OrderBy(m => m.MusicQueueId)
+                        .Select(m => m.Url)
+                        .ToListAsync();
+                    queueUrls = queueUrls.Where(url => !string.IsNullOrWhiteSpace(url)).ToList();
+                }
 
                 var capturedGuild = guild;
                 var capturedVoice = voice;
@@ -196,20 +209,27 @@ public sealed class InteractionHandlerService
                                     new CustomPlayerOptions
                                     {
                                         SelfMute = true,
-                                        TextChannel = capturedText
+                                        TextChannel = capturedText,
+                                        Services = _services
                                     }));
 
                         await logging.DebugAsync(
                             $"Player restored in {capturedGuild.Name} / {capturedVoice.Name}");
 
-                        var volDt = new StoredProcedure().Select(
-                            Constants.Constants.discordBotConnStr, "GetVolume",
-                            [new SqlParameter("@ServerUID", (long)capturedGuild.Id)]);
-
-                        if (volDt.Rows.Count > 0 &&
-                            int.TryParse(volDt.Rows[0]["Volume"]?.ToString(), out int savedVol))
+                        int? savedVol;
+                        using (var innerScope = _services.CreateScope())
                         {
-                            await player.SetVolumeAsync(savedVol / 100f);
+                            var innerDb = innerScope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+                            long guildIdLong = (long)capturedGuild.Id;
+                            savedVol = await innerDb.Servers.AsNoTracking()
+                                .Where(s => s.ServerUid == guildIdLong)
+                                .Select(s => (int?)s.Volume)
+                                .FirstOrDefaultAsync();
+                        }
+
+                        if (savedVol is not null)
+                        {
+                            await player.SetVolumeAsync(savedVol.Value / 100f);
                             await logging.DebugAsync($"Volume restored to {savedVol}% for {capturedGuild.Name}");
                         }
 
@@ -269,6 +289,15 @@ public sealed class InteractionHandlerService
     /// </summary>
     private async Task HandleInteractionAsync(SocketInteraction interaction)
     {
+        // One DI scope per interaction: any Scoped service a module asks for (e.g. the
+        // EF Core DbContext) gets a fresh instance for just this command, disposed when
+        // the scope ends here — not shared across interactions the way resolving from the
+        // root _services provider would (root-resolved Scoped services live for the whole
+        // process, effectively acting like singletons and accumulating stale tracked state).
+        using var scope = _services.CreateScope();
+
+        var logging = scope.ServiceProvider.GetService<LoggingService>();
+
         try
         {
             var context = new SocketInteractionContext(_client, interaction);
@@ -276,42 +305,71 @@ public sealed class InteractionHandlerService
             if (interaction.Type is InteractionType.ApplicationCommand &&
                 context.Interaction is SocketSlashCommand cmd)
             {
-                var logging = _services.GetService<LoggingService>();
+                // Previously a synchronous, blocking ADO.NET call against SQL Server, run inline
+                // here before the command was even dispatched — any latency delayed every
+                // command's own DeferAsync() past Discord's 3-second ack window. Backgrounded via
+                // Task.Run and, now that SQL Server is fully retired, writing to Postgres via EF
+                // instead. Needs its own fresh scope/DbContext here (unlike LoggingService, which
+                // is a singleton) since `scope` created above is disposed once this method returns,
+                // likely before this backgrounded task finishes.
                 string fullName = GetFullCommandName(cmd);
-                try
-                {
-                    var guildOrChannel = context.Guild is not null
-                        ? context.Guild.Id.ToString()
-                        : context.Channel.Id.ToString();
+                string auditUserId = context.User.Id.ToString();
+                string guildOrChannel = context.Guild is not null
+                    ? context.Guild.Id.ToString()
+                    : context.Channel.Id.ToString();
 
-                    new Audit().InsertAudit(
-                        fullName,
-                        context.User.Id.ToString(),
-                        Constants.Constants.discordBotConnStr,
-                        guildOrChannel);
-
-                    if (logging is not null)
-                        _ = logging.InfoAsync($"[Audit] OK — '{fullName}' by {context.User.Id}");
-                }
-                catch (Exception auditEx)
+                _ = Task.Run(async () =>
                 {
-                    if (logging is not null)
-                        _ = logging.InfoAsync($"[Audit] FAILED — '{fullName}' by {context.User.Id}: {auditEx.GetType().Name}: {auditEx.Message}");
-                }
+                    try
+                    {
+                        using var auditScope = _services.CreateScope();
+                        var auditDb = auditScope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+                        await AuditService.InsertAuditAsync(auditDb, fullName, auditUserId, guildOrChannel);
+
+                        if (logging is not null)
+                            _ = logging.InfoAsync($"[Audit] OK — '{fullName}' by {auditUserId}");
+                    }
+                    catch (Exception auditEx)
+                    {
+                        if (logging is not null)
+                            _ = logging.InfoAsync($"[Audit] FAILED — '{fullName}' by {auditUserId}: {auditEx.GetType().Name}: {auditEx.Message}");
+                    }
+                });
             }
 
-            var result = await _handler.ExecuteCommandAsync(context, _services);
+            // DIAGNOSTIC: bracketing ExecuteCommandAsync to pin down whether dispatch is
+            // hanging inside Discord.Net's own module resolution / the command's DeferAsync
+            // HTTP call, vs. returning (successfully or not) and something after this point
+            // silently failing. Remove once the "did not respond" root cause is found.
+            if (logging is not null)
+                _ = logging.DebugAsync($"[Dispatch] BEGIN ExecuteCommandAsync for {interaction.Type} from {interaction.User.Id}");
+
+            var result = await _handler.ExecuteCommandAsync(context, scope.ServiceProvider);
+
+            if (logging is not null)
+                _ = logging.DebugAsync($"[Dispatch] END ExecuteCommandAsync — IsSuccess={result.IsSuccess} Error={result.Error} Reason={(result.IsSuccess ? "" : result.ErrorReason)}");
 
             if (!result.IsSuccess)
                 await SendErrorAsync(interaction, result);
         }
-        catch
+        catch (Exception ex)
         {
+            // BUG FIX: this was a bare `catch { }` that swallowed every exception from command
+            // execution with zero logging — impossible to diagnose "did not respond" reports,
+            // since nothing but the (now-backgrounded, unrelated) [Audit] line ever printed.
+            if (logging is not null)
+                _ = logging.ErrorAsync(ex);
+            else
+                Console.WriteLine(ex);
+
             if (interaction.Type is InteractionType.ApplicationCommand)
             {
-                await interaction
-                    .GetOriginalResponseAsync()
-                    .ContinueWith(t => t.Result.DeleteAsync());
+                try
+                {
+                    var original = await interaction.GetOriginalResponseAsync();
+                    await original.DeleteAsync();
+                }
+                catch { /* no original response existed (e.g. DeferAsync itself never ran) — nothing to clean up */ }
             }
         }
     }

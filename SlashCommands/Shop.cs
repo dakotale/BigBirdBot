@@ -2,10 +2,12 @@
 using Discord.Interactions;
 using Discord.WebSocket;
 using DiscordBot.Constants;
+using DiscordBot.Data;
 using DiscordBot.Helper;
-using System.Data;
-using Microsoft.Data.SqlClient;
+using DiscordBot.Models.Generated;
+using Microsoft.EntityFrameworkCore;
 using System.Text;
+using PetEntity = DiscordBot.Models.Generated.Pet;
 
 namespace DiscordBot.SlashCommands;
 
@@ -19,11 +21,9 @@ namespace DiscordBot.SlashCommands;
 ///   /shop use   &lt;item&gt;       — consume an item from inventory
 /// </summary>
 [Group("shop", "Browse the shop, buy items, and use your inventory.")]
-public class Shop : InteractionModuleBase<SocketInteractionContext>
+public class Shop(DiscordbotContext db) : InteractionModuleBase<SocketInteractionContext>
 {
-    private readonly StoredProcedure _sp = new();
     private readonly EmbedHelper _embed = new();
-    private readonly Economy _eco = new();
 
     private string Username => Context.User.Username;
     private string AvatarUrl => Context.User.GetAvatarUrl();
@@ -129,7 +129,7 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        decimal balance = _eco.GetBalance(UserId, ServerId);
+        decimal balance = await CreditService.GetBalanceAsync(db, UserId, ServerId);
 
         decimal totalCost = item.Price * quantity;
 
@@ -142,15 +142,14 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        decimal newBalance = _eco.DeductCredits(UserId, ServerId, totalCost, "shop_purchase");
+        decimal newBalance = await CreditService.DeductCreditsAsync(db, UserId, ServerId, totalCost, "shop_purchase");
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "AddToInventory",
-        [
-            new SqlParameter("@UserID",   UserId),
-            new SqlParameter("@ServerID", ServerId),
-            new SqlParameter("@ItemKey",  item.Key),
-            new SqlParameter("@Quantity", quantity)
-        ]);
+        var invRow = await db.UserInventories.FirstOrDefaultAsync(i => i.UserId == UserId && i.ServerId == ServerId && i.ItemKey == item.Key);
+        if (invRow is not null)
+            invRow.Quantity += quantity;
+        else
+            db.UserInventories.Add(new UserInventory { UserId = UserId, ServerId = ServerId, ItemKey = item.Key, Quantity = quantity });
+        await db.SaveChangesAsync();
 
         string qtyLabel = quantity > 1 ? $"{quantity}×  " : "";
         var embed = _embed.BuildSimpleEmbed(
@@ -172,17 +171,17 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
     {
         await DeferAsync();
 
-        var invDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetUserInventory",
-        [
-            new SqlParameter("@UserID",   UserId),
-            new SqlParameter("@ServerID", ServerId)
-        ]);
+        var inv = await db.UserInventories.AsNoTracking()
+            .Where(i => i.UserId == UserId && i.ServerId == ServerId && i.Quantity > 0)
+            .OrderBy(i => i.AcquiredAt)
+            .ToListAsync();
 
-        var effDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetAllActiveEffects",
-        [
-            new SqlParameter("@UserID",   UserId),
-            new SqlParameter("@ServerID", ServerId)
-        ]);
+        var now = DateTime.UtcNow;
+        var effects = await db.UserActiveEffects.AsNoTracking()
+            .Where(e => e.UserId == UserId && e.ServerId == ServerId && e.StackCount > 0 &&
+                        (e.ExpiresAt == null || e.ExpiresAt > now))
+            .OrderBy(e => e.CreatedAt)
+            .ToListAsync();
 
         var embed = new EmbedBuilder()
             .WithTitle($"🎒  {Username}'s Inventory")
@@ -190,7 +189,7 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
             .WithFooter($"Use /shop use <item> to use an item", AvatarUrl)
             .WithCurrentTimestamp();
 
-        if (invDt.Rows.Count == 0 && effDt.Rows.Count == 0)
+        if (inv.Count == 0 && effects.Count == 0)
         {
             embed.WithDescription("Your inventory is empty. Use `/shop browse` to find something!");
             await FollowupAsync(embed: embed.Build());
@@ -198,41 +197,36 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
         }
 
         // Owned items
-        if (invDt.Rows.Count > 0)
+        if (inv.Count > 0)
         {
             var sb = new StringBuilder();
-            foreach (DataRow row in invDt.Rows)
+            foreach (var row in inv)
             {
-                string key = row["ItemKey"].ToString()!;
-                int qty = int.Parse(row["Quantity"].ToString()!);
-                var meta = ShopHelper.Find(key);
-                string name = meta is not null ? $"{meta.Emoji} {meta.Name}" : key;
-                sb.AppendLine($"{name} — **×{qty}**");
+                var meta = ShopHelper.Find(row.ItemKey);
+                string name = meta is not null ? $"{meta.Emoji} {meta.Name}" : row.ItemKey;
+                sb.AppendLine($"{name} — **×{row.Quantity}**");
             }
             embed.AddField("🎒  Items", sb.ToString(), inline: false);
         }
 
         // Active effects
-        if (effDt.Rows.Count > 0)
+        if (effects.Count > 0)
         {
             var sb = new StringBuilder();
-            foreach (DataRow row in effDt.Rows)
+            foreach (var row in effects)
             {
-                string key = row["EffectKey"].ToString()!;
-                int stack = int.Parse(row["StackCount"].ToString()!);
-                var meta = ShopHelper.Find(key);
-                string name = meta is not null ? $"{meta.Emoji} {meta.Name}" : key;
+                var meta = ShopHelper.Find(row.EffectKey);
+                string name = meta is not null ? $"{meta.Emoji} {meta.Name}" : row.EffectKey;
                 string expiry = "";
 
-                if (row["ExpiresAt"] != DBNull.Value &&
-                    DateTime.TryParse(row["ExpiresAt"].ToString(), out var exp))
+                if (row.ExpiresAt is { } exp)
                 {
                     long unix = new DateTimeOffset(exp, TimeSpan.Zero).ToUnixTimeSeconds();
                     expiry = $" — expires <t:{unix}:R>";
                 }
-                else if (stack > 1)
+                else if (row.StackCount > 1)
                 {
-                    expiry = $" — **{stack} uses left**";
+                    expiry = $" — **{row.StackCount} uses left**";
                 }
 
                 sb.AppendLine($"{name}{expiry}");
@@ -263,7 +257,7 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
         }
 
         // Verify ownership before dispatching
-        if (!ShopHelper.HasItem(UserId, ServerId, item.Key))
+        if (!await ShopHelper.HasItemAsync(db, UserId, ServerId, item.Key))
         {
             await ErrorAsync($"You don't own **{item.Name}**. Buy it first with `/shop buy {item.Key}`.");
             return;
@@ -380,38 +374,27 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
     private async Task UsePetStat(ShopHelper.ShopItem item,
         int hunger = 0, int happiness = 0, int energy = 0, int hygiene = 0)
     {
-        var (row, error) = GetActivePet();
-        if (row is null) { await ErrorAsync(error!); return; }
+        var (pet, error) = await GetActivePetAsync();
+        if (pet is null) { await ErrorAsync(error!); return; }
 
-        if (!ShopHelper.ConsumeItem(UserId, ServerId, item.Key))
+        if (!await ShopHelper.ConsumeItemAsync(db, UserId, ServerId, item.Key))
         {
             await ErrorAsync("Could not consume item — it may have already been used.");
             return;
         }
 
-        int petId = int.Parse(row["PetID"].ToString()!);
-        int newHunger = Math.Min(100, int.Parse(row["Hunger"].ToString()!) + hunger);
-        int newHappiness = Math.Min(100, int.Parse(row["Happiness"].ToString()!) + happiness);
-        int newEnergy = Math.Min(100, int.Parse(row["Energy"].ToString()!) + energy);
-        int newHygiene = Math.Min(100, int.Parse(row["Hygiene"].ToString()!) + hygiene);
-        int xp = int.Parse(row["XP"].ToString()!);
-        string petName = row["Name"].ToString()!;
+        int newHunger = Math.Min(100, pet.Hunger + hunger);
+        int newHappiness = Math.Min(100, pet.Happiness + happiness);
+        int newEnergy = Math.Min(100, pet.Energy + energy);
+        int newHygiene = Math.Min(100, pet.Hygiene + hygiene);
+        string petName = pet.Name;
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "UpdatePetStats",
-        [
-            new SqlParameter("@PetID",         petId),
-            new SqlParameter("@Hunger",        newHunger),
-            new SqlParameter("@Happiness",     newHappiness),
-            new SqlParameter("@Energy",        newEnergy),
-            new SqlParameter("@Hygiene",       newHygiene),
-            new SqlParameter("@XP",            xp),
-            new SqlParameter("@IsHibernating", PetHelper.ShouldHibernate(newHunger, newHappiness, newEnergy)),
-            new SqlParameter("@LastFed",       DBNull.Value),
-            new SqlParameter("@LastPetted",    DBNull.Value),
-            new SqlParameter("@LastGroomed",   DBNull.Value),
-            new SqlParameter("@LastPlayed",    DBNull.Value),
-            new SqlParameter("@LastSlept",     DBNull.Value)
-        ]);
+        pet.Hunger = newHunger;
+        pet.Happiness = newHappiness;
+        pet.Energy = newEnergy;
+        pet.Hygiene = newHygiene;
+        pet.IsHibernating = PetHelper.ShouldHibernate(newHunger, newHappiness, newEnergy);
+        await db.SaveChangesAsync();
 
         var sb = new StringBuilder();
         if (hunger != 0) sb.AppendLine($"🍽️ Hunger    {PetHelper.StatBar(newHunger)}    **{newHunger}/100**");
@@ -427,34 +410,23 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
     /// <summary>Full Restore — maxes all stats on the active pet.</summary>
     private async Task UseFullRestore(ShopHelper.ShopItem item)
     {
-        var (row, error) = GetActivePet();
-        if (row is null) { await ErrorAsync(error!); return; }
+        var (pet, error) = await GetActivePetAsync();
+        if (pet is null) { await ErrorAsync(error!); return; }
 
-        if (!ShopHelper.ConsumeItem(UserId, ServerId, item.Key))
+        if (!await ShopHelper.ConsumeItemAsync(db, UserId, ServerId, item.Key))
         {
             await ErrorAsync("Could not consume item.");
             return;
         }
 
-        int petId = int.Parse(row["PetID"].ToString()!);
-        int xp = int.Parse(row["XP"].ToString()!);
-        string name = row["Name"].ToString()!;
+        string name = pet.Name;
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "UpdatePetStats",
-        [
-            new SqlParameter("@PetID",         petId),
-            new SqlParameter("@Hunger",        100),
-            new SqlParameter("@Happiness",     100),
-            new SqlParameter("@Energy",        100),
-            new SqlParameter("@Hygiene",       100),
-            new SqlParameter("@XP",            xp),
-            new SqlParameter("@IsHibernating", false),
-            new SqlParameter("@LastFed",       DBNull.Value),
-            new SqlParameter("@LastPetted",    DBNull.Value),
-            new SqlParameter("@LastGroomed",   DBNull.Value),
-            new SqlParameter("@LastPlayed",    DBNull.Value),
-            new SqlParameter("@LastSlept",     DBNull.Value)
-        ]);
+        pet.Hunger = 100;
+        pet.Happiness = 100;
+        pet.Energy = 100;
+        pet.Hygiene = 100;
+        pet.IsHibernating = false;
+        await db.SaveChangesAsync();
 
         await FollowupAsync(embed: _embed.BuildSimpleEmbed(
             $"💊  {name} is fully restored!",
@@ -470,41 +442,29 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
     /// <summary>Revive — wakes a hibernating pet and restores all stats to 50.</summary>
     private async Task UseRevive(ShopHelper.ShopItem item)
     {
-        var (row, error) = GetActivePet();
-        if (row is null) { await ErrorAsync(error!); return; }
+        var (pet, error) = await GetActivePetAsync();
+        if (pet is null) { await ErrorAsync(error!); return; }
 
-        bool hibernating = bool.TryParse(row["IsHibernating"].ToString(), out bool h) && h;
-        if (!hibernating)
+        if (!pet.IsHibernating)
         {
             await ErrorAsync("Your pet isn't hibernating — a Revive Potion can only be used on a hibernating pet.");
             return;
         }
 
-        if (!ShopHelper.ConsumeItem(UserId, ServerId, item.Key))
+        if (!await ShopHelper.ConsumeItemAsync(db, UserId, ServerId, item.Key))
         {
             await ErrorAsync("Could not consume item.");
             return;
         }
 
-        int petId = int.Parse(row["PetID"].ToString()!);
-        int xp = int.Parse(row["XP"].ToString()!);
-        string name = row["Name"].ToString()!;
+        string name = pet.Name;
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "UpdatePetStats",
-        [
-            new SqlParameter("@PetID",         petId),
-            new SqlParameter("@Hunger",        50),
-            new SqlParameter("@Happiness",     50),
-            new SqlParameter("@Energy",        50),
-            new SqlParameter("@Hygiene",       50),
-            new SqlParameter("@XP",            xp),
-            new SqlParameter("@IsHibernating", false),
-            new SqlParameter("@LastFed",       DBNull.Value),
-            new SqlParameter("@LastPetted",    DBNull.Value),
-            new SqlParameter("@LastGroomed",   DBNull.Value),
-            new SqlParameter("@LastPlayed",    DBNull.Value),
-            new SqlParameter("@LastSlept",     DBNull.Value)
-        ]);
+        pet.Hunger = 50;
+        pet.Happiness = 50;
+        pet.Energy = 50;
+        pet.Hygiene = 50;
+        pet.IsHibernating = false;
+        await db.SaveChangesAsync();
 
         await FollowupAsync(embed: _embed.BuildSimpleEmbed(
             $"💫  {name} has been revived!",
@@ -520,25 +480,30 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
     /// <summary>Cosmetics — applies a title or aura to the user's active pet.</summary>
     private async Task UseCosmetic(ShopHelper.ShopItem item)
     {
-        var (row, error) = GetActivePet();
-        if (row is null) { await ErrorAsync(error!); return; }
+        var (pet, error) = await GetActivePetAsync();
+        if (pet is null) { await ErrorAsync(error!); return; }
 
-        if (!ShopHelper.ConsumeItem(UserId, ServerId, item.Key))
+        if (!await ShopHelper.ConsumeItemAsync(db, UserId, ServerId, item.Key))
         {
             await ErrorAsync("Could not consume item.");
             return;
         }
 
-        int petId = int.Parse(row["PetID"].ToString()!);
-        string petName = row["Name"].ToString()!;
+        int petId = pet.PetId;
+        string petName = pet.Name;
         string cosType = item.CosmeticType!;
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "SetPetCosmetic",
-        [
-            new SqlParameter("@PetID",        petId),
-            new SqlParameter("@CosmeticType", cosType),
-            new SqlParameter("@CosmeticKey",  item.Key)
-        ]);
+        var cosRow = await db.PetCosmetics.FirstOrDefaultAsync(c => c.PetId == petId && c.CosmeticType == cosType);
+        if (cosRow is not null)
+        {
+            cosRow.CosmeticKey = item.Key;
+            cosRow.AppliedAt = DateTime.UtcNow;
+        }
+        else
+        {
+            db.PetCosmetics.Add(new PetCosmetic { PetId = petId, CosmeticType = cosType, CosmeticKey = item.Key });
+        }
+        await db.SaveChangesAsync();
 
         string slotLabel = cosType == "title" ? "Title" : "Aura";
 
@@ -557,18 +522,18 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
     private async Task UseActiveEffect(ShopHelper.ShopItem item, DateTime? expiresAt, int stackCount)
     {
         // Check if already active — refuse stacking timed effects, allow stack increment for work_boost
-        if (ShopHelper.HasActiveEffect(UserId, ServerId, item.Key))
+        if (await ShopHelper.HasActiveEffectAsync(db, UserId, ServerId, item.Key))
         {
             if (item.Key == "work_boost")
             {
                 // Stack on top — increment by StackCount
-                int current = ShopHelper.GetEffectStack(UserId, ServerId, item.Key);
-                if (!ShopHelper.ConsumeItem(UserId, ServerId, item.Key))
+                int current = await ShopHelper.GetEffectStackAsync(db, UserId, ServerId, item.Key);
+                if (!await ShopHelper.ConsumeItemAsync(db, UserId, ServerId, item.Key))
                 {
                     await ErrorAsync("Could not consume item.");
                     return;
                 }
-                ShopHelper.SetActiveEffect(UserId, ServerId, item.Key, expiresAt, current + stackCount);
+                await ShopHelper.SetActiveEffectAsync(db, UserId, ServerId, item.Key, expiresAt, current + stackCount);
                 await FollowupAsync(embed: EffectEmbed(item, $"Stacked! You now have **{current + stackCount}** work boost uses remaining.").Build());
                 return;
             }
@@ -576,23 +541,23 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
             string expNote = item.DurationMinutes.HasValue
                 ? " — it will replace the current timer"
                 : " — it will refresh it";
-            if (!ShopHelper.ConsumeItem(UserId, ServerId, item.Key))
+            if (!await ShopHelper.ConsumeItemAsync(db, UserId, ServerId, item.Key))
             {
                 await ErrorAsync("Could not consume item.");
                 return;
             }
-            ShopHelper.SetActiveEffect(UserId, ServerId, item.Key, expiresAt, stackCount);
+            await ShopHelper.SetActiveEffectAsync(db, UserId, ServerId, item.Key, expiresAt, stackCount);
             await FollowupAsync(embed: EffectEmbed(item, $"Effect refreshed{expNote}.").Build());
             return;
         }
 
-        if (!ShopHelper.ConsumeItem(UserId, ServerId, item.Key))
+        if (!await ShopHelper.ConsumeItemAsync(db, UserId, ServerId, item.Key))
         {
             await ErrorAsync("Could not consume item.");
             return;
         }
 
-        ShopHelper.SetActiveEffect(UserId, ServerId, item.Key, expiresAt, stackCount);
+        await ShopHelper.SetActiveEffectAsync(db, UserId, ServerId, item.Key, expiresAt, stackCount);
 
         string durationNote = expiresAt.HasValue
             ? $"Active for **{item.DurationMinutes} minutes**."
@@ -606,7 +571,7 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
     /// <summary>Cooldown Eraser — clears all gambling cooldowns immediately.</summary>
     private async Task UseCooldownReset(ShopHelper.ShopItem item)
     {
-        if (!ShopHelper.ConsumeItem(UserId, ServerId, item.Key))
+        if (!await ShopHelper.ConsumeItemAsync(db, UserId, ServerId, item.Key))
         {
             await ErrorAsync("Could not consume item.");
             return;
@@ -630,7 +595,7 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
     /// </summary>
     private async Task UseImpregnator(ShopHelper.ShopItem item)
     {
-        if (!ShopHelper.ConsumeItem(UserId, ServerId, item.Key))
+        if (!await ShopHelper.ConsumeItemAsync(db, UserId, ServerId, item.Key))
         {
             await ErrorAsync("Could not consume item.");
             return;
@@ -639,12 +604,8 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
         DateTime birthAt = DateTime.UtcNow.AddMonths(9);
 
         // Persist event
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "CreatePregnancy",
-        [
-            new SqlParameter("@UserID",   UserId),
-            new SqlParameter("@ServerID", ServerId),
-            new SqlParameter("@BirthAt",  birthAt)
-        ]);
+        db.PregnancyEvents.Add(new PregnancyEvent { UserId = UserId, ServerId = ServerId, BirthAt = birthAt });
+        await db.SaveChangesAsync();
 
         long birthUnix = new DateTimeOffset(birthAt, TimeSpan.Zero).ToUnixTimeSeconds();
 
@@ -689,28 +650,32 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
     /// <summary>Destroy Baby easter egg — clears the user's active pregnancy against the bot owner, if one exists.</summary>
     private async Task RemoveImpregnator(ShopHelper.ShopItem item)
     {
-        if (!ShopHelper.ConsumeItem(UserId, ServerId, item.Key))
+        if (!await ShopHelper.ConsumeItemAsync(db, UserId, ServerId, item.Key))
         {
             await ErrorAsync("Could not consume item.");
             return;
         }
-        DataTable dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetActivePregnancy",
-        [
-            new SqlParameter("@UserID",   UserId),
-            new SqlParameter("@ServerID", ServerId)
-        ]);
 
-        if (dt.Rows.Count == 0)
+        bool hasActive = await db.PregnancyEvents.AnyAsync(p => p.UserId == UserId && p.ServerId == ServerId && !p.IsBorn);
+        if (!hasActive)
         {
             await ErrorAsync("You don't have an active pregnancy to clear.");
             return;
         }
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "ClearPregnancy",
-        [
-            new SqlParameter("@UserID",   UserId),
-            new SqlParameter("@ServerID", ServerId)
-        ]);
+        // Source's ClearPregnancy has no IsBorn filter and no ORDER BY — picks the row SQL
+        // Server's default scan order returns first, which for an unindexed lookup on an
+        // identity-keyed table is the oldest row. Replicated here as OrderBy(Id).
+        var pregnancy = await db.PregnancyEvents
+            .Where(p => p.UserId == UserId && p.ServerId == ServerId)
+            .OrderBy(p => p.Id)
+            .FirstOrDefaultAsync();
+        if (pregnancy is not null)
+            db.PregnancyEvents.Remove(pregnancy);
+
+        await db.Credits.Where(c => c.UserId == UserId && c.ServerId == ServerId)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.Balance, 0m));
+        await db.SaveChangesAsync();
 
         await FollowupAsync(embed: _embed.BuildSimpleEmbed(
             "🍼  Baby Destroyed",
@@ -738,21 +703,21 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
     private async Task UseGoldenTicket(ShopHelper.ShopItem item)
     {
         // Don't allow stacking GT and GT-II
-        if (ShopHelper.HasActiveEffect(UserId, ServerId, "golden_ticket") ||
-            ShopHelper.HasActiveEffect(UserId, ServerId, "golden_ticket_ii"))
+        if (await ShopHelper.HasActiveEffectAsync(db, UserId, ServerId, "golden_ticket") ||
+            await ShopHelper.HasActiveEffectAsync(db, UserId, ServerId, "golden_ticket_ii"))
         {
             await ErrorAsync("A Golden Ticket effect is already active. Wait for it to expire before using another.");
             return;
         }
 
-        if (!ShopHelper.ConsumeItem(UserId, ServerId, item.Key))
+        if (!await ShopHelper.ConsumeItemAsync(db, UserId, ServerId, item.Key))
         {
             await ErrorAsync("Could not consume item.");
             return;
         }
 
         DateTime expiresAt = DateTime.UtcNow.AddMinutes(item.DurationMinutes!.Value);
-        ShopHelper.SetActiveEffect(UserId, ServerId, item.Key, expiresAt, 1);
+        await ShopHelper.SetActiveEffectAsync(db, UserId, ServerId, item.Key, expiresAt, 1);
 
         string multi = item.Key == "golden_ticket_ii" ? "3×" : "2×";
         int hours = item.DurationMinutes!.Value / 60;
@@ -768,14 +733,14 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
     /// <summary>Interest Boost — flat 250M credit grant.</summary>
     private async Task UseInterestBoost(ShopHelper.ShopItem item)
     {
-        if (!ShopHelper.ConsumeItem(UserId, ServerId, item.Key))
+        if (!await ShopHelper.ConsumeItemAsync(db, UserId, ServerId, item.Key))
         {
             await ErrorAsync("Could not consume item.");
             return;
         }
 
         decimal payout = 250_000_000m;
-        decimal newBalance = _eco.AddCredits(UserId, ServerId, payout, "interest_boost");
+        decimal newBalance = await CreditService.AddCreditsAsync(db, UserId, ServerId, payout, "interest_boost");
 
         await FollowupAsync(embed: _embed.BuildSimpleEmbed(
             $"{item.Emoji}  Interest Paid!",
@@ -789,13 +754,13 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
     {
         // 48-hour cooldown check
         string cooldownKey = $"bank_heist:{UserId}:{ServerId}";
-        if (ShopHelper.HasActiveEffect(UserId, ServerId, cooldownKey))
+        if (await ShopHelper.HasActiveEffectAsync(db, UserId, ServerId, cooldownKey))
         {
             await ErrorAsync("You're on a 48-hour cooldown from your last heist. Lay low for a while.");
             return;
         }
 
-        if (!ShopHelper.ConsumeItem(UserId, ServerId, item.Key))
+        if (!await ShopHelper.ConsumeItemAsync(db, UserId, ServerId, item.Key))
         {
             await ErrorAsync("Could not consume item.");
             return;
@@ -804,7 +769,7 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
         // 30% fail chance
         if (Random.Shared.NextDouble() < 0.30)
         {
-            ShopHelper.SetActiveEffect(UserId, ServerId, cooldownKey,
+            await ShopHelper.SetActiveEffectAsync(db, UserId, ServerId, cooldownKey,
                 DateTime.UtcNow.AddHours(48), 1);
             await FollowupAsync(embed: _embed.BuildSimpleEmbed(
                 $"{item.Emoji}  Heist Failed!",
@@ -813,13 +778,21 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        // Pick a random other user from the leaderboard
-        var lbDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetCreditLeaderboard",
-            [new SqlParameter("@ServerID", ServerId)]);
-
-        var targets = lbDt.Rows.Cast<System.Data.DataRow>()
-            .Where(r => r["UserID"]?.ToString() != UserId)
-            .ToList();
+        // Pick a random other user from the leaderboard (top 20 by balance, matching
+        // GetCreditLeaderboard's TOP 20 / LEFT JOIN Users pattern used elsewhere)
+        long? serverIdLong = long.TryParse(ServerId, out long sid) ? sid : null;
+        var targets = await (
+            from c in db.Credits.AsNoTracking()
+            where c.ServerId == ServerId && c.UserId != UserId
+            orderby c.Balance descending
+            select new
+            {
+                c.UserId,
+                c.Balance,
+                Username = db.Users.Where(u => u.UserId == c.UserId && u.ServerUid == serverIdLong)
+                    .Select(u => u.Username).FirstOrDefault()
+            }
+        ).Take(20).ToListAsync();
 
         if (targets.Count == 0)
         {
@@ -828,9 +801,9 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
         }
 
         var target = targets[Random.Shared.Next(targets.Count)];
-        string tId = target["UserID"].ToString()!;
-        string tName = target["Username"].ToString()!;
-        decimal tBal = decimal.Parse(target["Balance"].ToString()!);
+        string tId = target.UserId;
+        string tName = target.Username ?? $"User_{tId}";
+        decimal tBal = target.Balance;
 
         double pct = 0.01 + Random.Shared.NextDouble() * 0.04; // 1–5%
         decimal stolen = Math.Floor(tBal * (decimal)pct);
@@ -841,10 +814,10 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        _eco.DeductCredits(tId, ServerId, stolen, "bank_heist_victim");
-        decimal newBalance = _eco.AddCredits(UserId, ServerId, stolen, "bank_heist_win");
+        await CreditService.DeductCreditsAsync(db, tId, ServerId, stolen, "bank_heist_victim");
+        decimal newBalance = await CreditService.AddCreditsAsync(db, UserId, ServerId, stolen, "bank_heist_win");
 
-        ShopHelper.SetActiveEffect(UserId, ServerId, cooldownKey,
+        await ShopHelper.SetActiveEffectAsync(db, UserId, ServerId, cooldownKey,
             DateTime.UtcNow.AddHours(48), 1);
 
         await FollowupAsync(embed: _embed.BuildSimpleEmbed(
@@ -858,27 +831,21 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
     /// <summary>Market Crash — drops all stock prices 20–40%.</summary>
     private async Task UseMarketCrash(ShopHelper.ShopItem item)
     {
-        if (!ShopHelper.ConsumeItem(UserId, ServerId, item.Key))
+        if (!await ShopHelper.ConsumeItemAsync(db, UserId, ServerId, item.Key))
         {
             await ErrorAsync("Could not consume item.");
             return;
         }
 
-        var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetAllStocks", []);
+        var stocks = await db.Stocks.AsNoTracking().Select(s => new { s.Ticker, s.Price }).ToListAsync();
         int count = 0;
 
-        foreach (System.Data.DataRow row in dt.Rows)
+        foreach (var row in stocks)
         {
-            string ticker = row["Ticker"].ToString()!;
-            decimal price = decimal.Parse(row["Price"].ToString()!);
             double dropPct = 0.20 + Random.Shared.NextDouble() * 0.20; // 20–40%
-            decimal newPrice = Math.Max(1m, Math.Floor(price * (decimal)(1.0 - dropPct)));
+            decimal newPrice = Math.Max(1m, Math.Floor(row.Price * (decimal)(1.0 - dropPct)));
 
-            _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "ApplyStockTick",
-            [
-                new SqlParameter("@Ticker",   ticker),
-                new SqlParameter("@NewPrice", newPrice)
-            ]);
+            await StockService.ApplyTickAsync(db, row.Ticker, newPrice);
             count++;
         }
 
@@ -886,13 +853,16 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
         try
         {
             var guild = Context.Guild;
-            var serverDetails = ServerHelper.GetServerInfo(guild.Id);
-            var channel = guild.GetTextChannel(UInt64.Parse(serverDetails.DefaultChannelID));
-            await channel.SendMessageAsync(embed: _embed.BuildSimpleEmbed(
-                    "📉  Market Crash!",
-                    $"{Context.User.Mention} triggered a **Market Crash**!\n\n" +
-                    $"All {count} stocks have dropped **20–40%**. Check `/stock market` for current prices.",
-                    ColourError).Build());
+            var serverDetails = await ServerHelper.GetServerInfoAsync(db, guild.Id);
+            if (serverDetails is not null)
+            {
+                var channel = guild.GetTextChannel(UInt64.Parse(serverDetails.DefaultChannelID));
+                await channel.SendMessageAsync(embed: _embed.BuildSimpleEmbed(
+                        "📉  Market Crash!",
+                        $"{Context.User.Mention} triggered a **Market Crash**!\n\n" +
+                        $"All {count} stocks have dropped **20–40%**. Check `/stock market` for current prices.",
+                        ColourError).Build());
+            }
         }
         catch { }
 
@@ -905,7 +875,7 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
     /// <summary>Jackpot Seed — injects 100B into the passive jackpot pool.</summary>
     private async Task UseJackpotSeed(ShopHelper.ShopItem item)
     {
-        if (!ShopHelper.ConsumeItem(UserId, ServerId, item.Key))
+        if (!await ShopHelper.ConsumeItemAsync(db, UserId, ServerId, item.Key))
         {
             await ErrorAsync("Could not consume item.");
             return;
@@ -913,17 +883,9 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
 
         decimal seed = 100_000_000_000m;
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "FeedPassiveJackpot",
-        [
-            new SqlParameter("@ServerID", ServerId),
-            new SqlParameter("@Amount",   seed)
-        ]);
-
-        var potDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetPassiveJackpot",
-            [new SqlParameter("@ServerID", ServerId)]);
-        decimal newPool = potDt.Rows.Count > 0
-            ? decimal.Parse(potDt.Rows[0]["Pool"].ToString()!)
-            : seed;
+        long.TryParse(ServerId, out long jpServerId);
+        await JackpotService.FeedAsync(db, jpServerId, seed);
+        decimal newPool = await JackpotService.GetPoolAsync(db, jpServerId);
 
         await FollowupAsync(embed: _embed.BuildSimpleEmbed(
             $"{item.Emoji}  Jackpot Seeded!",
@@ -936,20 +898,19 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
     /// <summary>Prestige Reset — zeros LifetimeEarned and refunds 100B.</summary>
     private async Task UsePrestigeReset(ShopHelper.ShopItem item)
     {
-        if (!ShopHelper.ConsumeItem(UserId, ServerId, item.Key))
+        if (!await ShopHelper.ConsumeItemAsync(db, UserId, ServerId, item.Key))
         {
             await ErrorAsync("Could not consume item.");
             return;
         }
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "ResetLifetimeEarned",
-        [
-            new SqlParameter("@UserID",   UserId),
-            new SqlParameter("@ServerID", ServerId)
-        ]);
+        await db.Credits.Where(c => c.UserId == UserId && c.ServerId == ServerId)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(c => c.LifetimeEarned, 0m)
+                .SetProperty(c => c.DailyStreak, 0));
 
         decimal refund = 100_000_000_000m;
-        decimal newBalance = _eco.AddCredits(UserId, ServerId, refund, "prestige_reset_refund");
+        decimal newBalance = await CreditService.AddCreditsAsync(db, UserId, ServerId, refund, "prestige_reset_refund");
 
         await FollowupAsync(embed: _embed.BuildSimpleEmbed(
             $"{item.Emoji}  Prestige Reset!",
@@ -964,7 +925,7 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
     private async Task UseWealthFlex(ShopHelper.ShopItem item)
     {
         decimal burnAmount = 1_000_000_000_000m;
-        decimal balance = _eco.GetBalance(UserId, ServerId);
+        decimal balance = await CreditService.GetBalanceAsync(db, UserId, ServerId);
 
         if (balance < burnAmount)
         {
@@ -972,24 +933,27 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        if (!ShopHelper.ConsumeItem(UserId, ServerId, item.Key))
+        if (!await ShopHelper.ConsumeItemAsync(db, UserId, ServerId, item.Key))
         {
             await ErrorAsync("Could not consume item.");
             return;
         }
 
-        decimal newBalance = _eco.DeductCredits(UserId, ServerId, burnAmount, "wealth_flex_burn");
+        decimal newBalance = await CreditService.DeductCreditsAsync(db, UserId, ServerId, burnAmount, "wealth_flex_burn");
 
         try
         {
             var guild = Context.Guild;
-            var serverDetails = ServerHelper.GetServerInfo(guild.Id);
-            var channel = guild.GetTextChannel(UInt64.Parse(serverDetails.DefaultChannelID));
-            await channel.SendMessageAsync(embed: _embed.BuildSimpleEmbed(
-                    "💸  Wealth Flex!",
-                    $"{Context.User.Mention} just **burned {CreditHelper.Format(burnAmount)}** for absolutely no reason.\n\n" +
-                    $"*The ultimate flex. Absolutely nothing was gained.*",
-                    new Color(255, 215, 0)).Build());
+            var serverDetails = await ServerHelper.GetServerInfoAsync(db, guild.Id);
+            if (serverDetails is not null)
+            {
+                var channel = guild.GetTextChannel(UInt64.Parse(serverDetails.DefaultChannelID));
+                await channel.SendMessageAsync(embed: _embed.BuildSimpleEmbed(
+                        "💸  Wealth Flex!",
+                        $"{Context.User.Mention} just **burned {CreditHelper.Format(burnAmount)}** for absolutely no reason.\n\n" +
+                        $"*The ultimate flex. Absolutely nothing was gained.*",
+                        new Color(255, 215, 0)).Build());
+            }
         }
         catch { }
 
@@ -1004,25 +968,28 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
     /// <summary>Economy Nuke — halves every user's balance in the server.</summary>
     private async Task UseEconomyNuke(ShopHelper.ShopItem item)
     {
-        if (!ShopHelper.ConsumeItem(UserId, ServerId, item.Key))
+        if (!await ShopHelper.ConsumeItemAsync(db, UserId, ServerId, item.Key))
         {
             await ErrorAsync("Could not consume item.");
             return;
         }
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "HalveAllBalances",
-            [new SqlParameter("@ServerID", ServerId)]);
+        await db.Credits.Where(c => c.ServerId == ServerId)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.Balance, c => c.Balance / 2m));
 
         try
         {
             var guild = Context.Guild;
-            var serverDetails = ServerHelper.GetServerInfo(guild.Id);
-            var channel = guild.GetTextChannel(UInt64.Parse(serverDetails.DefaultChannelID));
-            await channel.SendMessageAsync(embed: _embed.BuildSimpleEmbed(
-                    "☢️  Economy Nuke!",
-                    $"{Context.User.Mention} detonated an **Economy Nuke**!\n\n" +
-                    $"**Every user's balance has been halved.** Check `/balance` to see the damage.",
-                    ColourError).Build());
+            var serverDetails = await ServerHelper.GetServerInfoAsync(db, guild.Id);
+            if (serverDetails is not null)
+            {
+                var channel = guild.GetTextChannel(UInt64.Parse(serverDetails.DefaultChannelID));
+                await channel.SendMessageAsync(embed: _embed.BuildSimpleEmbed(
+                        "☢️  Economy Nuke!",
+                        $"{Context.User.Mention} detonated an **Economy Nuke**!\n\n" +
+                        $"**Every user's balance has been halved.** Check `/balance` to see the damage.",
+                        ColourError).Build());
+            }
         }
         catch { }
 
@@ -1035,26 +1002,29 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
     /// <summary>Server Reset — zeros every user's balance.</summary>
     private async Task UseServerReset(ShopHelper.ShopItem item)
     {
-        if (!ShopHelper.ConsumeItem(UserId, ServerId, item.Key))
+        if (!await ShopHelper.ConsumeItemAsync(db, UserId, ServerId, item.Key))
         {
             await ErrorAsync("Could not consume item.");
             return;
         }
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "ZeroAllBalances",
-            [new SqlParameter("@ServerID", ServerId)]);
+        await db.Credits.Where(c => c.ServerId == ServerId)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.Balance, 0m));
 
         try
         {
             var guild = Context.Guild;
-            var serverDetails = ServerHelper.GetServerInfo(guild.Id);
-            var channel = guild.GetTextChannel(UInt64.Parse(serverDetails.DefaultChannelID));
-            await channel.SendMessageAsync(embed: _embed.BuildSimpleEmbed(
+            var serverDetails = await ServerHelper.GetServerInfoAsync(db, guild.Id);
+            if (serverDetails is not null)
+            {
+                var channel = guild.GetTextChannel(UInt64.Parse(serverDetails.DefaultChannelID));
+                await channel.SendMessageAsync(embed: _embed.BuildSimpleEmbed(
                     "💥  Server Economy Reset!",
                     $"{Context.User.Mention} used a **Server Economy Reset**.\n\n" +
                     $"**Every user's balance has been set to 0.** Prestige ranks are preserved.\n" +
                     $"*Time to start over.*",
                     ColourError).Build());
+            }
         }
         catch { }
 
@@ -1066,16 +1036,14 @@ public class Shop : InteractionModuleBase<SocketInteractionContext>
 
     // ── Pet helper (mirrors Pet.cs pattern) ──────────────────────────────────
 
-    /// <summary>Fetches the user's currently active pet row, or an error message if they have none.</summary>
-    private (DataRow? row, string? error) GetActivePet()
+    /// <summary>Fetches the user's currently active pet (tracked, so callers can mutate and save it), or an error message if they have none.</summary>
+    private async Task<(PetEntity? pet, string? error)> GetActivePetAsync()
     {
-        var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetActivePet",
-            [new SqlParameter("@UserID", UserId)]);
+        var pet = await db.Pets.FirstOrDefaultAsync(p => p.UserId == UserId && p.IsActive);
 
-        if (dt.Rows.Count == 0)
-            return (null, "You don't have an active pet. Use `/adopt` to get one or `/setactivepet` to switch.");
-
-        return (dt.Rows[0], null);
+        return pet is null
+            ? (null, "You don't have an active pet. Use `/adopt` to get one or `/setactivepet` to switch.")
+            : (pet, null);
     }
 }
 
@@ -1114,9 +1082,9 @@ public class ShopBuyAutocompleteHandler : AutocompleteHandler
 }
 
 /// <summary>Suggests only items the user currently owns.</summary>
-public class ShopUseAutocompleteHandler : AutocompleteHandler
+public class ShopUseAutocompleteHandler(DiscordbotContext db) : AutocompleteHandler
 {
-    public override Task<AutocompletionResult> GenerateSuggestionsAsync(
+    public override async Task<AutocompletionResult> GenerateSuggestionsAsync(
         IInteractionContext context,
         IAutocompleteInteraction autocompleteInteraction,
         IParameterInfo parameter,
@@ -1128,29 +1096,24 @@ public class ShopUseAutocompleteHandler : AutocompleteHandler
 
         try
         {
-            var dt = new StoredProcedure().Select(
-                Constants.Constants.discordBotConnStr, "GetUserInventory",
-            [
-                new SqlParameter("@UserID",   userId),
-                new SqlParameter("@ServerID", serverId)
-            ]);
-
-            var ownedKeys = dt.Rows.Cast<DataRow>()
-                .Select(r => r["ItemKey"].ToString()!)
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var ownedKeys = await db.UserInventories.AsNoTracking()
+                .Where(i => i.UserId == userId && i.ServerId == serverId && i.Quantity > 0)
+                .Select(i => i.ItemKey)
+                .ToListAsync();
+            var ownedSet = ownedKeys.ToHashSet(StringComparer.OrdinalIgnoreCase);
 
             var results = ShopHelper.Items
-                .Where(i => ownedKeys.Contains(i.Key) &&
+                .Where(i => ownedSet.Contains(i.Key) &&
                             (i.Name.Contains(current, StringComparison.OrdinalIgnoreCase) ||
                              i.Key.Contains(current, StringComparison.OrdinalIgnoreCase)))
                 .Take(25)
                 .Select(i => new AutocompleteResult($"{i.Emoji} {i.Name}", i.Key));
 
-            return Task.FromResult(AutocompletionResult.FromSuccess(results));
+            return AutocompletionResult.FromSuccess(results);
         }
         catch
         {
-            return Task.FromResult(AutocompletionResult.FromSuccess());
+            return AutocompletionResult.FromSuccess();
         }
     }
 }

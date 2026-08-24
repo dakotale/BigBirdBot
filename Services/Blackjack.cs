@@ -2,8 +2,10 @@
 using Discord.Interactions;
 using Discord.WebSocket;
 using DiscordBot.Constants;
+using DiscordBot.Data;
 using DiscordBot.Helper;
-using Microsoft.Data.SqlClient;
+using DiscordBot.Models.Generated;
+using Microsoft.EntityFrameworkCore;
 
 namespace DiscordBot.SlashCommands;
 
@@ -13,11 +15,9 @@ namespace DiscordBot.SlashCommands;
 /// DB state: AddBlackjackGame / GetBlackjackByUser / UpdateBlackjackGame / DeleteBlackjackGame
 /// Optional bet uses the credits economy — defaults to 0 for free play.
 /// </summary>
-public class Blackjack : InteractionModuleBase<SocketInteractionContext>
+public class Blackjack(DiscordbotContext db) : InteractionModuleBase<SocketInteractionContext>
 {
     private readonly EmbedHelper _embed = new();
-    private readonly StoredProcedure _sp = new();
-    private readonly Economy _eco = new();
 
     private string Username => Context.User.Username;
     private string AvatarUrl => Context.User.GetAvatarUrl();
@@ -52,20 +52,19 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
         // Validate bet if one was placed
         if (bet > 0)
         {
-            decimal balance = _eco.GetBalance(UserId, ServerId);
+            decimal balance = await CreditService.GetBalanceAsync(db, UserId, ServerId);
             if (!CreditHelper.IsValidBet((decimal)bet, balance, out string betError))
             {
                 await FollowupAsync(embed: _embed.BuildErrorEmbed("Blackjack", betError, Username).Build());
                 return;
             }
-            _eco.DeductCredits(UserId, ServerId, (decimal)bet, "blackjack");
+            await CreditService.DeductCreditsAsync(db, UserId, ServerId, (decimal)bet, "blackjack");
         }
 
         // One active game per user
-        var existing = _sp.Select(Constants.Constants.discordBotConnStr, "GetBlackjackByUser",
-            [new SqlParameter("@UserID", UserId)]);
+        bool existing = await db.BlackjackGames.AnyAsync(g => g.UserId == UserId);
 
-        if (existing.Rows.Count > 0)
+        if (existing)
         {
             await FollowupAsync(embed: _embed.BuildErrorEmbed(
                 "Blackjack", "You already have an active game! Finish it first.", Username).Build());
@@ -105,18 +104,13 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
                     (true, false) => (decimal)bet * 2.5m,
                     _ => 0m
                 };
-                if (creditResult > 0m) _eco.AddCredits(UserId, ServerId, creditResult, "blackjack_win");
+                if (creditResult > 0m) await CreditService.AddCreditsAsync(db, UserId, ServerId, creditResult, "blackjack_win");
                 if (creditResult > (decimal)bet)
                 {
-                    try
-                    {
-                        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "IncrementChallengeProgress",
-                        [ new SqlParameter("@UserID", UserId), new SqlParameter("@ServerID", ServerId),
-                          new SqlParameter("@GameType", "blackjack") ]);
-                    }
+                    try { await ChallengeService.IncrementProgressAsync(db, UserId, ServerId, "blackjack"); }
                     catch { }
                 }
-                outcome += $"\n{CreditHelper.FormatDelta(creditResult - (decimal)bet)} | Balance: {CreditHelper.Format(_eco.GetBalance(UserId, ServerId))}";
+                outcome += $"\n{CreditHelper.FormatDelta(creditResult - (decimal)bet)} | Balance: {CreditHelper.Format(await CreditService.GetBalanceAsync(db, UserId, ServerId))}";
             }
 
             await FollowupAsync(
@@ -125,27 +119,21 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "AddBlackjackGame",
-        [
-            new SqlParameter("@UserID",    UserId),
-            new SqlParameter("@MessageID", "0"),
-            new SqlParameter("@Deck",      string.Join(",", deck)),
-            new SqlParameter("@Player",    string.Join(",", player)),
-            new SqlParameter("@Dealer",    string.Join(",", dealer)),
-            new SqlParameter("@Doubled",   false),
-            new SqlParameter("@Bet",       bet)
-        ]);
+        db.BlackjackGames.Add(new BlackjackGame
+        {
+            UserId = UserId, MessageId = "0", Deck = string.Join(",", deck),
+            Player = string.Join(",", player), Dealer = string.Join(",", dealer),
+            Doubled = false, Bet = bet
+        });
+        await db.SaveChangesAsync();
 
         var msg = await FollowupAsync(
             embed: BuildEmbed(player, dealer, "Your turn — Hit, Stand, or Double?",
                               Color.Blue, revealDealer: false).Build(),
             components: GameButtons(canDouble: true));
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "UpdateBlackjackMessageID",
-        [
-            new SqlParameter("@UserID",    UserId),
-            new SqlParameter("@MessageID", msg.Id.ToString())
-        ]);
+        await db.BlackjackGames.Where(g => g.UserId == UserId)
+            .ExecuteUpdateAsync(s => s.SetProperty(g => g.MessageId, msg.Id.ToString()));
     }
 
     // ── Button: Hit ───────────────────────────────────────────────────────────
@@ -156,7 +144,7 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
     {
         await DeferAsync();
 
-        var (player, dealer, deck, _, userId, bet) = LoadGame();
+        var (player, dealer, deck, _, userId, bet) = await LoadGame();
         if (player is null) return;
 
         if (userId != UserId)
@@ -170,9 +158,9 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
 
         if (total > 21)
         {
-            EndGame(userId);
+            await EndGame(userId);
             string bustSuffix = bet > 0
-                ? $"\n{CreditHelper.FormatDelta(-bet)} | Balance: {CreditHelper.Format(_eco.GetBalance(userId, ServerId))}"
+                ? $"\n{CreditHelper.FormatDelta(-bet)} | Balance: {CreditHelper.Format(await CreditService.GetBalanceAsync(db, userId, ServerId))}"
                 : "";
             await ModifyOriginalResponseAsync(m =>
             {
@@ -189,7 +177,7 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        SaveGame(userId, deck!, player, dealer!, doubled: false, bet);
+        await SaveGame(userId, deck!, player, dealer!, doubled: false, bet);
 
         await ModifyOriginalResponseAsync(m =>
         {
@@ -207,7 +195,7 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
     {
         await DeferAsync();
 
-        var (player, dealer, deck, _, userId, bet) = LoadGame();
+        var (player, dealer, deck, _, userId, bet) = await LoadGame();
         if (player is null) return;
 
         if (userId != UserId)
@@ -227,7 +215,7 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
     {
         await DeferAsync();
 
-        var (player, dealer, deck, _, userId, bet) = LoadGame();
+        var (player, dealer, deck, _, userId, bet) = await LoadGame();
         if (player is null) return;
 
         if (userId != UserId)
@@ -238,14 +226,14 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
 
         if (bet > 0)
         {
-            decimal balance = _eco.GetBalance(userId, ServerId);
+            decimal balance = await CreditService.GetBalanceAsync(db, userId, ServerId);
             if (balance < (decimal)bet)
             {
                 // Can't afford to double — treat as stand
                 await ResolveStandAsync(player, dealer!, deck!, userId, bet);
                 return;
             }
-            _eco.DeductCredits(userId, ServerId, (decimal)bet, "blackjack_double");
+            await CreditService.DeductCreditsAsync(db, userId, ServerId, (decimal)bet, "blackjack_double");
             bet *= 2;
         }
 
@@ -254,9 +242,9 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
 
         if (total > 21)
         {
-            EndGame(userId);
+            await EndGame(userId);
             string bustSuffix = bet > 0
-                ? $"\n{CreditHelper.FormatDelta(-bet)} | Balance: {CreditHelper.Format(_eco.GetBalance(userId, ServerId))}"
+                ? $"\n{CreditHelper.FormatDelta(-bet)} | Balance: {CreditHelper.Format(await CreditService.GetBalanceAsync(db, userId, ServerId))}"
                 : "";
             await ModifyOriginalResponseAsync(m =>
             {
@@ -279,8 +267,7 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
     {
         await DeferAsync();
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "DeleteBlackjackGame",
-            [new SqlParameter("@UserID", UserId)]);
+        await db.BlackjackGames.Where(g => g.UserId == UserId).ExecuteDeleteAsync();
 
         var deck = BuildDeck();
         var player = new List<string> { Deal(deck), Deal(deck) };
@@ -313,16 +300,13 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "AddBlackjackGame",
-        [
-            new SqlParameter("@UserID",    UserId),
-            new SqlParameter("@MessageID", "0"),
-            new SqlParameter("@Deck",      string.Join(",", deck)),
-            new SqlParameter("@Player",    string.Join(",", player)),
-            new SqlParameter("@Dealer",    string.Join(",", dealer)),
-            new SqlParameter("@Doubled",   false),
-            new SqlParameter("@Bet",       0L)
-        ]);
+        db.BlackjackGames.Add(new BlackjackGame
+        {
+            UserId = UserId, MessageId = "0", Deck = string.Join(",", deck),
+            Player = string.Join(",", player), Dealer = string.Join(",", dealer),
+            Doubled = false, Bet = 0m
+        });
+        await db.SaveChangesAsync();
 
         await ModifyOriginalResponseAsync(m =>
         {
@@ -397,15 +381,10 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
 
         if (bet > 0 && creditReturn > 0m)
         {
-            _eco.AddCredits(userId, ServerId, creditReturn, "blackjack_win");
+            await CreditService.AddCreditsAsync(db, userId, ServerId, creditReturn, "blackjack_win");
             if (creditReturn > (decimal)bet)
             {
-                try
-                {
-                    _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "IncrementChallengeProgress",
-                    [ new SqlParameter("@UserID", userId), new SqlParameter("@ServerID", ServerId),
-                      new SqlParameter("@GameType", "blackjack") ]);
-                }
+                try { await ChallengeService.IncrementProgressAsync(db, userId, ServerId, "blackjack"); }
                 catch { }
             }
         }
@@ -413,10 +392,10 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
         if (bet > 0)
         {
             decimal net = creditReturn > 0m ? creditReturn - (decimal)bet : -(decimal)bet;
-            outcome += $"\n{CreditHelper.FormatDelta(net)} | Balance: {CreditHelper.Format(_eco.GetBalance(userId, ServerId))}";
+            outcome += $"\n{CreditHelper.FormatDelta(net)} | Balance: {CreditHelper.Format(await CreditService.GetBalanceAsync(db, userId, ServerId))}";
         }
 
-        EndGame(userId);
+        await EndGame(userId);
 
         await ModifyOriginalResponseAsync(m =>
         {
@@ -519,40 +498,32 @@ public class Blackjack : InteractionModuleBase<SocketInteractionContext>
     // ── DB helpers ────────────────────────────────────────────────────────────
 
     /// <summary>Loads the calling user's in-progress game from the DB, or a tuple of nulls if they have none active.</summary>
-    private (List<string>? player, List<string>? dealer, List<string>? deck,
-             bool doubled, string userId, long bet) LoadGame()
+    private async Task<(List<string>? player, List<string>? dealer, List<string>? deck,
+             bool doubled, string userId, long bet)> LoadGame()
     {
         string userId = UserId;
-        var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetBlackjackByUser",
-            [new SqlParameter("@UserID", userId)]);
+        var game = await db.BlackjackGames.AsNoTracking().FirstOrDefaultAsync(g => g.UserId == userId);
 
-        if (dt.Rows.Count == 0) return (null, null, null, false, userId, 0);
+        if (game is null) return (null, null, null, false, userId, 0);
 
-        var row = dt.Rows[0];
-        var player = row["Player"].ToString()!.Split(',').ToList();
-        var dealer = row["Dealer"].ToString()!.Split(',').ToList();
-        var deck = row["Deck"].ToString()!.Split(',').ToList();
-        bool doubled = bool.TryParse(row["Doubled"]?.ToString(), out bool d) && d;
-        long bet = long.TryParse(row["Bet"]?.ToString(), out long b) ? b : 0;
+        var player = game.Player.Split(',').ToList();
+        var dealer = game.Dealer.Split(',').ToList();
+        var deck = game.Deck.Split(',').ToList();
 
-        return (player, dealer, deck, doubled, userId, bet);
+        return (player, dealer, deck, game.Doubled, userId, (long)game.Bet);
     }
 
     /// <summary>Persists the current hand/deck state so the player can act on it via a later button press.</summary>
-    private void SaveGame(string userId, List<string> deck,
+    private async Task SaveGame(string userId, List<string> deck,
                           List<string> player, List<string> dealer, bool doubled, long bet) =>
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "UpdateBlackjackGame",
-        [
-            new SqlParameter("@UserID",  userId),
-            new SqlParameter("@Deck",    string.Join(",", deck)),
-            new SqlParameter("@Player",  string.Join(",", player)),
-            new SqlParameter("@Dealer",  string.Join(",", dealer)),
-            new SqlParameter("@Doubled", doubled),
-            new SqlParameter("@Bet",     bet)
-        ]);
+        await db.BlackjackGames.Where(g => g.UserId == userId).ExecuteUpdateAsync(s => s
+            .SetProperty(g => g.Deck, string.Join(",", deck))
+            .SetProperty(g => g.Player, string.Join(",", player))
+            .SetProperty(g => g.Dealer, string.Join(",", dealer))
+            .SetProperty(g => g.Doubled, doubled)
+            .SetProperty(g => g.Bet, bet));
 
     /// <summary>Deletes the user's saved game row once a hand is finished.</summary>
-    private void EndGame(string userId) =>
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "DeleteBlackjackGame",
-            [new SqlParameter("@UserID", userId)]);
+    private async Task EndGame(string userId) =>
+        await db.BlackjackGames.Where(g => g.UserId == userId).ExecuteDeleteAsync();
 }

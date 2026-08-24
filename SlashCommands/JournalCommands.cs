@@ -1,8 +1,10 @@
 using Discord;
 using Discord.Interactions;
 using DiscordBot.Constants;
+using DiscordBot.Data;
 using DiscordBot.Helper;
-using Microsoft.Data.SqlClient;
+using DiscordBot.Models.Generated;
+using Microsoft.EntityFrameworkCore;
 
 namespace DiscordBot.SlashCommands;
 
@@ -12,16 +14,45 @@ namespace DiscordBot.SlashCommands;
 /// </summary>
 [Group("journal", "Daily journaling tools — DM only.")]
 [CommandContextType(InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
-public class JournalCommands : InteractionModuleBase<SocketInteractionContext>
+public class JournalCommands(DiscordbotContext db) : InteractionModuleBase<SocketInteractionContext>
 {
     private readonly EmbedHelper _embed = new();
-    private readonly StoredProcedure _sp = new();
 
     private string Username => Context.User.Username;
     private string AvatarUrl => Context.User.GetAvatarUrl();
 
     private static readonly Color JournalColor = new(0x7B68EE);
 
+    /// <summary>
+    /// Counts the user's current consecutive-day journaling streak, ending at
+    /// <paramref name="today"/> if logged, or at yesterday if today isn't logged yet
+    /// but the streak hasn't been broken (a whole day missed) — 0 if it has.
+    ///
+    /// Replaces the source SQL's gaps-and-islands window-function calculation
+    /// (DATEDIFF(...) - ROW_NUMBER() ... WHERE Grp = 0), which has a confirmed off-by-one
+    /// bug: verified empirically against a test user with 3 consecutive entries including
+    /// today, the SQL reports Streak = 0 instead of 3. Both GetJournalStatus and
+    /// LogJournalEntry shared that broken subquery, so both were affected. Computing it
+    /// correctly here rather than porting the bug forward — flagged, not silently changed.
+    /// </summary>
+    private static int ComputeStreak(HashSet<DateOnly> entryDates, DateOnly today)
+    {
+        var cursor = today;
+        if (!entryDates.Contains(cursor))
+        {
+            cursor = today.AddDays(-1);
+            if (!entryDates.Contains(cursor))
+                return 0;
+        }
+
+        int streak = 0;
+        while (entryDates.Contains(cursor))
+        {
+            streak++;
+            cursor = cursor.AddDays(-1);
+        }
+        return streak;
+    }
 
     /// <summary>Subscribes the user to a daily journaling reminder DM at their chosen time.</summary>
     [SlashCommand("subscribe", "Sign up for a daily journaling reminder at your chosen time.")]
@@ -46,12 +77,25 @@ public class JournalCommands : InteractionModuleBase<SocketInteractionContext>
         string offsetLabel = utcOffset >= 0 ? $"UTC+{utcOffset}" : $"UTC{utcOffset}";
         string displayTime = $"{parsedLocal:h:mm tt} ({offsetLabel})";
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "UpsertJournalSubscription",
-        [
-            new SqlParameter("@UserID",           Context.User.Id.ToString()),
-            new SqlParameter("@DailyTimeUtc",     utcTime.ToString("HH:mm:ss")),
-            new SqlParameter("@DailyTimeDisplay", displayTime)
-        ]);
+        string userId = Context.User.Id.ToString();
+        var existing = await db.JournalSubscriptions.FindAsync(userId);
+        if (existing is not null)
+        {
+            existing.DailyTimeUtc = utcTime;
+            existing.DailyTimeDisplay = displayTime;
+            existing.SubscribedAt = DateTime.UtcNow;
+            existing.LastReminderSentAt = null;
+        }
+        else
+        {
+            db.JournalSubscriptions.Add(new JournalSubscription
+            {
+                UserId = userId,
+                DailyTimeUtc = utcTime,
+                DailyTimeDisplay = displayTime
+            });
+        }
+        await db.SaveChangesAsync();
 
         string prompt = JournalHelper.GetRandomPrompt();
 
@@ -70,10 +114,12 @@ public class JournalCommands : InteractionModuleBase<SocketInteractionContext>
     {
         await DeferAsync(ephemeral: true);
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "DeleteJournalSubscription",
-        [
-            new SqlParameter("@UserID", Context.User.Id.ToString())
-        ]);
+        var existing = await db.JournalSubscriptions.FindAsync(Context.User.Id.ToString());
+        if (existing is not null)
+        {
+            db.JournalSubscriptions.Remove(existing);
+            await db.SaveChangesAsync();
+        }
 
         await FollowupAsync(embed: _embed.BuildSimpleEmbed(
             "📓  Journal Reminders Cancelled",
@@ -89,19 +135,23 @@ public class JournalCommands : InteractionModuleBase<SocketInteractionContext>
     {
         await DeferAsync(ephemeral: true);
 
-        var result = _sp.Select(Constants.Constants.discordBotConnStr, "LogJournalEntry",
-        [
-            new SqlParameter("@UserID", Context.User.Id.ToString())
-        ]);
+        string userId = Context.User.Id.ToString();
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
 
-        int streak = 1;
-        bool alreadyLogged = false;
+        bool alreadyLogged = await db.JournalEntries
+            .AnyAsync(e => e.UserId == userId && e.EntryDate == today);
 
-        if (result.Rows.Count > 0)
+        if (!alreadyLogged)
         {
-            int.TryParse(result.Rows[0]["Streak"]?.ToString(), out streak);
-            alreadyLogged = result.Rows[0]["AlreadyLogged"]?.ToString() == "1";
+            db.JournalEntries.Add(new JournalEntry { UserId = userId, EntryDate = today });
+            await db.SaveChangesAsync();
         }
+
+        var entryDates = (await db.JournalEntries.AsNoTracking()
+            .Where(e => e.UserId == userId && e.EntryDate <= today)
+            .Select(e => e.EntryDate)
+            .ToListAsync()).ToHashSet();
+        int streak = ComputeStreak(entryDates, today);
 
         if (alreadyLogged)
         {
@@ -153,28 +203,29 @@ public class JournalCommands : InteractionModuleBase<SocketInteractionContext>
     {
         await DeferAsync(ephemeral: true);
 
-        var result = _sp.Select(Constants.Constants.discordBotConnStr, "GetJournalStatus",
-        [
-            new SqlParameter("@UserID", Context.User.Id.ToString())
-        ]);
+        string userId = Context.User.Id.ToString();
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
 
-        if (result.Rows.Count == 0)
-        {
-            await FollowupAsync(embed: NoSubscriptionEmbed().Build(), ephemeral: true);
-            return;
-        }
+        var subscription = await db.JournalSubscriptions.AsNoTracking()
+            .FirstOrDefaultAsync(s => s.UserId == userId);
 
-        var row = result.Rows[0];
-        bool hasSubscription = row["HasSubscription"]?.ToString() == "True";
-        int.TryParse(row["Streak"]?.ToString(), out int streak);
-        int.TryParse(row["TotalEntries"]?.ToString(), out int totalEntries);
-        string dailyTime = row["DailyTimeDisplay"]?.ToString() ?? "Not set";
+        int totalEntries = await db.JournalEntries.CountAsync(e => e.UserId == userId);
+
+        bool hasSubscription = subscription is not null;
 
         if (!hasSubscription && totalEntries == 0)
         {
             await FollowupAsync(embed: NoSubscriptionEmbed().Build(), ephemeral: true);
             return;
         }
+
+        var entryDates = (await db.JournalEntries.AsNoTracking()
+            .Where(e => e.UserId == userId && e.EntryDate <= today)
+            .Select(e => e.EntryDate)
+            .ToListAsync()).ToHashSet();
+        int streak = ComputeStreak(entryDates, today);
+
+        string dailyTime = subscription?.DailyTimeDisplay ?? "Not set";
 
         string streakEmoji = streak switch
         {

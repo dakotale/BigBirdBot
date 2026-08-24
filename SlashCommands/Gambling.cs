@@ -2,9 +2,11 @@
 using Discord.Interactions;
 using Discord.WebSocket;
 using DiscordBot.Constants;
+using DiscordBot.Data;
 using DiscordBot.Helper;
+using DiscordBot.Models.Generated;
 using System.Collections.Concurrent;
-using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
 
 namespace DiscordBot.SlashCommands;
 
@@ -15,13 +17,12 @@ namespace DiscordBot.SlashCommands;
 /// Stats: /gamblestats
 ///
 /// Per-user cooldowns are tracked in memory (reset on restart — intentional).
-/// Daily loss limit is enforced via GambleLog table.
+/// Daily loss limit computation exists (ValidateBet) but the actual enforcement block is
+/// commented out in source — replicated as-is, so no limit is currently enforced.
 /// </summary>
-public class Gambling : InteractionModuleBase<SocketInteractionContext>
+public class Gambling(DiscordbotContext db) : InteractionModuleBase<SocketInteractionContext>
 {
-    private readonly StoredProcedure _sp = new();
     private readonly EmbedHelper _embed = new();
-    private readonly Economy _eco = new();
 
     private string Username => Context.User.Username;
     private string AvatarUrl => Context.User.GetAvatarUrl();
@@ -95,8 +96,8 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
 
         SetCooldown("slots");
 
-        bool slotChaos = ShopHelper.HasActiveEffect(UserId, ServerId, "chaos_card");
-        if (slotChaos) ShopHelper.ConsumeActiveEffect(UserId, ServerId, "chaos_card");
+        bool slotChaos = await ShopHelper.HasActiveEffectAsync(db, UserId, ServerId, "chaos_card");
+        if (slotChaos) await ShopHelper.ConsumeActiveEffectAsync(db, UserId, ServerId, "chaos_card");
 
         string r1 = slotChaos ? CreditHelper.SpinReelRandom() : CreditHelper.SpinReel();
         string r2 = slotChaos ? CreditHelper.SpinReelRandom() : CreditHelper.SpinReel();
@@ -104,17 +105,17 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
 
         var (payout, result) = CreditHelper.CalculateSlotPayout(r1, r2, r3, (decimal)bet);
         if (slotChaos) result = "🃏 " + result;
-        decimal newBalance = ApplyGamble((decimal)bet, payout, "slots");
+        decimal newBalance = await ApplyGambleAsync((decimal)bet, payout, "slots");
 
         // Passive jackpot — 0.5% chance on every spin
         var (pjWon, pjAmount) = await TryClaimPassiveJackpotAsync();
-        if (pjWon) newBalance = _eco.GetBalance(UserId, ServerId);
+        if (pjWon) newBalance = await CreditService.GetBalanceAsync(db, UserId, ServerId);
 
         // Challenge tracking
         if (payout > 0m)
         {
-            TrackChallenge("slots");
-            if (r1 == r2 && r2 == r3 && r1 == "💎") TrackChallenge("slots_jack");
+            await TrackChallengeAsync("slots");
+            if (r1 == r2 && r2 == r3 && r1 == "💎") await TrackChallengeAsync("slots_jack");
         }
 
         EmbedBuilder SpinFrame(string a, string b, string c, string? label = null) =>
@@ -175,8 +176,8 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
         bool won = result == side;
         decimal payout = won ? (decimal)bet * 1.9m : 0m;
 
-        decimal newBalance = ApplyGamble((decimal)bet, payout, "coinflip");
-        if (won) TrackChallenge("coinflip");
+        decimal newBalance = await ApplyGambleAsync((decimal)bet, payout, "coinflip");
+        if (won) await TrackChallengeAsync("coinflip");
 
         string coinEmoji = result == "heads" ? "🪙" : "⚫";
         decimal netWinCf = payout - (decimal)bet;
@@ -235,8 +236,8 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
         decimal payout = CreditHelper.DicePayout(pick, d1, d2, (decimal)bet);
         bool won = payout > 0m;
 
-        decimal newBalance = ApplyGamble((decimal)bet, payout, "dice");
-        if (won) TrackChallenge("dice");
+        decimal newBalance = await ApplyGambleAsync((decimal)bet, payout, "dice");
+        if (won) await TrackChallengeAsync("dice");
 
         string pickLabel = pick switch
         {
@@ -307,9 +308,9 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
         int spin = CreditHelper.SpinRoulette();
         var (payout, result) = CreditHelper.CalculateRoulettePayout(spin, resolvedBet, (decimal)bet);
 
-        decimal newBalance = ApplyGamble((decimal)bet, payout, "roulette");
+        decimal newBalance = await ApplyGambleAsync((decimal)bet, payout, "roulette");
         bool won = payout > 0m;
-        if (won) TrackChallenge("roulette");
+        if (won) await TrackChallengeAsync("roulette");
 
         bool isRed = CreditHelper.RedNumbers.Contains(spin.ToString());
         string spinTitle = spin == 0
@@ -353,7 +354,7 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
 
         if (IsOnCooldown("scratchcard", out var cd)) { await CooldownAsync(cd); return; }
 
-        decimal balance = _eco.GetBalance(UserId, ServerId);
+        decimal balance = await CreditService.GetBalanceAsync(db, UserId, ServerId);
         if (balance < CreditHelper.ScratchCardCost)
         {
             await ErrorAsync($"Scratch cards cost {CreditHelper.Format(CreditHelper.ScratchCardCost)}. You have {CreditHelper.Format(balance)}.");
@@ -362,8 +363,8 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
 
         SetCooldown("scratchcard");
 
-        bool scratchChaos = ShopHelper.HasActiveEffect(UserId, ServerId, "chaos_card");
-        if (scratchChaos) ShopHelper.ConsumeActiveEffect(UserId, ServerId, "chaos_card");
+        bool scratchChaos = await ShopHelper.HasActiveEffectAsync(db, UserId, ServerId, "chaos_card");
+        if (scratchChaos) await ShopHelper.ConsumeActiveEffectAsync(db, UserId, ServerId, "chaos_card");
 
         var (s1, s2, s3, payout, label) = scratchChaos
             ? CreditHelper.ScratchCardChaos(CreditHelper.ScratchCardCost)
@@ -403,12 +404,12 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
         await Task.Delay(900);
 
         // ── Phase 3: Final reveal ──────────────────────────────────────────────
-        decimal newBalance = ApplyGamble(CreditHelper.ScratchCardCost, payout, "scratchcard");
+        decimal newBalance = await ApplyGambleAsync(CreditHelper.ScratchCardCost, payout, "scratchcard");
 
         // Passive jackpot — 0.5% chance on every card
         var (pjWon, pjAmount) = await TryClaimPassiveJackpotAsync();
-        if (pjWon) newBalance = _eco.GetBalance(UserId, ServerId);
-        if (won) TrackChallenge("scratch");
+        if (pjWon) newBalance = await CreditService.GetBalanceAsync(db, UserId, ServerId);
+        if (won) await TrackChallengeAsync("scratch");
 
         Color colour = jackpot ? ColourGold : won ? ColourWin : ColourLoss;
 
@@ -463,11 +464,11 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
         bool won = pick == winner;
         var horse = CreditHelper.Horses[pick];
         decimal payout = won ? (decimal)bet * (decimal)horse.odds : 0m;
-        decimal newBalance = ApplyGamble((decimal)bet, payout, "horses");
+        decimal newBalance = await ApplyGambleAsync((decimal)bet, payout, "horses");
         if (won)
         {
-            TrackChallenge("horses");
-            if (horse.odds >= 7.0) TrackChallenge("horses_h");
+            await TrackChallengeAsync("horses");
+            if (horse.odds >= 7.0) await TrackChallengeAsync("horses_h");
         }
         int total = CreditHelper.Horses.Length;
         const int tWidth = 14;
@@ -576,13 +577,13 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
         decimal newBalance;
         if (draw)
         {
-            newBalance = _eco.GetBalance(UserId, ServerId);
-            LogGamble("rps", (decimal)bet, (decimal)bet);
+            newBalance = await CreditService.GetBalanceAsync(db, UserId, ServerId);
+            await LogGambleAsync("rps", (decimal)bet, (decimal)bet);
         }
         else
         {
-            newBalance = ApplyGamble((decimal)bet, payout, "rps");
-            if (won) TrackChallenge("rps");
+            newBalance = await ApplyGambleAsync((decimal)bet, payout, "rps");
+            if (won) await TrackChallengeAsync("rps");
         }
 
         string pickEmoji = pick switch { "rock" => "🪨", "paper" => "📄", _ => "✂️" };
@@ -647,13 +648,13 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
         decimal newBalance;
         if (tie)
         {
-            newBalance = _eco.GetBalance(UserId, ServerId);
-            LogGamble("highlow", (decimal)bet, (decimal)bet);
+            newBalance = await CreditService.GetBalanceAsync(db, UserId, ServerId);
+            await LogGambleAsync("highlow", (decimal)bet, (decimal)bet);
         }
         else
         {
-            newBalance = ApplyGamble((decimal)bet, payout, "highlow");
-            if (won) TrackChallenge("highlow");
+            newBalance = await ApplyGambleAsync((decimal)bet, payout, "highlow");
+            if (won) await TrackChallengeAsync("highlow");
         }
 
         string outcomeText = tie
@@ -698,21 +699,13 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
         await DeferAsync();
 
         // ── Fetch both pools ───────────────────────────────────────────────────
-        var potDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetJackpotTotal",
-            [new SqlParameter("@ServerID", ServerId)]);
-        decimal entryPot = potDt.Rows.Count > 0
-            ? decimal.Parse(potDt.Rows[0]["Total"].ToString()!)
-            : 0m;
-        int entries = potDt.Rows.Count > 0
-            ? int.Parse(potDt.Rows[0]["Entries"].ToString()!)
-            : 0;
+        var entryList = await db.JackpotEntries.AsNoTracking()
+            .Where(e => e.ServerId == ServerId).ToListAsync();
+        decimal entryPot = entryList.Sum(e => e.Amount);
+        int entries = entryList.Count;
 
         long.TryParse(ServerId, out long jpServerId);
-        var passiveDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetPassiveJackpot",
-            [new SqlParameter("@ServerID", jpServerId)]);
-        decimal passivePot = passiveDt.Rows.Count > 0
-            ? decimal.Parse(passiveDt.Rows[0]["Pool"].ToString()!)
-            : 0m;
+        decimal passivePot = await JackpotService.GetPoolAsync(db, jpServerId);
 
         // ── View-only (no amount given) ────────────────────────────────────────
         if (amount is null)
@@ -734,27 +727,23 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
         }
 
         // ── Entry contribution ─────────────────────────────────────────────────
-        decimal balance = _eco.GetBalance(UserId, ServerId);
+        decimal balance = await CreditService.GetBalanceAsync(db, UserId, ServerId);
         if ((decimal)amount > balance)
         {
             await ErrorAsync($"You don't have enough credits! Balance: {CreditHelper.Format(balance)}.");
             return;
         }
 
-        _eco.DeductCredits(UserId, ServerId, (decimal)amount, "jackpot_entry");
+        await CreditService.DeductCreditsAsync(db, UserId, ServerId, (decimal)amount, "jackpot_entry");
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "AddJackpotEntry",
-        [
-            new SqlParameter("@UserID",   UserId),
-            new SqlParameter("@ServerID", ServerId),
-            new SqlParameter("@Amount",   (decimal)amount)
-        ]);
+        db.JackpotEntries.Add(new JackpotEntry { UserId = UserId, ServerId = ServerId, Amount = (decimal)amount });
+        await db.SaveChangesAsync();
 
         // Refresh totals after entry
-        potDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetJackpotTotal",
-            [new SqlParameter("@ServerID", ServerId)]);
-        entryPot = potDt.Rows.Count > 0 ? decimal.Parse(potDt.Rows[0]["Total"].ToString()!) : (decimal)amount;
-        entries = potDt.Rows.Count > 0 ? int.Parse(potDt.Rows[0]["Entries"].ToString()!) : 1;
+        entryList = await db.JackpotEntries.AsNoTracking()
+            .Where(e => e.ServerId == ServerId).ToListAsync();
+        entryPot = entryList.Sum(e => e.Amount);
+        entries = entryList.Count;
 
         await FollowupAsync(embed: _embed.BuildSimpleEmbed(
             "🎟️  Jackpot Entry Confirmed!",
@@ -777,13 +766,24 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
         string tId = target.Id.ToString();
         bool isSelf = target.Id == Context.User.Id;
 
-        var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetGambleStats",
-        [
-            new SqlParameter("@UserID",   tId),
-            new SqlParameter("@ServerID", ServerId)
-        ]);
+        var stats = await db.GambleLogs.AsNoTracking()
+            .Where(g => g.UserId == tId && g.ServerId == ServerId)
+            .GroupBy(g => g.Game)
+            .Select(g => new
+            {
+                Game = g.Key,
+                GamesPlayed = g.Count(),
+                Wins = g.Count(x => x.Net > 0),
+                Losses = g.Count(x => x.Net < 0),
+                TotalWagered = g.Sum(x => x.Bet),
+                NetTotal = g.Sum(x => x.Net),
+                BiggestWin = g.Max(x => x.Net),
+                BiggestLoss = g.Min(x => x.Net)
+            })
+            .OrderByDescending(g => g.TotalWagered)
+            .ToListAsync();
 
-        if (dt.Rows.Count == 0)
+        if (stats.Count == 0)
         {
             await FollowupAsync(embed: _embed.BuildSimpleEmbed(
                 $"📊  {target.Username}'s Gambling Stats",
@@ -796,16 +796,16 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
         int totalGames = 0, totalWins = 0, totalLosses = 0;
         var gameLines = new System.Text.StringBuilder();
 
-        foreach (System.Data.DataRow row in dt.Rows)
+        foreach (var row in stats)
         {
-            string game = row["Game"].ToString()!;
-            int games = int.Parse(row["GamesPlayed"].ToString()!);
-            int wins = int.Parse(row["Wins"].ToString()!);
-            int losses = int.Parse(row["Losses"].ToString()!);
-            decimal wagered = decimal.Parse(row["TotalWagered"].ToString()!);
-            decimal net = decimal.Parse(row["NetTotal"].ToString()!);
-            decimal bWin = decimal.Parse(row["BiggestWin"].ToString()!);
-            decimal bLoss = decimal.Parse(row["BiggestLoss"].ToString()!);
+            string game = row.Game;
+            int games = row.GamesPlayed;
+            int wins = row.Wins;
+            int losses = row.Losses;
+            decimal wagered = row.TotalWagered;
+            decimal net = row.NetTotal;
+            decimal bWin = row.BiggestWin;
+            decimal bLoss = row.BiggestLoss;
 
             totalWagered += wagered;
             totalNet += net;
@@ -984,36 +984,29 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
         }
 
         // ── Phase 4: Final reveal ──────────────────────────────────────────────
-        decimal newBalance = _eco.GetBalance(UserId, ServerId);
+        decimal newBalance = await CreditService.GetBalanceAsync(db, UserId, ServerId);
         if (credits > 0m)
         {
             // Golden Ticket multiplier
-            decimal gtMult = ShopHelper.HasActiveEffect(UserId, ServerId, "golden_ticket_ii") ? 3m :
-                             ShopHelper.HasActiveEffect(UserId, ServerId, "golden_ticket") ? 2m : 1m;
+            decimal gtMult = await ShopHelper.HasActiveEffectAsync(db, UserId, ServerId, "golden_ticket_ii") ? 3m :
+                             await ShopHelper.HasActiveEffectAsync(db, UserId, ServerId, "golden_ticket") ? 2m : 1m;
             if (gtMult > 1m) credits *= gtMult;
 
-            _eco.AddCredits(UserId, ServerId, credits, "fishing");
-            newBalance = _eco.GetBalance(UserId, ServerId);
+            newBalance = await CreditService.AddCreditsAsync(db, UserId, ServerId, credits, "fishing");
 
             // Log catch for /stats
             try
             {
-                _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "AddFishLog",
-                [
-                    new SqlParameter("@UserID",   UserId),
-                    new SqlParameter("@ServerID", ServerId),
-                    new SqlParameter("@FishName", name),
-                    new SqlParameter("@Rarity",   rarity),
-                    new SqlParameter("@Credits",  credits)
-                ]);
+                db.FishLogs.Add(new FishLog { UserId = UserId, ServerId = ServerId, FishName = name, Rarity = rarity, Credits = credits });
+                await db.SaveChangesAsync();
             }
             catch { }
 
             // Challenge tracking
-            TrackChallenge("fish");
-            if (rarity is "Rare" or "Legendary") TrackChallenge("fish_rare");
-            if (rarity is "Rare" or "Legendary") TrackChallenge("fish_rare3");
-            if (rarity == "Legendary") TrackChallenge("fish_leg");
+            await TrackChallengeAsync("fish");
+            if (rarity is "Rare" or "Legendary") await TrackChallengeAsync("fish_rare");
+            if (rarity is "Rare" or "Legendary") await TrackChallengeAsync("fish_rare3");
+            if (rarity == "Legendary") await TrackChallengeAsync("fish_leg");
         }
 
         string catchBlock =
@@ -1065,30 +1058,30 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
 
         SetCooldown("bigwheel");
 
-        bool wheelChaos = ShopHelper.HasActiveEffect(UserId, ServerId, "chaos_card");
-        if (wheelChaos) ShopHelper.ConsumeActiveEffect(UserId, ServerId, "chaos_card");
+        bool wheelChaos = await ShopHelper.HasActiveEffectAsync(db, UserId, ServerId, "chaos_card");
+        if (wheelChaos) await ShopHelper.ConsumeActiveEffectAsync(db, UserId, ServerId, "chaos_card");
 
         int winIdx = wheelChaos ? CreditHelper.SpinWheelChaos() : CreditHelper.SpinWheel();
         var (wLabel, wMult, _, wEmoji) = CreditHelper.WheelSegments[winIdx];
 
         string? shieldNote = null;
-        if (wMult == 0.0 && ShopHelper.HasActiveEffect(UserId, ServerId, "bk_shield"))
+        if (wMult == 0.0 && await ShopHelper.HasActiveEffectAsync(db, UserId, ServerId, "bk_shield"))
         {
-            ShopHelper.ConsumeActiveEffect(UserId, ServerId, "bk_shield");
+            await ShopHelper.ConsumeActiveEffectAsync(db, UserId, ServerId, "bk_shield");
             winIdx = CreditHelper.SpinWheel();
             (wLabel, wMult, _, wEmoji) = CreditHelper.WheelSegments[winIdx];
             shieldNote = "🛡️ **Bankrupt Shield** blocked the BANKRUPT and re-spun!";
         }
 
         decimal payout = (decimal)bet * (decimal)wMult;
-        decimal newBalance = ApplyGamble((decimal)bet, payout, "bigwheel");
+        decimal newBalance = await ApplyGambleAsync((decimal)bet, payout, "bigwheel");
 
         string? insuranceNote = null;
-        if (payout < bet && ShopHelper.HasActiveEffect(UserId, ServerId, "insurance"))
+        if (payout < bet && await ShopHelper.HasActiveEffectAsync(db, UserId, ServerId, "insurance"))
         {
-            ShopHelper.ConsumeActiveEffect(UserId, ServerId, "insurance");
+            await ShopHelper.ConsumeActiveEffectAsync(db, UserId, ServerId, "insurance");
             decimal refund = (decimal)bet / 2m;
-            newBalance = _eco.AddCredits(UserId, ServerId, refund, "insurance_refund");
+            newBalance = await CreditService.AddCreditsAsync(db, UserId, ServerId, refund, "insurance_refund");
             payout += refund;
             insuranceNote = $"📋 **Gamble Insurance** refunded {CreditHelper.Format(refund)}!";
         }
@@ -1097,8 +1090,8 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
         bool won = payout > (decimal)bet;
         if (won)
         {
-            TrackChallenge("bigwheel");
-            if (wMult >= 10.0) TrackChallenge("bigwheel_h");
+            await TrackChallengeAsync("bigwheel");
+            if (wMult >= 10.0) await TrackChallengeAsync("bigwheel_h");
         }
         bool push = payout == (decimal)bet;
         Color final = wMult switch
@@ -1182,34 +1175,28 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
     {
         await DeferAsync();
 
-        var pendingDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetPendingInvestment",
-        [
-            new SqlParameter("@UserID",   UserId),
-            new SqlParameter("@ServerID", ServerId)
-        ]);
+        var pending = await db.Investments.AsNoTracking()
+            .Where(i => i.UserId == UserId && i.ServerId == ServerId && !i.Claimed)
+            .OrderByDescending(i => i.CreatedAt)
+            .FirstOrDefaultAsync();
 
-        if (pendingDt.Rows.Count > 0)
+        if (pending is not null)
         {
-            var row = pendingDt.Rows[0];
-            int invId = int.Parse(row["InvestmentID"].ToString()!);
-            decimal invAmt = decimal.Parse(row["Amount"].ToString()!);
-            var returnsAt = DateTime.Parse(row["ReturnsAt"].ToString()!);
+            int invId = pending.InvestmentId;
+            decimal invAmt = pending.Amount;
+            var returnsAt = pending.ReturnsAt;
 
             if (DateTime.UtcNow >= returnsAt)
             {
-                decimal mult = decimal.Parse(row["Multiplier"].ToString()!);
+                decimal mult = pending.Multiplier;
                 decimal payout = invAmt * mult;
                 decimal profit = payout - invAmt;
                 var (_, _, label) = CreditHelper.InvestOutcomes.First(o => o.multiplier == mult);
 
-                _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "ClaimInvestment",
-                [
-                    new SqlParameter("@InvestmentID", invId),
-                    new SqlParameter("@UserID",        UserId)
-                ]);
+                await db.Investments.Where(i => i.InvestmentId == invId && i.UserId == UserId)
+                    .ExecuteUpdateAsync(s => s.SetProperty(i => i.Claimed, true));
 
-                _eco.AddCredits(UserId, ServerId, payout, "invest_return");
-                decimal newBalance = _eco.GetBalance(UserId, ServerId);
+                decimal newBalance = await CreditService.AddCreditsAsync(db, UserId, ServerId, payout, "invest_return");
 
                 string outcomeEmoji = mult >= 1.5m ? "🚀" : mult >= 1.0m ? "📈" : "📉";
                 Color final = mult switch
@@ -1251,7 +1238,7 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        decimal balance = _eco.GetBalance(UserId, ServerId);
+        decimal balance = await CreditService.GetBalanceAsync(db, UserId, ServerId);
         if ((decimal)amount > balance)
         {
             await ErrorAsync($"You only have {CreditHelper.Format(balance)}.");
@@ -1261,18 +1248,16 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
         var (mult2, label2) = CreditHelper.RollInvestment();
         var returnsAt2 = DateTime.UtcNow.AddHours(24);
 
-        _eco.DeductCredits(UserId, ServerId, (decimal)amount, "invest_lock");
+        await CreditService.DeductCreditsAsync(db, UserId, ServerId, (decimal)amount, "invest_lock");
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "AddInvestment",
-        [
-            new SqlParameter("@UserID",     UserId),
-            new SqlParameter("@ServerID",   ServerId),
-            new SqlParameter("@Amount",     (decimal)amount),
-            new SqlParameter("@Multiplier", mult2),
-            new SqlParameter("@ReturnsAt",  returnsAt2)
-        ]);
+        db.Investments.Add(new Investment
+        {
+            UserId = UserId, ServerId = ServerId, Amount = (decimal)amount,
+            Multiplier = mult2, ReturnsAt = returnsAt2
+        });
+        await db.SaveChangesAsync();
 
-        decimal remaining2 = _eco.GetBalance(UserId, ServerId);
+        decimal remaining2 = await CreditService.GetBalanceAsync(db, UserId, ServerId);
 
         await FollowupAsync(embed: _embed.BuildSimpleEmbed(
             "💼  Investment Locked In!",
@@ -1293,9 +1278,9 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
     /// </summary>
     private async Task<bool> ValidateBet(long bet, string game)
     {
-        decimal balance = _eco.GetBalance(UserId, ServerId);
+        decimal balance = await CreditService.GetBalanceAsync(db, UserId, ServerId);
 
-        bool hasMegaBet = ShopHelper.HasActiveEffect(UserId, ServerId, "mega_bet");
+        bool hasMegaBet = await ShopHelper.HasActiveEffectAsync(db, UserId, ServerId, "mega_bet");
         decimal effectiveCap = hasMegaBet ? decimal.MaxValue : CreditHelper.MaxBet;
 
         if ((decimal)bet < CreditHelper.MinBet)
@@ -1317,15 +1302,10 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
             return false;
         }
 
-        var lossRow = _sp.Select(Constants.Constants.discordBotConnStr, "GetDailyLoss",
-        [
-            new SqlParameter("@UserID",   UserId),
-            new SqlParameter("@ServerID", ServerId)
-        ]);
-
-        decimal dailyLost = lossRow.Rows.Count > 0
-            ? decimal.Parse(lossRow.Rows[0]["TotalLost"].ToString()!)
-            : 0m;
+        var since = DateTime.UtcNow.AddHours(-24);
+        decimal dailyLost = await db.GambleLogs.AsNoTracking()
+            .Where(g => g.UserId == UserId && g.ServerId == ServerId && g.Net < 0 && g.CreatedAt > since)
+            .SumAsync(g => -g.Net);
 
         //if (dailyLost >= CreditHelper.DailyLossLimit)
         //{
@@ -1354,7 +1334,7 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
     /// <summary>
     /// Deducts bet, adds payout, logs to GambleLog. Returns new balance.
     /// </summary>
-    private decimal ApplyGamble(decimal cost, decimal payout, string source)
+    private async Task<decimal> ApplyGambleAsync(decimal cost, decimal payout, string source)
     {
         bool won = payout > 0m;
         string streakKey = $"{UserId}:{ServerId}";
@@ -1372,9 +1352,9 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
             int losses = _lossStreaks.AddOrUpdate(streakKey, 1, (_, v) => v + 1);
             _winStreaks.TryRemove(streakKey, out _);
 
-            if (losses >= 3 && ShopHelper.HasActiveEffect(UserId, ServerId, "comeback_chip"))
+            if (losses >= 3 && await ShopHelper.HasActiveEffectAsync(db, UserId, ServerId, "comeback_chip"))
             {
-                ShopHelper.ConsumeActiveEffect(UserId, ServerId, "comeback_chip");
+                await ShopHelper.ConsumeActiveEffectAsync(db, UserId, ServerId, "comeback_chip");
                 _lossStreaks.TryRemove(streakKey, out _);
                 payout = cost * 1.5m;
                 won = true;
@@ -1392,9 +1372,9 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
         {
             int wins = _winStreaks.AddOrUpdate(streakKey, 1, (_, v) => v + 1);
 
-            if (wins >= 3 && ShopHelper.HasActiveEffect(UserId, ServerId, "hot_streak"))
+            if (wins >= 3 && await ShopHelper.HasActiveEffectAsync(db, UserId, ServerId, "hot_streak"))
             {
-                ShopHelper.ConsumeActiveEffect(UserId, ServerId, "hot_streak");
+                await ShopHelper.ConsumeActiveEffectAsync(db, UserId, ServerId, "hot_streak");
                 _winStreaks.TryRemove(streakKey, out _);
                 hotStreakTriggered = true;
             }
@@ -1412,46 +1392,41 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
         }
 
         // ── Standard debit/credit ──────────────────────────────────────────────
-        _eco.DeductCredits(UserId, ServerId, cost, source);
+        await CreditService.DeductCreditsAsync(db, UserId, ServerId, cost, source);
 
         // ── Golden Ticket multiplier ───────────────────────────────────────────
         if (payout > 0m)
         {
-            decimal gtMult = ShopHelper.HasActiveEffect(UserId, ServerId, "golden_ticket_ii") ? 3m :
-                             ShopHelper.HasActiveEffect(UserId, ServerId, "golden_ticket") ? 2m : 1m;
+            decimal gtMult = await ShopHelper.HasActiveEffectAsync(db, UserId, ServerId, "golden_ticket_ii") ? 3m :
+                             await ShopHelper.HasActiveEffectAsync(db, UserId, ServerId, "golden_ticket") ? 2m : 1m;
             if (gtMult > 1m) payout *= gtMult;
         }
 
         if (payout > 0m)
-            _eco.AddCredits(UserId, ServerId, payout, source);
+            await CreditService.AddCreditsAsync(db, UserId, ServerId, payout, source);
 
         // ── Hot Streak refund — after debit so net is correct ─────────────────
         if (hotStreakTriggered)
-            _eco.AddCredits(UserId, ServerId, cost, "hot_streak_refund");
+            await CreditService.AddCreditsAsync(db, UserId, ServerId, cost, "hot_streak_refund");
 
         // ── Passive jackpot feed — 1% of every bet ─────────────────────────────
-        // ServerId is a string ("Guild.Id.ToString()") — parse to long so ADO.NET
-        // sends it as BIGINT rather than NVarChar, avoiding implicit-conversion failures.
-        // feed is floored to a whole number so cast to long for the DECIMAL(20,0) column.
+        // ServerId is a string ("Guild.Id.ToString()") — parse to long to match the
+        // PassiveJackpot table's bigint ServerId column.
+        // feed is floored to a whole number, matching the source DECIMAL(20,0) column.
         if (long.TryParse(ServerId, out long feedServerId))
         {
             long feed = (long)Math.Max(1m, Math.Floor(cost * 0.01m));
             try
             {
-                _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "FeedPassiveJackpot",
-                [
-                    new SqlParameter("@ServerID", feedServerId),
-                    new SqlParameter("@UserID",   UserId),
-                    new SqlParameter("@Amount",   feed)
-                ]);
+                await JackpotService.FeedAsync(db, feedServerId, feed);
             }
             catch (Exception ex) { Console.WriteLine($"[Jackpot] FeedPassiveJackpot failed: {ex.Message}"); }
         }
 
         // ── Log to GambleLog ───────────────────────────────────────────────────
-        LogGamble(source, cost, payout);
+        await LogGambleAsync(source, cost, payout);
 
-        return _eco.GetBalance(UserId, ServerId);
+        return await CreditService.GetBalanceAsync(db, UserId, ServerId);
     }
 
     // ── Passive jackpot claim check ────────────────────────────────────────────
@@ -1477,28 +1452,16 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
             // fallback and avoids calling the claim SP on an empty pool.
             if (!long.TryParse(ServerId, out long claimServerId)) return (false, 0m);
 
-            var checkDt = _sp.Select(Constants.Constants.discordBotConnStr, "GetPassiveJackpot",
-                [new SqlParameter("@ServerID", claimServerId)]);
-
-            decimal poolBefore = checkDt.Rows.Count > 0
-                ? decimal.Parse(checkDt.Rows[0]["Pool"].ToString()!)
-                : 0m;
+            decimal poolBefore = await JackpotService.GetPoolAsync(db, claimServerId);
 
             if (poolBefore <= 0m) return (false, 0m);
 
             // Atomically claim the pool.
-            var claimDt = _sp.Select(Constants.Constants.discordBotConnStr, "ClaimPassiveJackpot",
-                [new SqlParameter("@ServerID", claimServerId)]);
+            decimal claimed = await JackpotService.ClaimAsync(db, claimServerId);
 
-            // Use SP-returned amount when available; fall back to pre-check if SP
-            // returns the post-reset value (0) or no rows.
-            decimal claimed = claimDt.Rows.Count > 0
-                ? decimal.Parse(claimDt.Rows[0]["Pool"].ToString()!)
-                : 0m;
+            if (claimed <= 0m) claimed = poolBefore; // defensive fallback — mirrors source's post-reset-0 guard
 
-            if (claimed <= 0m) claimed = poolBefore; // SP returned post-reset 0 — use pre-check
-
-            _eco.AddCredits(UserId, ServerId, claimed, "passive_jackpot_win");
+            await CreditService.AddCreditsAsync(db, UserId, ServerId, claimed, "passive_jackpot_win");
 
             // Server-wide announcement so all players see the winner.
             try
@@ -1508,7 +1471,7 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
                 // Resolve announcement channel: prefer the server's configured default,
                 // fall back to the channel the command was run in so it always sends.
                 ITextChannel? channel = null;
-                var serverDetails = ServerHelper.GetServerInfo(guild.Id);
+                var serverDetails = await ServerHelper.GetServerInfoAsync(db, guild.Id);
                 if (serverDetails is not null
                     && ulong.TryParse(serverDetails.DefaultChannelID, out ulong defChanId)
                     && defChanId != 0)
@@ -1570,8 +1533,7 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
         {
             // Win: double the original net win
             decimal prize = offer.amount * 2m;
-            _eco.AddCredits(UserId, ServerId, prize, "don_win");
-            decimal balance = _eco.GetBalance(UserId, ServerId);
+            decimal balance = await CreditService.AddCreditsAsync(db, UserId, ServerId, prize, "don_win");
 
             await ModifyOriginalResponseAsync(m =>
             {
@@ -1589,8 +1551,8 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
         else
         {
             // Loss: claw back the original win
-            _eco.DeductCredits(UserId, ServerId, offer.amount, "don_loss");
-            decimal balance = _eco.GetBalance(UserId, ServerId);
+            await CreditService.DeductCreditsAsync(db, UserId, ServerId, offer.amount, "don_loss");
+            decimal balance = await CreditService.GetBalanceAsync(db, UserId, ServerId);
 
             await ModifyOriginalResponseAsync(m =>
             {
@@ -1669,33 +1631,19 @@ public class Gambling : InteractionModuleBase<SocketInteractionContext>
     }
 
     /// <summary>Increments challenge progress for the given game type. Non-fatal.</summary>
-    private void TrackChallenge(string gameType)
+    private async Task TrackChallengeAsync(string gameType)
     {
-        try
-        {
-            _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "IncrementChallengeProgress",
-            [
-                new SqlParameter("@UserID",   UserId),
-                new SqlParameter("@ServerID", ServerId),
-                new SqlParameter("@GameType", gameType)
-            ]);
-        }
+        try { await ChallengeService.IncrementProgressAsync(db, UserId, ServerId, gameType); }
         catch { }
     }
 
-    /// <summary>Write a gamble result to the log (used for draws/pushes that skip ApplyGamble).</summary>
-    private void LogGamble(string game, decimal bet, decimal payout)
+    /// <summary>Write a gamble result to the log (used for draws/pushes that skip ApplyGambleAsync).</summary>
+    private async Task LogGambleAsync(string game, decimal bet, decimal payout)
     {
         try
         {
-            _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "AddGambleLog",
-            [
-                new SqlParameter("@UserID",   UserId),
-                new SqlParameter("@ServerID", ServerId),
-                new SqlParameter("@Game",     game),
-                new SqlParameter("@Bet",      bet),
-                new SqlParameter("@Payout",   payout)
-            ]);
+            db.GambleLogs.Add(new GambleLog { UserId = UserId, ServerId = ServerId, Game = game, Bet = bet, Payout = payout, Net = payout - bet });
+            await db.SaveChangesAsync();
         }
         catch { /* log failure is non-fatal */ }
     }

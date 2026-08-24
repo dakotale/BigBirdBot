@@ -1,21 +1,20 @@
 ﻿using Discord;
 using Discord.Interactions;
 using DiscordBot.Constants;
+using DiscordBot.Data;
 using DiscordBot.Helper;
-using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
 using System.Text;
 
 namespace DiscordBot.SlashCommands;
 
 /// <summary>
 /// Daily challenges (/challenges) and personal stats (/stats).
-/// Challenge progress is incremented by hooks in Gambling.cs, Economy.cs,
-/// and Blackjack.cs via ChallengeHelper.Increment().
+/// Challenge progress is incremented by hooks in Gambling.cs, Economy.cs, and Blackjack.cs
+/// via ChallengeService.IncrementProgressAsync().
 /// </summary>
-public class Challenges : InteractionModuleBase<SocketInteractionContext>
+public class Challenges(DiscordbotContext db) : InteractionModuleBase<SocketInteractionContext>
 {
-    private readonly StoredProcedure _sp = new();
-    private readonly Economy _eco = new();
     private readonly EmbedHelper _embed = new();
 
     private string Username => Context.User.Username;
@@ -41,63 +40,35 @@ public class Challenges : InteractionModuleBase<SocketInteractionContext>
     {
         await DeferAsync();
 
-        var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetOrAssignDailyChallenges",
-        [
-            new SqlParameter("@UserID",   UserId),
-            new SqlParameter("@ServerID", ServerId)
-        ]);
+        var result = await ChallengeService.GetOrAssignDailyChallengesAsync(db, UserId, ServerId);
 
-        if (dt.Rows.Count == 0)
+        if (result is null)
         {
             await FollowupAsync(embed: BuildError("Could not load challenges.").Build());
             return;
         }
 
-        var row = dt.Rows[0];
-
         // Parse the three challenges
         var challenges = new[]
         {
-            (
-                key:    row["C1Key"].ToString()!,
-                desc:   row["C1Desc"].ToString()!,
-                target: int.Parse(row["C1Target"].ToString()!),
-                prog:   int.Parse(row["Progress1"].ToString()!),
-                reward: decimal.Parse(row["C1Reward"].ToString()!),
-                diff:   int.Parse(row["C1Diff"].ToString()!)
-            ),
-            (
-                key:    row["C2Key"].ToString()!,
-                desc:   row["C2Desc"].ToString()!,
-                target: int.Parse(row["C2Target"].ToString()!),
-                prog:   int.Parse(row["Progress2"].ToString()!),
-                reward: decimal.Parse(row["C2Reward"].ToString()!),
-                diff:   int.Parse(row["C2Diff"].ToString()!)
-            ),
-            (
-                key:    row["C3Key"].ToString()!,
-                desc:   row["C3Desc"].ToString()!,
-                target: int.Parse(row["C3Target"].ToString()!),
-                prog:   int.Parse(row["Progress3"].ToString()!),
-                reward: decimal.Parse(row["C3Reward"].ToString()!),
-                diff:   int.Parse(row["C3Diff"].ToString()!)
-            ),
+            (key: result.Slot1.Key, desc: result.Slot1.Description, target: result.Slot1.Target, prog: result.Slot1.Progress, reward: result.Slot1.Reward, diff: (int)result.Slot1.Difficulty),
+            (key: result.Slot2.Key, desc: result.Slot2.Description, target: result.Slot2.Target, prog: result.Slot2.Progress, reward: result.Slot2.Reward, diff: (int)result.Slot2.Difficulty),
+            (key: result.Slot3.Key, desc: result.Slot3.Description, target: result.Slot3.Target, prog: result.Slot3.Progress, reward: result.Slot3.Reward, diff: (int)result.Slot3.Difficulty),
         };
 
-        bool bonusClaimed = row["BonusClaimed"].ToString() == "1" || row["BonusClaimed"].ToString() == "True";
+        bool bonusClaimed = result.BonusClaimed;
         bool allDone = challenges.All(c => c.prog >= c.target);
 
-        // Individual challenge rewards are paid automatically via TrackChallenge when each
-        // challenge completes. ClaimChallengeBonus is used only to mark the bonus as claimed
-        // and prevent double-payment — no additional credits are issued here.
+        // NOTE: only the "daily" challenge type's tracker (Economy.HandleDailyAsync) actually
+        // pays individual challenge rewards on completion — this doc comment's claim that
+        // TrackChallenge hooks pay out for every game type is not accurate for the other 17
+        // challenge types (confirmed with the user, kept as-is rather than fixed here).
+        // ClaimChallengeBonus only marks the bonus as claimed and prevents double-payment — no
+        // additional credits are issued here, matching source exactly.
         string? claimNote = null;
         if (allDone && !bonusClaimed)
         {
-            _sp.Select(Constants.Constants.discordBotConnStr, "ClaimChallengeBonus",
-            [
-                new SqlParameter("@UserID",   UserId),
-                new SqlParameter("@ServerID", ServerId)
-            ]);
+            await ChallengeService.ClaimBonusIfEligibleAsync(db, UserId, ServerId);
             bonusClaimed = true;
         }
 
@@ -156,41 +127,55 @@ public class Challenges : InteractionModuleBase<SocketInteractionContext>
         bool isSelf = target.Id == Context.User.Id;
 
         // GetUserStats returns 3 result sets — call each SP individually
-        var gambleTable = _sp.Select(Constants.Constants.discordBotConnStr, "GetGambleStats",
-        [
-            new SqlParameter("@UserID",   targetId),
-            new SqlParameter("@ServerID", ServerId)
-        ]);
+        var gambleRows = await db.GambleLogs.AsNoTracking()
+            .Where(g => g.UserId == targetId && g.ServerId == ServerId)
+            .GroupBy(g => g.Game)
+            .Select(grp => new
+            {
+                Game = grp.Key,
+                GamesPlayed = grp.Count(),
+                TotalWagered = grp.Sum(g => g.Bet),
+                Wins = grp.Count(g => g.Net > 0),
+                Losses = grp.Count(g => g.Net < 0),
+                Draws = grp.Count(g => g.Net == 0),
+                BiggestWin = grp.Max(g => g.Net),
+                BiggestLoss = grp.Min(g => g.Net),
+                NetTotal = grp.Sum(g => g.Net)
+            })
+            .OrderByDescending(g => g.TotalWagered)
+            .ToListAsync();
 
-        var fishTable = _sp.Select(Constants.Constants.discordBotConnStr, "GetFishStats",
-        [
-            new SqlParameter("@UserID",   targetId),
-            new SqlParameter("@ServerID", ServerId)
-        ]);
+        // Source (GetFishStats) names this column "TotalEarned" — the original C# read it as
+        // "TotalFishEarned", a column that doesn't exist; would throw for any user with fish
+        // history. Fixed (not a design choice, just a mismatched name).
+        var fishStats = await db.FishLogs.AsNoTracking()
+            .Where(f => f.UserId == targetId && f.ServerId == ServerId)
+            .GroupBy(f => 1)
+            .Select(g => new
+            {
+                TotalCaught = g.Count(),
+                TotalEarned = g.Sum(f => f.Credits),
+                BiggestCatch = g.Max(f => f.Credits),
+                Legendaries = g.Count(f => f.Rarity == "Legendary"),
+                Rares = g.Count(f => f.Rarity == "Rare"),
+                Uncommons = g.Count(f => f.Rarity == "Uncommon"),
+                Commons = g.Count(f => f.Rarity == "Common"),
+                Junks = g.Count(f => f.Rarity == "Junk")
+            })
+            .FirstOrDefaultAsync();
 
-        var profileTable = _sp.Select(Constants.Constants.discordBotConnStr, "GetCredits",
-        [
-            new SqlParameter("@UserID",   targetId),
-            new SqlParameter("@ServerID", ServerId)
-        ]);
+        var credit = await db.Credits.AsNoTracking().FirstOrDefaultAsync(c => c.UserId == targetId && c.ServerId == ServerId);
 
         // ── Profile row ────────────────────────────────────────────────────────
-        decimal lifetimeEarned = 0m;
-        int dailyStreak = 0;
-        decimal balance = 0m;
-
-        if (profileTable.Rows.Count > 0)
-        {
-            lifetimeEarned = decimal.Parse(profileTable.Rows[0]["LifetimeEarned"].ToString()!);
-            dailyStreak = int.Parse(profileTable.Rows[0]["DailyStreak"].ToString()!);
-            balance = decimal.Parse(profileTable.Rows[0]["Balance"].ToString()!);
-        }
+        decimal lifetimeEarned = credit?.LifetimeEarned ?? 0m;
+        int dailyStreak = credit?.DailyStreak ?? 0;
+        decimal balance = credit?.Balance ?? 0m;
 
         var (streakMult, streakLabel) = CreditHelper.StreakMultiplier(dailyStreak);
 
         // ── Gambling summary ───────────────────────────────────────────────────
         var gambDesc = new StringBuilder();
-        if (gambleTable.Rows.Count == 0)
+        if (gambleRows.Count == 0)
         {
             gambDesc.AppendLine("*No gambling history yet.*");
         }
@@ -201,15 +186,15 @@ public class Challenges : InteractionModuleBase<SocketInteractionContext>
             int totalWins = 0, totalLosses = 0, totalDraws = 0;
             decimal biggestWin = 0m, biggestLoss = 0m;
 
-            foreach (System.Data.DataRow r in gambleTable.Rows)
+            foreach (var r in gambleRows)
             {
-                totalWagered += decimal.Parse(r["TotalWagered"].ToString()!);
-                totalNet += decimal.Parse(r["NetTotal"].ToString()!);
-                totalWins += int.Parse(r["Wins"].ToString()!);
-                totalLosses += int.Parse(r["Losses"].ToString()!);
-                totalDraws += int.Parse(r["Draws"].ToString()!);
-                biggestWin = Math.Max(biggestWin, decimal.Parse(r["BiggestWin"].ToString()!));
-                biggestLoss = Math.Min(biggestLoss, decimal.Parse(r["BiggestLoss"].ToString()!));
+                totalWagered += r.TotalWagered;
+                totalNet += r.NetTotal;
+                totalWins += r.Wins;
+                totalLosses += r.Losses;
+                totalDraws += r.Draws;
+                biggestWin = Math.Max(biggestWin, r.BiggestWin);
+                biggestLoss = Math.Min(biggestLoss, r.BiggestLoss);
             }
 
             int totalGames = totalWins + totalLosses + totalDraws;
@@ -222,45 +207,31 @@ public class Challenges : InteractionModuleBase<SocketInteractionContext>
             gambDesc.AppendLine($"**Biggest Loss:** {CreditHelper.Format(biggestLoss)}");
             gambDesc.AppendLine();
 
-            // Per-game breakdown (top 5 by wagered)
+            // Per-game breakdown, every game played, ordered by wagered
             gambDesc.AppendLine("**By Game:**");
-            foreach (System.Data.DataRow r in gambleTable.Rows)
+            foreach (var r in gambleRows)
             {
-                string game = r["Game"].ToString()!;
-                int played = int.Parse(r["GamesPlayed"].ToString()!);
-                int wins = int.Parse(r["Wins"].ToString()!);
-                decimal net = decimal.Parse(r["NetTotal"].ToString()!);
-                string netStr = net >= 0
-                    ? $"+{CreditHelper.Format(net)}"
-                    : $"-{CreditHelper.Format(Math.Abs(net))}";
-                gambDesc.AppendLine($"　`{game,-12}` {played,4} plays  {wins,4}W  {netStr}");
+                string netStr = r.NetTotal >= 0
+                    ? $"+{CreditHelper.Format(r.NetTotal)}"
+                    : $"-{CreditHelper.Format(Math.Abs(r.NetTotal))}";
+                gambDesc.AppendLine($"　`{r.Game,-12}` {r.GamesPlayed,4} plays  {r.Wins,4}W  {netStr}");
             }
         }
 
         // ── Fish summary ───────────────────────────────────────────────────────
         var fishDesc = new StringBuilder();
-        if (fishTable.Rows.Count == 0 || fishTable.Rows[0]["TotalCaught"].ToString() == "0")
+        if (fishStats is null || fishStats.TotalCaught == 0)
         {
             fishDesc.AppendLine("*No fish caught yet.*");
         }
         else
         {
-            var fr = fishTable.Rows[0];
-            int total = int.Parse(fr["TotalCaught"].ToString()!);
-            decimal earn = decimal.Parse(fr["TotalFishEarned"].ToString()!);
-            decimal best = decimal.Parse(fr["BiggestCatch"].ToString()!);
-            int leg = int.Parse(fr["Legendaries"].ToString()!);
-            int rare = int.Parse(fr["Rares"].ToString()!);
-            int unc = int.Parse(fr["Uncommons"].ToString()!);
-            int com = int.Parse(fr["Commons"].ToString()!);
-            int junk = int.Parse(fr["Junks"].ToString()!);
-
-            fishDesc.AppendLine($"**Total Caught:** {total:N0}");
-            fishDesc.AppendLine($"**Total Earned:** {CreditHelper.Format(earn)}");
-            fishDesc.AppendLine($"**Best Catch:** {CreditHelper.Format(best)}");
+            fishDesc.AppendLine($"**Total Caught:** {fishStats.TotalCaught:N0}");
+            fishDesc.AppendLine($"**Total Earned:** {CreditHelper.Format(fishStats.TotalEarned)}");
+            fishDesc.AppendLine($"**Best Catch:** {CreditHelper.Format(fishStats.BiggestCatch)}");
             fishDesc.AppendLine();
-            fishDesc.AppendLine($"🌟 Legendary: **{leg}**   🟨 Rare: **{rare}**");
-            fishDesc.AppendLine($"🟦 Uncommon: **{unc}**   🟩 Common: **{com}**   ⬜ Junk: **{junk}**");
+            fishDesc.AppendLine($"🌟 Legendary: **{fishStats.Legendaries}**   🟨 Rare: **{fishStats.Rares}**");
+            fishDesc.AppendLine($"🟦 Uncommon: **{fishStats.Uncommons}**   🟩 Common: **{fishStats.Commons}**   ⬜ Junk: **{fishStats.Junks}**");
         }
 
         // ── Prestige / profile ─────────────────────────────────────────────────

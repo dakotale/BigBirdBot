@@ -1,16 +1,16 @@
-﻿using Discord;
+using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 using DiscordBot.Constants;
+using DiscordBot.Data;
 using DiscordBot.Helper;
+using DiscordBot.Models.Generated;
 using Lavalink4NET;
 using Lavalink4NET.DiscordNet;
 using Lavalink4NET.Players;
 using Lavalink4NET.Players.Queued;
 using Lavalink4NET.Rest.Entities.Tracks;
-using Microsoft.Extensions.Options;
-using System.Data;
-using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
 using System.Text;
 
 namespace DiscordBot.SlashCommands;
@@ -25,10 +25,9 @@ namespace DiscordBot.SlashCommands;
 /// that Lavalink originally resolved, allowing them to be re-queued on load.
 /// </summary>
 [Group("playlist", "Save and load named playlists from the current queue.")]
-public sealed class Playlist(IAudioService audioService)
+public sealed class Playlist(IAudioService audioService, DiscordbotContext db, IServiceProvider services)
     : InteractionModuleBase<SocketInteractionContext>
 {
-    private readonly StoredProcedure _sp = new();
     private readonly EmbedHelper _embed = new();
 
     private string Username => Context.User.Username;
@@ -60,7 +59,8 @@ public sealed class Playlist(IAudioService audioService)
         var options = new CustomPlayerOptions
         {
             SelfMute = true,
-            TextChannel = Context.Channel as ITextChannel
+            TextChannel = Context.Channel as ITextChannel,
+            Services = services
         };
 
         var retrieveOptions = new PlayerRetrieveOptions(ChannelBehavior: PlayerChannelBehavior.None);
@@ -110,28 +110,26 @@ public sealed class Playlist(IAudioService audioService)
 
         try
         {
-            // Delete existing playlist with same name (overwrite semantics)
-            _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "DeletePlaylist",
-            [
-                new SqlParameter("@UserID",   UserId),
-                new SqlParameter("@ServerID", ServerId),
-                new SqlParameter("@Name",     name)
-            ]);
+            // Delete existing playlist with same name (overwrite semantics), then save each
+            // track in order — staged as one set of changes, saved together.
+            db.PlaylistTracks.RemoveRange(db.PlaylistTracks
+                .Where(p => p.UserId == UserId && p.ServerId == ServerId && EF.Functions.ILike(p.Name, name)));
 
-            // Save each track in order
             int position = 0;
             foreach (var (title, uri) in tracks)
             {
-                _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "SavePlaylistTrack",
-                [
-                    new SqlParameter("@UserID",    UserId),
-                    new SqlParameter("@ServerID",  ServerId),
-                    new SqlParameter("@Name",      name),
-                    new SqlParameter("@Position",  position++),
-                    new SqlParameter("@TrackTitle", title),
-                    new SqlParameter("@TrackUri",  uri)
-                ]);
+                db.PlaylistTracks.Add(new PlaylistTrack
+                {
+                    UserId = UserId,
+                    ServerId = ServerId,
+                    Name = name,
+                    Position = position++,
+                    TrackTitle = title,
+                    TrackUri = uri
+                });
             }
+
+            await db.SaveChangesAsync();
 
             await FollowupAsync(embed: _embed.BuildSimpleEmbed(
                 "💾  Playlist Saved",
@@ -170,15 +168,13 @@ public sealed class Playlist(IAudioService audioService)
         }
 
         // Load tracks from DB
-        DataTable dt;
+        List<PlaylistTrack> tracksToLoad;
         try
         {
-            dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetPlaylistTracks",
-            [
-                new SqlParameter("@UserID",   UserId),
-                new SqlParameter("@ServerID", ServerId),
-                new SqlParameter("@Name",     name)
-            ]);
+            tracksToLoad = await db.PlaylistTracks.AsNoTracking()
+                .Where(p => p.UserId == UserId && p.ServerId == ServerId && EF.Functions.ILike(p.Name, name))
+                .OrderBy(p => p.Position)
+                .ToListAsync();
         }
         catch (Exception ex)
         {
@@ -187,7 +183,7 @@ public sealed class Playlist(IAudioService audioService)
             return;
         }
 
-        if (dt.Rows.Count == 0)
+        if (tracksToLoad.Count == 0)
         {
             await FollowupAsync(embed: _embed.BuildErrorEmbed(
                 "Playlist",
@@ -200,7 +196,8 @@ public sealed class Playlist(IAudioService audioService)
         var playerOptions = new CustomPlayerOptions
         {
             SelfMute = true,
-            TextChannel = Context.Channel as ITextChannel
+            TextChannel = Context.Channel as ITextChannel,
+            Services = services
         };
         var retrieveOptions = new PlayerRetrieveOptions(ChannelBehavior: PlayerChannelBehavior.Join);
 
@@ -219,9 +216,9 @@ public sealed class Playlist(IAudioService audioService)
         int queued = 0;
         int failed = 0;
 
-        foreach (DataRow row in dt.Rows)
+        foreach (var row in tracksToLoad)
         {
-            string uri = row["TrackUri"].ToString()!;
+            string uri = row.TrackUri;
             try
             {
                 TrackSearchMode searchMode = TrackSearchMode.None;
@@ -263,14 +260,14 @@ public sealed class Playlist(IAudioService audioService)
     {
         await DeferAsync(ephemeral: true);
 
-        DataTable dt;
+        List<(string Name, int TrackCount)> playlists;
         try
         {
-            dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetUserPlaylists",
-            [
-                new SqlParameter("@UserID",   UserId),
-                new SqlParameter("@ServerID", ServerId)
-            ]);
+            playlists = await db.PlaylistTracks.AsNoTracking()
+                .Where(p => p.UserId == UserId && p.ServerId == ServerId)
+                .GroupBy(p => p.Name)
+                .Select(g => new ValueTuple<string, int>(g.Key, g.Count()))
+                .ToListAsync();
         }
         catch (Exception ex)
         {
@@ -279,7 +276,7 @@ public sealed class Playlist(IAudioService audioService)
             return;
         }
 
-        if (dt.Rows.Count == 0)
+        if (playlists.Count == 0)
         {
             await FollowupAsync(embed: _embed.BuildErrorEmbed(
                 "Playlist",
@@ -289,12 +286,8 @@ public sealed class Playlist(IAudioService audioService)
         }
 
         var sb = new StringBuilder();
-        foreach (DataRow row in dt.Rows)
-        {
-            string pName   = row["Name"].ToString()!;
-            int trackCount = int.Parse(row["TrackCount"].ToString()!);
+        foreach (var (pName, trackCount) in playlists)
             sb.AppendLine($"📀 **{pName}** — {trackCount} track{(trackCount == 1 ? "" : "s")}");
-        }
 
         await FollowupAsync(embed: _embed.BuildSimpleEmbed(
             $"🎶  {Username}'s Playlists", sb.ToString(), ColourGold,
@@ -320,16 +313,11 @@ public sealed class Playlist(IAudioService audioService)
         try
         {
             // Check it exists first
-            var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetUserPlaylists",
-            [
-                new SqlParameter("@UserID",   UserId),
-                new SqlParameter("@ServerID", ServerId)
-            ]);
+            var matching = await db.PlaylistTracks
+                .Where(p => p.UserId == UserId && p.ServerId == ServerId && EF.Functions.ILike(p.Name, name))
+                .ToListAsync();
 
-            bool exists = dt.Rows.Cast<DataRow>()
-                .Any(r => string.Equals(r["Name"].ToString(), name, StringComparison.OrdinalIgnoreCase));
-
-            if (!exists)
+            if (matching.Count == 0)
             {
                 await FollowupAsync(embed: _embed.BuildErrorEmbed(
                     "Playlist",
@@ -338,12 +326,8 @@ public sealed class Playlist(IAudioService audioService)
                 return;
             }
 
-            _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "DeletePlaylist",
-            [
-                new SqlParameter("@UserID",   UserId),
-                new SqlParameter("@ServerID", ServerId),
-                new SqlParameter("@Name",     name)
-            ]);
+            db.PlaylistTracks.RemoveRange(matching);
+            await db.SaveChangesAsync();
 
             await FollowupAsync(embed: _embed.BuildSimpleEmbed(
                 "🗑️  Playlist Deleted", $"Playlist **\"{name}\"** has been deleted.",

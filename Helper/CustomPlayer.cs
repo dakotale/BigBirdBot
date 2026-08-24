@@ -1,9 +1,11 @@
-﻿using Microsoft.Data.SqlClient;
-using Discord;
+﻿using Discord;
 using DiscordBot.Constants;
+using DiscordBot.Data;
 using Lavalink4NET.Players;
 using Lavalink4NET.Players.Queued;
 using Lavalink4NET.Protocol.Payloads.Events;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace DiscordBot.Helper;
 
@@ -14,12 +16,14 @@ namespace DiscordBot.Helper;
 public sealed class CustomPlayer : QueuedLavalinkPlayer
 {
     private readonly ITextChannel? _textChannel;
+    private readonly IServiceProvider _services;
 
-    /// <summary>Captures the bound text channel from the player options for later Now Playing notifications.</summary>
+    /// <summary>Captures the bound text channel and DI service provider from the player options for later use.</summary>
     public CustomPlayer(IPlayerProperties<CustomPlayer, CustomPlayerOptions> properties)
         : base(properties)
     {
         _textChannel = properties.Options.Value.TextChannel;
+        _services = properties.Options.Value.Services;
     }
 
     /// <inheritdoc/>
@@ -62,14 +66,27 @@ public sealed class CustomPlayer : QueuedLavalinkPlayer
         // DB cleanup is fire-and-forget; never let it block or throw into the event loop.
         if (queueItem?.Track is { } t)
         {
-            _ = Task.Run(() =>
+            _ = Task.Run(async () =>
             {
                 try
                 {
-                    new StoredProcedure().UpdateCreate(
-                        Constants.Constants.discordBotConnStr,
-                        "DeleteMusicQueue",
-                        [new SqlParameter("@URL", t.Uri?.OriginalString ?? "")]);
+                    string url = t.Uri?.OriginalString ?? "";
+                    using var scope = _services.CreateScope();
+                    var db = scope.ServiceProvider.GetRequiredService<DiscordbotContext>();
+
+                    // Source proc deleted only the single lowest-MusicQueueID row matching
+                    // this URL (in case of duplicate URLs queued), not every match — preserved
+                    // exactly via OrderBy + Take(1) rather than a bulk delete-all-matching.
+                    var row = await db.MusicQueues
+                        .Where(q => q.Url == url)
+                        .OrderBy(q => q.MusicQueueId)
+                        .FirstOrDefaultAsync();
+
+                    if (row is not null)
+                    {
+                        db.MusicQueues.Remove(row);
+                        await db.SaveChangesAsync();
+                    }
                 }
                 catch
                 {
