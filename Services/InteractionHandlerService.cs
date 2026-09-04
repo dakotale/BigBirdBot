@@ -270,20 +270,28 @@ public sealed class InteractionHandlerService
             {
                 var logging = _services.GetService<LoggingService>();
                 string fullName = GetFullCommandName(cmd);
-                try
-                {
-                    long guildOrChannel = (long)(context.Guild?.Id ?? context.Channel.Id);
+                long guildOrChannel = (long)(context.Guild?.Id ?? context.Channel.Id);
+                ulong userId = context.User.Id;
 
-                    await _audit.InsertAuditAsync(fullName, context.User.Id.ToString(), guildOrChannel);
-
-                    if (logging is not null)
-                        _ = logging.InfoAsync($"[Audit] OK — '{fullName}' by {context.User.Id}");
-                }
-                catch (Exception auditEx)
+                // Fire-and-forget: Discord requires the interaction be acknowledged (deferred
+                // or responded to) within 3 seconds. Awaiting the audit insert here used to
+                // delay that ack — a slow or cold-start EF Core round trip could eat enough of
+                // the window that the command's own DeferAsync() then failed with "Unknown
+                // interaction" (error 10062) because Discord had already expired the token.
+                _ = Task.Run(async () =>
                 {
-                    if (logging is not null)
-                        _ = logging.InfoAsync($"[Audit] FAILED — '{fullName}' by {context.User.Id}: {auditEx.GetType().Name}: {auditEx.Message}");
-                }
+                    try
+                    {
+                        await _audit.InsertAuditAsync(fullName, userId.ToString(), guildOrChannel);
+                        if (logging is not null)
+                            _ = logging.InfoAsync($"[Audit] OK — '{fullName}' by {userId}");
+                    }
+                    catch (Exception auditEx)
+                    {
+                        if (logging is not null)
+                            _ = logging.InfoAsync($"[Audit] FAILED — '{fullName}' by {userId}: {auditEx.GetType().Name}: {auditEx.Message}");
+                    }
+                });
             }
 
             var result = await _handler.ExecuteCommandAsync(context, _services);
