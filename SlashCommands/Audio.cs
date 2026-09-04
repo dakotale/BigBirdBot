@@ -4,8 +4,6 @@ using Discord.Interactions;
 using Discord.WebSocket;
 using DiscordBot.Constants;
 using DiscordBot.Helper;
-using Fergun.Interactive;
-using Fergun.Interactive.Pagination;
 using Lavalink4NET;
 using Lavalink4NET.DiscordNet;
 using Lavalink4NET.Players;
@@ -20,7 +18,7 @@ namespace DiscordBot.SlashCommands;
 /// via Lavalink4NET, including queueing, playback control, and volume management.
 /// Supports interactive button controls on Now Playing embeds.
 /// </summary>
-public sealed class Audio(IAudioService audioService, InteractiveService interactiveService, MusicService music)
+public sealed class Audio(IAudioService audioService, MusicService music)
     : InteractionModuleBase<SocketInteractionContext>
 {
     private readonly EmbedHelper _embed = new();

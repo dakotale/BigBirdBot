@@ -8,8 +8,6 @@ using DiscordBot.Constants;
 using DiscordBot.Data;
 using DiscordBot.Helper;
 using DiscordBot.Services;
-using Fergun.Interactive;
-using KillersLibrary.Services;
 using Lavalink4NET.Extensions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -48,14 +46,6 @@ static void ConfigureServices(IServiceCollection services) =>
         .AddSingleton<InteractionHandlerService>()
         .AddSingleton<InteractionService>(p =>
             new InteractionService(p.GetRequiredService<DiscordSocketClient>()))
-        .AddSingleton(new InteractiveConfig
-        {
-            DefaultTimeout = TimeSpan.FromMinutes(15),
-            LogLevel = LogSeverity.Warning
-        })
-        .AddSingleton<InteractiveService>()
-        .AddSingleton<EmbedPagesService>()
-        .AddSingleton<MultiButtonsService>()
         .AddSingleton<BotHost>()
         .AddLavalink()
         .ConfigureLavalink(x =>
