@@ -90,8 +90,8 @@ static void ConfigureServices(IServiceCollection services) =>
 /// <summary>
 /// Top-level orchestrator for the bot's lifetime: connects to Discord, wires up every
 /// gateway event handler, and runs the background scheduler and stock-price timers.
-/// Also hosts the message-based (non-slash-command) features — keyword triggers, mini
-/// games (Scramble/Wordle/pet word puzzles), pronoun buttons, and NSFW/dead-link cleanup —
+/// Also hosts the message-based (non-slash-command) features — keyword triggers, the
+/// hourly bonus word puzzle, pronoun buttons, and NSFW/dead-link cleanup —
 /// since these react to raw events rather than slash commands.
 /// </summary>
 internal sealed class BotHost(
@@ -192,14 +192,6 @@ internal sealed class BotHost(
     private readonly EmbedHelper _embed = new();
     private readonly StoredProcedure _sp = new();
     private readonly DiscordBot.SlashCommands.Economy _creditEco = new();
-
-    private static readonly Dictionary<string, string> EmojiToLetter = new()
-    {
-        ["🇦"] = "A.",
-        ["🇧"] = "B.",
-        ["🇨"] = "C.",
-        ["🇩"] = "D."
-    };
 
 
     /// <summary>
@@ -496,136 +488,17 @@ internal sealed class BotHost(
 
 
     /// <summary>
-    /// Handles a DM as a possible guess for a scramble or Wordle game the author has
-    /// active in this DM channel. DMs have no guild/server context, so unlike the guild-channel
-    /// path in <see cref="OnMessageReceivedAsync"/> these guesses are not audit-logged.
-    /// </summary>
-    private async Task HandleDmGameResponseAsync(SocketMessage msg, SocketDMChannel dmChannel)
-    {
-        string message   = msg.Content.Trim().ToLowerInvariant();
-        string channelId = dmChannel.Id.ToString();
-
-        if (await TryHandleScrambleGuessAsync(msg.Channel, channelId, message, msg.Author, onSolved: null))
-            return;
-
-        await TryHandleWordleGuessAsync(msg.Channel, channelId, message);
-    }
-
-    /// <summary>
-    /// Checks <paramref name="message"/> against an active scramble game for the channel.
-    /// A non-expired game is always "consumed" (returns true) whether or not the guess was
-    /// correct, so callers should stop further message processing; a missing or expired game
-    /// returns false so the message can fall through to other checks (e.g. Wordle). Shared by
-    /// the DM path and the guild-channel path in <see cref="OnMessageReceivedAsync"/>.
-    /// <paramref name="onSolved"/> lets callers add context-specific side effects (e.g. audit
-    /// logging) — DMs have no server ID to log against, so the DM caller passes null.
-    /// </summary>
-    private async Task<bool> TryHandleScrambleGuessAsync(
-        IMessageChannel channel, string channelId, string message, IUser author, Action? onSolved)
-    {
-        var scramble = _sp.Select(Constants.discordBotConnStr, "GetScrambleByChannel",
-            [new SqlParameter("@ChannelID", channelId)]);
-
-        if (scramble.Rows.Count == 0) return false;
-
-        bool expired = DateTime.TryParse(scramble.Rows[0]["ExpiresAt"].ToString(), out var expiresAt)
-                       && DateTime.UtcNow > expiresAt;
-        if (expired) return false;
-
-        string correctAnswer = scramble.Rows[0]["Answer"].ToString()!;
-
-        if (string.Equals(message, correctAnswer, StringComparison.OrdinalIgnoreCase))
-        {
-            _sp.UpdateCreate(Constants.discordBotConnStr, "DeleteScrambleGame",
-                [new SqlParameter("@ChannelID", channelId)]);
-
-            onSolved?.Invoke();
-
-            await channel.SendMessageAsync(embed: _embed.BuildSimpleEmbed(
-                "🎉  Correct!", $"{author.Mention} solved it! The word was **{correctAnswer}**.",
-                Color.Green, footer: $"Solved by {author.Username}").Build());
-        }
-
-        return true;
-    }
-
-    /// <summary>
-    /// Records <paramref name="message"/> as a guess against an active Wordle game for the
-    /// channel, updates/ends the game in the database, and refreshes the game's embed message.
-    /// Returns false (no-op) if the message isn't 5 letters or no game is active for the channel.
-    /// Shared by the DM path and the guild-channel path in <see cref="OnMessageReceivedAsync"/>.
-    /// <paramref name="onGuessed"/> fires with the win/loss result before the DB update, letting
-    /// callers add context-specific side effects (e.g. audit-logging a guild win).
-    /// </summary>
-    private async Task<bool> TryHandleWordleGuessAsync(
-        IMessageChannel channel, string channelId, string message, Action<bool>? onGuessed = null)
-    {
-        if (message.Length != 5 || !message.All(char.IsLetter)) return false;
-
-        var wordle = _sp.Select(Constants.discordBotConnStr, "GetWordleByChannel",
-            [new SqlParameter("@ChannelID", channelId)]);
-
-        if (wordle.Rows.Count == 0) return false;
-
-        string answer       = wordle.Rows[0]["Answer"].ToString()!;
-        string messageIdStr = wordle.Rows[0]["MessageID"].ToString()!;
-        string guessesRaw   = wordle.Rows[0]["Guesses"].ToString()!;
-
-        var guesses = string.IsNullOrEmpty(guessesRaw)
-            ? new List<string>()
-            : guessesRaw.Split(',').ToList();
-
-        guesses.Add(message);
-
-        bool won      = message.Equals(answer, StringComparison.OrdinalIgnoreCase);
-        bool gameOver = won || guesses.Count >= 6;
-
-        onGuessed?.Invoke(won);
-
-        string newGuesses = string.Join(",", guesses);
-
-        if (gameOver)
-            _sp.UpdateCreate(Constants.discordBotConnStr, "DeleteWordleGame",
-                [new SqlParameter("@ChannelID", channelId)]);
-        else
-            _sp.UpdateCreate(Constants.discordBotConnStr, "UpdateWordleGame",
-            [
-                new SqlParameter("@ChannelID", channelId),
-                new SqlParameter("@Guesses",   newGuesses)
-            ]);
-
-        if (ulong.TryParse(messageIdStr, out ulong messageId) &&
-            await channel.GetMessageAsync(messageId) is IUserMessage gameMsg)
-        {
-            await gameMsg.ModifyAsync(m =>
-                m.Embed = DiscordBot.SlashCommands.Games
-                    .BuildWordleEmbed(answer, guesses, gameOver).Build());
-        }
-
-        return true;
-    }
-
-
-    /// <summary>
     /// Central message router — fires on every message the bot can see. Order matters: each
-    /// branch below returns as soon as it claims the message, so DM game-guesses, the social-
-    /// media-embed fixer, the "-" keyword prefix, and the various mini-games are mutually
-    /// exclusive per message. Also drives passive credit income and pet XP-from-chatting,
-    /// which apply to ordinary conversation and don't return early.
+    /// branch below returns as soon as it claims the message, so the social-media-embed fixer,
+    /// the "-" keyword prefix, and the bonus word puzzle are mutually exclusive per message.
+    /// Also drives passive credit income and pet XP-from-chatting, which apply to ordinary
+    /// conversation and don't return early.
     /// </summary>
     private async Task OnMessageReceivedAsync(SocketMessage msg)
     {
         if (msg.Author.IsBot || msg.Author.IsWebhook) return; // never react to bots/webhooks (avoids feedback loops)
 
-        // DMs have no guild/economy context, so they're routed to a separate,
-        // games-only handler rather than falling through the guild logic below.
-        if (msg.Channel is SocketDMChannel dmChannel)
-        {
-            await HandleDmGameResponseAsync(msg, dmChannel);
-            return;
-        }
-
-        if (msg.Channel is not SocketGuildChannel msgChannel) return; // not a DM and not a guild channel — nothing to do
+        if (msg.Channel is not SocketGuildChannel msgChannel) return; // DMs and non-guild channels — nothing to do
 
         string message = msg.Content.Trim().ToLowerInvariant();
         string serverId = msgChannel.Guild.Id.ToString();
@@ -734,12 +607,6 @@ internal sealed class BotHost(
         }
 
 
-        // Guild-channel scramble guess — audit-logged (DMs have no server ID to log against).
-        if (await TryHandleScrambleGuessAsync(msg.Channel, msgChannel.Id.ToString(), message, msg.Author,
-                onSolved: () => new Audit().InsertGameTriggerAudit("scramble", userId, serverId, Constants.discordBotConnStr)))
-            return;
-
-
         var petPuzzle = _sp.Select(Constants.discordBotConnStr, "GetActivePetPuzzle",
             [new SqlParameter("@ChannelID", msg.Channel.Id.ToString())]);
 
@@ -835,14 +702,6 @@ internal sealed class BotHost(
                 }
             }
         }
-
-
-        // Guild-channel Wordle guess — audit-log only on a win, same as the original inline check.
-        if (await TryHandleWordleGuessAsync(msg.Channel, msgChannel.Id.ToString(), message, won =>
-            {
-                if (won) new Audit().InsertGameTriggerAudit("wordle", userId, serverId, Constants.discordBotConnStr);
-            }))
-            return;
 
 
         // Fall-through: check whether this message contains a registered chat-triggered
@@ -1072,10 +931,9 @@ internal sealed class BotHost(
 
 
     /// <summary>
-    /// Fires on every reaction added anywhere the bot can see. Handles two unrelated features
-    /// via the reacted emoji: a ❌ on one of the bot's own image posts deletes/NSFW-flags it,
-    /// and a trivia letter emoji (🇦-🇩) is scored as a quiz answer. Runs as fire-and-forget
-    /// so a slow download/DB call never blocks the gateway event loop.
+    /// Fires on every reaction added anywhere the bot can see. A ❌ on one of the bot's own
+    /// image posts deletes/NSFW-flags it. Runs as fire-and-forget so a slow download/DB call
+    /// never blocks the gateway event loop.
     /// </summary>
     private Task OnReactionAddedAsync(
         Cacheable<IUserMessage, ulong> cachedMsg,
@@ -1110,24 +968,9 @@ internal sealed class BotHost(
                     return;
                 }
             }
-
-            if (IsTriviaEmoji(reaction.Emote.Name))
-            {
-                new Audit().InsertReactionAudit(
-                    reaction.Emote.Name,
-                    download.Id.ToString(),
-                    reaction.UserId.ToString(),
-                    cachedChannel.Id.ToString(),
-                    Constants.discordBotConnStr);
-                await HandleTriviaReactionAsync(cachedMsg, cachedChannel, reaction, download);
-            }
         });
         return Task.CompletedTask;
     }
-
-    /// <summary>True if the reacted emoji is one of the four trivia answer letters (🇦-🇩).</summary>
-    private static bool IsTriviaEmoji(string name) =>
-        name is "🇦" or "🇧" or "🇨" or "🇩";
 
     /// <summary>Flags a chat-keyword file as NSFW the first time it's ❌-reacted, if it isn't already marked.</summary>
     private async Task TryMarkNsfwAsync(
@@ -1143,66 +986,6 @@ internal sealed class BotHost(
                 "NSFW",
                 $"Thanks {reaction.User.Value.Mention}, the message was marked as NSFW, sorry about that :)",
                 "", "BigBirdBot", Color.Blue).Build());
-        }
-    }
-
-    /// <summary>
-    /// Scores a trivia-emoji reaction against the stored correct answer for that message,
-    /// replies with a correct/wrong result, and deletes the trivia record once answered
-    /// correctly (so later reactions on the same message are no-ops).
-    /// </summary>
-    private async Task HandleTriviaReactionAsync(
-        Cacheable<IUserMessage, ulong> cachedMsg,
-        Cacheable<IMessageChannel, ulong> channel,
-        SocketReaction reaction,
-        IUserMessage download)
-    {
-        try
-        {
-            if (download.Embeds.Count == 0) return; // not a trivia embed
-
-            long messageId = (long)cachedMsg.Id;
-            string userMention = reaction.User.Value.Mention;
-
-            var dt = _sp.Select(Constants.discordBotConnStr, "GetTriviaMessage",
-                [new SqlParameter("@TriviaMessageID", messageId)]);
-
-            if (dt.Rows.Count == 0) return; // no matching trivia record (already answered, or not a trivia message)
-
-            string correctAnswer = dt.Rows[0]["CorrectAnswer"].ToString()!;
-
-            // The answer-choice fields are named "A. ...", "B. ...", etc. — filter out any
-            // other fields the embed might have (e.g. a question/category field with no dot).
-            var fields = download.Embeds
-                .SelectMany(e => e.Fields)
-                .Where(f => f.Name.Contains('.'))
-                .ToList();
-
-            // Map the reacted emoji (🇦-🇩) to its letter, then confirm that letter's field
-            // is the one holding the correct answer text.
-            var correctField = fields.FirstOrDefault(f => f.Value == correctAnswer);
-            if (correctField == default
-                || !EmojiToLetter.TryGetValue(reaction.Emote.Name, out string? selectedLetter))
-                return;
-
-            bool isCorrect = selectedLetter == correctField.Name;
-
-            await channel.Value.SendMessageAsync(embed: new EmbedHelper().BuildMessageEmbed(
-                isCorrect ? "Correct" : "Wrong",
-                isCorrect
-                    ? $"{userMention} answered correctly with **{correctAnswer}**!"
-                    : $"{userMention}, you didn't answer correctly. Try again!",
-                "", "BigBirdBot",
-                isCorrect ? Color.Green : Color.Red).Build());
-
-            if (isCorrect)
-                _sp.UpdateCreate(Constants.discordBotConnStr, "DeleteTriviaMessage",
-                    [new SqlParameter("@TriviaMessageID", messageId)]);
-        }
-        catch (Exception ex)
-        {
-            await channel.Value.SendMessageAsync(embed: new EmbedHelper()
-                .BuildMessageEmbed("Error", ex.Message, Constants.errorImageUrl, "", Color.Red).Build());
         }
     }
 

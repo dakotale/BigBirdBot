@@ -78,8 +78,6 @@
     <Build Include="dbo\Tables\Users.sql" />
     <Build Include="dbo\Tables\PlayerConnected.sql" />
     <Build Include="dbo\Tables\TriviaMessage.sql" />
-    <Build Include="dbo\Functions\GetTriviaTokenFromAPI.sql" />
-    <Build Include="dbo\Functions\GetTriviaTable.sql" />
     <Build Include="dbo\Stored Procedures\DeleteUser.sql" />
     <Build Include="dbo\Stored Procedures\DeactiveServer.sql" />
     <Build Include="dbo\Stored Procedures\AddAudit.sql" />
@@ -103,12 +101,7 @@
     <Build Include="dbo\Stored Procedures\GetServers.sql" />
     <Build Include="dbo\Stored Procedures\GetVolume.sql" />
     <Build Include="dbo\Stored Procedures\UpdateVolume.sql" />
-    <Build Include="dbo\Stored Procedures\AddTriviaMessage.sql" />
-    <Build Include="dbo\Stored Procedures\DeleteTriviaMessage.sql" />
     <Build Include="dbo\Stored Procedures\GetAIJSONImageReturn.sql" />
-    <Build Include="dbo\Stored Procedures\GetTrivia.sql" />
-    <Build Include="dbo\Stored Procedures\GetTriviaMessage.sql" />
-    <Build Include="dbo\Stored Procedures\GetTriviaToken.sql" />
     <Build Include="dbo\Stored Procedures\UpdateBrokenEmbed.sql" />
     <Build Include="dbo\Stored Procedures\GetEmbedBroken.sql" />
     <Build Include="dbo\Stored Procedures\FeedPassiveJackpot.sql" />
