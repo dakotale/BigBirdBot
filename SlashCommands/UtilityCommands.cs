@@ -3,7 +3,6 @@ using Discord.Interactions;
 using Discord.WebSocket;
 using DiscordBot.Constants;
 using DiscordBot.Helper;
-using DiscordBot.Misc;
 using System.Text;
 
 namespace DiscordBot.SlashCommands;
@@ -38,17 +37,6 @@ public class UtilityCommands(SchedulingService scheduling, ServerService servers
             "Random",
             $"{Context.User.Mention} rolled a **{result}** (1 – {number})",
             AvatarUrl, $"Command from: {Username}", Color.Green).Build());
-    }
-
-
-    /// <summary>Converts a message into regional-indicator letter emojis (delegates to <see cref="EmojiText"/>).</summary>
-    [SlashCommand("etext", "Convert your message into regional-indicator emojis.")]
-    [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
-    public async Task HandleEmojiTextAsync(
-        [MinLength(1), MaxLength(1000)] string message)
-    {
-        await DeferAsync();
-        await FollowupAsync(new EmojiText().GetEmojiString(message));
     }
 
 
@@ -87,67 +75,6 @@ public class UtilityCommands(SchedulingService scheduling, ServerService servers
 
         for (int i = 0; i < items.Count; i++)
             await msg.AddReactionAsync(new Emoji(NumberEmojis[i]));
-    }
-
-
-    /// <summary>Answers a yes/no question with a random classic Magic 8-Ball response, colored green/blue/red by affirmative/neutral/negative.</summary>
-    [SlashCommand("8ball", "Ask the magic 8-ball a yes/no question.")]
-    [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
-    public async Task HandleEightBallAsync(
-        [MinLength(1), MaxLength(500)] string question)
-    {
-        await DeferAsync();
-
-        (string text, Color color)[] responses =
-        [
-            ("It is certain.",             Color.Green), ("It is decidedly so.",    Color.Green),
-            ("Without a doubt.",           Color.Green), ("Yes, definitely.",        Color.Green),
-            ("You may rely on it.",        Color.Green), ("As I see it, yes.",       Color.Green),
-            ("Most likely.",               Color.Green), ("Outlook good.",           Color.Green),
-            ("Signs point to yes.",        Color.Green), ("Yes.",                    Color.Green),
-            ("Reply hazy, try again.",     Color.Blue),  ("Ask again later.",        Color.Blue),
-            ("Better not tell you now.",   Color.Blue),  ("Cannot predict now.",     Color.Blue),
-            ("Concentrate and ask again.", Color.Blue),
-            ("Don't count on it.",         Color.Red),   ("My reply is no.",         Color.Red),
-            ("My sources say no.",         Color.Red),   ("Outlook not so good.",    Color.Red),
-            ("Very doubtful.",             Color.Red)
-        ];
-
-        var (text, color) = responses[Random.Shared.Next(responses.Length)];
-
-        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
-            "🎱  Magic 8-Ball", "", color, footer: $"Asked by {Username}", footerIconUrl: AvatarUrl,
-            fields: [("Question", question, false), ("Answer", $"*{text}*", false)]).Build());
-    }
-
-
-    /// <summary>Splits a comma-separated list into choices (at least 2 required) and randomly picks one, marking the winner in the reply.</summary>
-    [SlashCommand("choose", "Let the bot pick from your comma-separated options.")]
-    [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
-    public async Task HandleChooseAsync(
-        [MinLength(3), MaxLength(1000),
-         Summary("options", "Comma-separated list, e.g. Pizza, Sushi, Tacos")]
-        string options)
-    {
-        await DeferAsync();
-
-        var choices = options.Split(
-            ',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-
-        if (choices.Length < 2)
-        {
-            await FollowupAsync(embed: _embed.BuildErrorEmbed(
-                "Choose", "Please provide at least two comma-separated options.", Username).Build());
-            return;
-        }
-
-        string winner = choices[Random.Shared.Next(choices.Length)];
-        string list = string.Join("\n", choices.Select(c =>
-            c == winner ? $"➡️  **{c}**" : $"　 {c}"));
-
-        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
-            "🎯  The bot chooses…", list, Color.Purple,
-            footer: $"Requested by {Username}", footerIconUrl: AvatarUrl).Build());
     }
 
 
@@ -202,36 +129,6 @@ public class UtilityCommands(SchedulingService scheduling, ServerService servers
             "⏰  Reminder Set",
             $"I'll DM you on **{displayTime}** ({offsetLabel}).\n> {reminder}",
             AvatarUrl, Username, Color.Gold).Build(), ephemeral: true);
-    }
-
-
-    /// <summary>Computes the elapsed (or remaining) time between today and a given date, broken into years/months/days.</summary>
-    [SlashCommand("daysince", "Calculate how many days since or until a date.")]
-    [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
-    public async Task HandleDaySinceAsync(
-        [Summary("date", "Date in MM/DD/YYYY format")] string date)
-    {
-        await DeferAsync();
-
-        if (!DateTime.TryParse(date, out var parsed))
-        {
-            await FollowupAsync(embed: _embed.BuildErrorEmbed(
-                "Day Since", "Invalid date format — please use MM/DD/YYYY.", Username).Build());
-            return;
-        }
-
-        int totalDays = (int)Math.Abs((parsed.Date - DateTime.Today).TotalDays);
-        bool past = parsed.Date <= DateTime.Today;
-        string dir = past ? "since" : "until";
-
-        int years = totalDays / 365;
-        int months = totalDays % 365 / 30;
-        int days = totalDays % 30;
-
-        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
-            $"📅  Days {dir} {parsed:MMMM dd, yyyy}", $"**{years}y {months}mo {days}d** ({totalDays:N0} total days)",
-            past ? Color.LightGrey : Color.Green,
-            footer: $"Requested by {Username}", footerIconUrl: AvatarUrl).Build());
     }
 
 

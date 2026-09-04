@@ -111,7 +111,6 @@ Requires the **Manage Roles** permission.
 | Command | Description |
 |---|---|
 | `/avatar [user]` | Display a user's avatar in full resolution. |
-| `/userinfo [user]` | Show account and server membership info for a user. |
 | `/serverinfo` | Show information about the current server. |
 | `/addbirthday <user> <month> <day> [channel]` | Register a member's birthday for bot announcements. |
 | `/setrolecolor <hex> [user]` | Set the colour of your role (or another member's) by hex code (e.g. `#FF5733`). |
@@ -123,12 +122,8 @@ Requires the **Manage Roles** permission.
 | Command | Description |
 |---|---|
 | `/random <max>` | Pick a random number between 1 and the given value. |
-| `/etext <message>` | Convert text into regional-indicator emojis. |
 | `/poll <question> <options>` | Create a reaction poll with up to 10 choices. |
-| `/8ball <question>` | Ask the magic 8-ball a yes/no question. |
-| `/choose <options>` | Let the bot pick from your comma-separated options. |
 | `/remind <message> <when> [utc_offset]` | Set a DM reminder for yourself. |
-| `/daysince <date>` | Calculate how many days since or until a given date. |
 | `/colorpreview <hex>` | Preview what a hex colour looks like as an embed. |
 | `/dnddice <expression>` | Roll any number of any-sided dice with an optional modifier (e.g. `2d6+3`). |
 | `/fixembed <url>` | Fix embeds for Twitter/X, Reddit, TikTok, and Bluesky links. |

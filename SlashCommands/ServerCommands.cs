@@ -40,34 +40,6 @@ public class ServerCommands(SchedulingService scheduling) : InteractionModuleBas
     }
 
 
-    /// <summary>Shows a member's (or the caller's) username, nickname, account/join dates, and roles.</summary>
-    [SlashCommand("userinfo", "Show information about yourself or another member.")]
-    [CommandContextType(InteractionContextType.Guild)]
-    public async Task HandleUserInfoAsync(SocketGuildUser? user = null)
-    {
-        await DeferAsync();
-        var target = user ?? (SocketGuildUser)Context.User;
-
-        string roleList = string.Join(", ", target.Roles
-            .Where(r => !r.IsEveryone)
-            .OrderByDescending(r => r.Position)
-            .Select(r => r.Mention));
-
-        if (string.IsNullOrEmpty(roleList)) roleList = "*None*";
-
-        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
-            $"👤  {target.DisplayName}", "", target.Roles.MaxBy(r => r.Position)?.Color ?? Color.Default,
-            footer: $"ID: {target.Id}  •  Requested by {Username}", footerIconUrl: AvatarUrl,
-            fields: [("Username", target.Username, true),
-                     ("Nickname", target.Nickname ?? "*None*", true),
-                     ("Bot", target.IsBot ? "Yes" : "No", true),
-                     ("Account Created", target.CreatedAt.UtcDateTime.ToString("MMM dd, yyyy"), true),
-                     ("Joined Server", target.JoinedAt?.UtcDateTime.ToString("MMM dd, yyyy") ?? "*Unknown*", true),
-                     ("Roles", roleList, false)])
-            .WithThumbnailUrl(target.GetDisplayAvatarUrl(size: 256) ?? target.GetDefaultAvatarUrl()).Build());
-    }
-
-
     /// <summary>Shows the current server's owner, member/channel/role counts, boost level, and creation date.</summary>
     [SlashCommand("serverinfo", "Show information about this server.")]
     [CommandContextType(InteractionContextType.Guild)]
