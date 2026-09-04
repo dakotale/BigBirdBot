@@ -79,30 +79,37 @@ namespace DiscordBot.SlashCommands
             var events = await keywords.GetAllScheduledEventUsersAsync();
             EmbedHelper embedHelper = new EmbedHelper();
 
+            if (events.Count == 0)
+            {
+                await FollowupAsync(embed: embedHelper.BuildMessageEmbed(
+                    "Scheduled List", "No scheduled keyword deliveries.", "", Context.User.Username, Discord.Color.Blue).Build(),
+                    ephemeral: true).ConfigureAwait(false);
+                return;
+            }
+
             // Embed descriptions cap at 4096 characters — split into as many pages as needed
             // (never cutting a row in half) rather than crashing once the list gets long enough.
             const int maxDescriptionLength = 4096;
-            var lines = events
-                .Select(ev => "- " + ev.Username + " - " + ev.Keyword + " - " + ev.ScheduledFor.ToString("MM/dd hh:mm tt") + "\n")
-                .ToList();
+            // Caps the number of follow-ups sent in one burst, matching Audio.cs's GetQueueAsync,
+            // which caps its own pagination follow-ups at 5 for the same reason.
+            const int maxPages = 10;
 
-            var pages = new List<string>();
-            var current = new System.Text.StringBuilder();
-            foreach (string line in lines)
-            {
-                if (current.Length + line.Length > maxDescriptionLength)
-                {
-                    pages.Add(current.ToString());
-                    current.Clear();
-                }
-                current.Append(line);
-            }
-            pages.Add(current.ToString()); // final (or only, possibly empty) page
+            var pages = EmbedPagination.BuildPages(
+                events.Select(ev => "- " + ev.Username + " - " + ev.Keyword + " - " + ev.ScheduledFor.ToString("MM/dd hh:mm tt") + "\n"),
+                maxDescriptionLength);
 
-            for (int i = 0; i < pages.Count; i++)
+            int pagesToSend = Math.Min(pages.Count, maxPages);
+            for (int i = 0; i < pagesToSend; i++)
             {
                 string title = pages.Count > 1 ? $"Scheduled List (Page {i + 1}/{pages.Count})" : "Scheduled List";
                 await FollowupAsync(embed: embedHelper.BuildMessageEmbed(title, pages[i], "", Context.User.Username, Discord.Color.Blue).Build(), ephemeral: true).ConfigureAwait(false);
+            }
+
+            if (pages.Count > maxPages)
+            {
+                await FollowupAsync(
+                    $"*…and {pages.Count - maxPages} more page(s) not shown ({events.Count} scheduled deliveries total).*",
+                    ephemeral: true).ConfigureAwait(false);
             }
         }
 
