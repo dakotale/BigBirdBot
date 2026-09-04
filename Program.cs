@@ -890,8 +890,8 @@ internal sealed class BotHost(
 
 
     /// <summary>
-    /// Background loop that drives every time-based feature: reminders, journal pings, and
-    /// birthday greetings (every tick), the hourly bonus word puzzle, and scheduled keyword
+    /// Background loop that drives every time-based feature: reminders and birthday
+    /// greetings (every tick), the hourly bonus word puzzle, and scheduled keyword
     /// deliveries. Runs for the lifetime of the process; <see cref="OnConnectedAsync"/>
     /// restarts it if it ever dies while disconnected.
     /// </summary>
@@ -932,32 +932,6 @@ internal sealed class BotHost(
                         await dm.SendMessageAsync(embed: _embed.BuildSimpleEmbed(
                             "⏰  Reminder", message, Color.Gold,
                             footer: "You asked me to remind you at this time.").Build());
-                    }
-                    catch { /* DMs disabled or user not found */ }
-                }
-
-                // ── Journal reminders (every tick = every minute) ────────────
-                var dueJournals = _sp.Select(Constants.discordBotConnStr, "GetDueJournalReminders", []);
-                foreach (DataRow journalRow in dueJournals.Rows)
-                {
-                    try
-                    {
-                        ulong userId = ulong.Parse(journalRow["UserID"].ToString()!);
-                        var journalUser = await client.GetUserAsync(userId)
-                                       ?? await client.Rest.GetUserAsync(userId);
-                        if (journalUser is null) continue;
-
-                        string prompt = DiscordBot.Helper.JournalHelper.GetRandomPrompt();
-
-                        var dm = await journalUser.CreateDMChannelAsync();
-                        await dm.SendMessageAsync(embed: _embed.BuildSimpleEmbed(
-                            "📓  Time to Journal!",
-                            "Your daily journaling reminder is here!\n\n" +
-                            $"**Today's prompt:**\n> *{prompt}*\n\n" +
-                            "Take a few minutes to write your thoughts. " +
-                            "When you're done, use `/journal done` to log your entry and build your streak!",
-                            new Color(0x7B68EE),
-                            footer: "Use /journal done when you finish • Use /journal unsubscribe to stop reminders").Build());
                     }
                     catch { /* DMs disabled or user not found */ }
                 }
