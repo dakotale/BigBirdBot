@@ -78,12 +78,32 @@ namespace DiscordBot.SlashCommands
 
             var events = await keywords.GetAllScheduledEventUsersAsync();
             EmbedHelper embedHelper = new EmbedHelper();
-            string description = "";
 
-            foreach (var ev in events)
-                description += "- " + ev.Username + " - " + ev.Keyword + " - " + ev.ScheduledFor.ToString("MM/dd hh:mm tt") + "\n";
+            // Embed descriptions cap at 4096 characters — split into as many pages as needed
+            // (never cutting a row in half) rather than crashing once the list gets long enough.
+            const int maxDescriptionLength = 4096;
+            var lines = events
+                .Select(ev => "- " + ev.Username + " - " + ev.Keyword + " - " + ev.ScheduledFor.ToString("MM/dd hh:mm tt") + "\n")
+                .ToList();
 
-            await FollowupAsync(embed: embedHelper.BuildMessageEmbed("Scheduled List", description, "", Context.User.Username, Discord.Color.Blue).Build(), ephemeral: true).ConfigureAwait(false);
+            var pages = new List<string>();
+            var current = new System.Text.StringBuilder();
+            foreach (string line in lines)
+            {
+                if (current.Length + line.Length > maxDescriptionLength)
+                {
+                    pages.Add(current.ToString());
+                    current.Clear();
+                }
+                current.Append(line);
+            }
+            pages.Add(current.ToString()); // final (or only, possibly empty) page
+
+            for (int i = 0; i < pages.Count; i++)
+            {
+                string title = pages.Count > 1 ? $"Scheduled List (Page {i + 1}/{pages.Count})" : "Scheduled List";
+                await FollowupAsync(embed: embedHelper.BuildMessageEmbed(title, pages[i], "", Context.User.Username, Discord.Color.Blue).Build(), ephemeral: true).ConfigureAwait(false);
+            }
         }
 
         /// <summary>Lists every server where the music player is currently connected to a voice channel.</summary>
