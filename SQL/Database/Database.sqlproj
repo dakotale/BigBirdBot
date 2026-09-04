@@ -73,11 +73,9 @@
     <Build Include="dbo\Tables\BotAIMessage.sql" />
     <Build Include="dbo\Tables\Birthday.sql" />
     <Build Include="dbo\Tables\AuditLog.sql" />
-    <Build Include="dbo\Tables\PassiveJackpot.sql" />
     <Build Include="dbo\Tables\Servers.sql" />
     <Build Include="dbo\Tables\Users.sql" />
     <Build Include="dbo\Tables\PlayerConnected.sql" />
-    <Build Include="dbo\Tables\TriviaMessage.sql" />
     <Build Include="dbo\Stored Procedures\DeleteUser.sql" />
     <Build Include="dbo\Stored Procedures\AddAudit.sql" />
     <Build Include="dbo\Stored Procedures\AddBirthday.sql" />
