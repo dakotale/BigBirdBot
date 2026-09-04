@@ -70,7 +70,7 @@ All grouped under `/keyword` to keep the command list small.
 | `/keyword schedule list <user>` | List a user's scheduled keyword deliveries. |
 | `/keyword schedule requeue <user>` | Owner only — requeue a user's schedule after a delivery failure. |
 
-Keyword management requires the **Manage Messages** permission. Data access for this area runs on EF Core against SQL Server rather than stored procedures — see [Tech Stack](#tech-stack).
+Keyword management requires the **Manage Messages** permission.
 
 ---
 
@@ -171,7 +171,7 @@ Bot-owner-only maintenance tooling, visible only in the developer's own server.
 | Language | C# (.NET 10) |
 | Discord library | [Discord.Net](https://github.com/discord-net/Discord.Net) 3.20 (Interaction Framework — slash commands only) |
 | Music | [Lavalink4NET](https://github.com/angelobreuer/Lavalink4NET) |
-| Database | SQL Server — mostly ADO.NET stored procedures via `Microsoft.Data.SqlClient`, with the keyword feature area on **EF Core** (`Microsoft.EntityFrameworkCore.SqlServer`) |
+| Database | SQL Server via **EF Core** (`Microsoft.EntityFrameworkCore.SqlServer`) |
 | AI chat | Anthropic (Claude) |
 | AI image detection | Sightengine |
 | Mood tracks | Spotify Web API |
@@ -181,5 +181,5 @@ Bot-owner-only maintenance tooling, visible only in the developer's own server.
 
 - All tables are kept for archival even after a feature's commands and stored procedures are removed — nothing is dropped from the schema, only unused procs.
 - `SQL/Database/dbo/Migrations/` holds hand-written, numbered SQL migrations (schema changes and stored-procedure DROP scripts); they're run manually against the live database, not via EF Core migrations.
-- The keyword feature area (`Helper/KeywordService.cs`, `Data/BigBirdContext.cs`) is the only part of the data layer on EF Core so far; everything else still goes through `Constants/StoredProcedure.cs`.
+- Every feature area's data access goes through EF Core (`Data/*Entities.cs` + `Helper/*Service.cs`, mapped explicitly onto the existing schema in `Data/BigBirdContext.cs`) — there is no remaining ADO.NET stored-procedure access anywhere in the app.
 - A single background loop (`BotHost.RunSchedulerAsync` in `Program.cs`) drives every time-based feature: DM reminders and birthday greetings (every minute), the hourly bonus word puzzle, and scheduled keyword deliveries.
