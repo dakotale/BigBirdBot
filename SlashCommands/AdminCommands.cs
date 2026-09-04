@@ -96,10 +96,10 @@ namespace DiscordBot.SlashCommands
         }
 
         /// <summary>
-        /// Toggles timed bot announcements (word puzzles, jackpot results) for this server.
+        /// Toggles timed bot announcements (the hourly word puzzle, birthday greetings) for this server.
         /// Defaults to disabled — must be explicitly enabled by an admin.
         /// </summary>
-        [SlashCommand("announcements", "Toggle timed bot announcements (word puzzles, jackpot results) for this server.")]
+        [SlashCommand("announcements", "Toggle timed bot announcements (word puzzle, birthdays) for this server.")]
         [CommandContextType(InteractionContextType.Guild)]
         [RequireUserPermission(GuildPermission.ManageGuild)]
         public async Task HandleAnnouncementsAsync()

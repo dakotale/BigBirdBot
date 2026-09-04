@@ -104,9 +104,6 @@
     <Build Include="dbo\Stored Procedures\GetAIJSONImageReturn.sql" />
     <Build Include="dbo\Stored Procedures\UpdateBrokenEmbed.sql" />
     <Build Include="dbo\Stored Procedures\GetEmbedBroken.sql" />
-    <Build Include="dbo\Stored Procedures\FeedPassiveJackpot.sql" />
-    <Build Include="dbo\Stored Procedures\GetPassiveJackpot.sql" />
-    <Build Include="dbo\Stored Procedures\ClaimPassiveJackpot.sql" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Condition="'$(NetCoreBuild)' == 'true'">

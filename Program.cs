@@ -104,8 +104,6 @@ internal sealed class BotHost(
     private const ulong LogGuildId = 880569055856185354UL;
     private const ulong LogChannelId = 1156625507840954369UL;
     private const ulong OwnerId = 171369791486033920UL;
-    private System.Timers.Timer? _stockTimer;
-    private System.Timers.Timer? _stockDayResetTimer;
     private int _schedulerTick = 0;
     private Task? _schedulerTask;
 
@@ -191,20 +189,18 @@ internal sealed class BotHost(
 
     private readonly EmbedHelper _embed = new();
     private readonly StoredProcedure _sp = new();
-    private readonly DiscordBot.SlashCommands.Economy _creditEco = new();
 
 
     /// <summary>
     /// Starts the bot: initializes slash-command registration, wires up every gateway
-    /// event handler, kicks off the background scheduler and stock-price timers, then
-    /// connects to Discord and blocks forever (the process exits only via host shutdown).
+    /// event handler, kicks off the background scheduler, then connects to Discord and
+    /// blocks forever (the process exits only via host shutdown).
     /// </summary>
     public async Task RunAsync()
     {
         await services.GetRequiredService<InteractionHandlerService>().InitializeAsync();
         RegisterEvents();
         _schedulerTask = RunSchedulerAsync();
-        StartStockTimer();
         await ConnectAsync();
         await Task.Delay(Timeout.Infinite);
     }
@@ -256,7 +252,7 @@ internal sealed class BotHost(
 
     /// <summary>
     /// Fires each time the gateway connection is (re-)established. Sets the bot's status
-    /// and restarts the scheduler/stock timers if they died while disconnected.
+    /// and restarts the scheduler if it died while disconnected.
     /// </summary>
     private async Task OnConnectedAsync()
     {
@@ -268,15 +264,6 @@ internal sealed class BotHost(
         {
             await logger.InfoAsync("[Scheduler] Restarting scheduler loop after reconnect.");
             _schedulerTask = RunSchedulerAsync();
-        }
-
-        // Restart stock timers if they stopped.
-        if (_stockTimer is null || !_stockTimer.Enabled)
-        {
-            await logger.InfoAsync("[StockMarket] Restarting stock timers after reconnect.");
-            _stockTimer?.Dispose();
-            _stockDayResetTimer?.Dispose();
-            StartStockTimer();
         }
     }
 
@@ -432,12 +419,12 @@ internal sealed class BotHost(
     /// <summary>
     /// Fires on every button click. Only handles pronoun-role buttons (identified by a
     /// plain numeric custom ID with no <c>_</c> or <c>:</c> — those separators mark buttons
-    /// owned by other features, e.g. gambling's double-or-nothing). Toggles the matching
-    /// pronoun role on the clicking user, creating the role on the guild if it doesn't exist yet.
+    /// owned by other features). Toggles the matching pronoun role on the clicking user,
+    /// creating the role on the guild if it doesn't exist yet.
     /// </summary>
     private async Task OnButtonExecutedAsync(SocketMessageComponent component)
     {
-        // Not a pronoun-button ID — some other feature (e.g. Duel, Gambling) owns this button.
+        // Not a pronoun-button ID — another feature owns this button.
         if (component.Data.CustomId.Contains('_') || component.Data.CustomId.Contains(':'))
             return;
 
@@ -511,14 +498,11 @@ internal sealed class BotHost(
             new SqlParameter("@ServerID", long.Parse(serverId))
         ]);
 
-        // Passive credits — pass serverId explicitly (Context.Guild is null outside slash commands)
-        _creditEco.AddCredits(userId, serverId, CreditHelper.PassiveMessageAmount, "message");
-
         var serverInfo = _sp.Select(Constants.discordBotConnStr, "GetServerByID",
             [new SqlParameter("ServerUID", long.Parse(serverId))]);
 
         // Server-wide kill switch — if the server record is missing/inactive, skip all
-        // further processing (no keyword triggers, games, or pet XP) for this message.
+        // further processing (no keyword triggers, no word puzzle) for this message.
         if (!bool.TryParse(serverInfo.Rows[0]["IsActive"]?.ToString(), out bool active) || !active)
             return;
 
@@ -550,63 +534,6 @@ internal sealed class BotHost(
         }
 
 
-        var activePetRow = _sp.Select(Constants.discordBotConnStr, "GetActivePet",
-            [new SqlParameter("@UserID", userId)]);
-
-        // Award passive pet XP for ordinary chatting — only if the user has an active,
-        // non-hibernating pet. This block doesn't return early: games/keywords below still run.
-        if (activePetRow.Rows.Count > 0)
-        {
-            bool petHibernating = bool.TryParse(
-                activePetRow.Rows[0]["IsHibernating"].ToString(), out bool ph) && ph;
-
-            if (!petHibernating)
-            {
-                int petId = int.Parse(activePetRow.Rows[0]["PetID"].ToString()!);
-                int xpGain = DiscordBot.Helper.PetHelper.XpMessage;
-
-                if (msg.Attachments.Count > 0)      // bonus XP for posting an image/file
-                    xpGain += DiscordBot.Helper.PetHelper.XpAttachment;
-
-                if (message.Contains("http://") || message.Contains("https://")) // bonus XP for sharing a link
-                    xpGain += DiscordBot.Helper.PetHelper.XpLink;
-
-                var xpResult = _sp.Select(Constants.discordBotConnStr, "AddPetXP",
-                [
-                    new SqlParameter("@PetID",  petId),
-                    new SqlParameter("@Amount", xpGain)
-                ]);
-
-                if (xpResult.Rows.Count > 0) // AddPetXP returns the updated row only when the pet still exists
-                {
-                    int newXp = int.Parse(xpResult.Rows[0]["XP"].ToString()!);
-                    int oldXp = newXp - xpGain;
-                    int oldLevel = DiscordBot.Helper.PetHelper.LevelFromXp(oldXp);
-                    int newLevel = DiscordBot.Helper.PetHelper.LevelFromXp(newXp);
-
-                    if (newLevel > oldLevel) // crossed a level threshold — announce it and pay out the level-up bonus
-                    {
-                        string petName = activePetRow.Rows[0]["Name"].ToString()!;
-                        string species = activePetRow.Rows[0]["Species"].ToString()!;
-                        string? unlock = DiscordBot.Helper.PetHelper.LevelUpUnlock(newLevel);
-                        string emoji = DiscordBot.Helper.PetHelper.PetEmoji(
-                            species, 100, 100, false, newLevel >= 50);
-
-                        decimal lvlBonus = CreditHelper.PetLevelUpAmount(newLevel);
-                        decimal newBalance = _creditEco.AddCredits(userId, serverId, lvlBonus, "pet_levelup");
-
-                        await msg.Channel.SendMessageAsync(embed: _embed.BuildSimpleEmbed(
-                            $"{emoji}  {petName} levelled up!",
-                            $"{msg.Author.Mention}'s pet **{petName}** is now **Level {newLevel}**! 🎉\n" +
-                            $"Bonus: {CreditHelper.Format(lvlBonus)} | Balance: {CreditHelper.Format(newBalance)}" +
-                            (unlock is not null ? $"\n\n{unlock}" : ""),
-                            new Color(255, 215, 0)).Build());
-                    }
-                }
-            }
-        }
-
-
         var petPuzzle = _sp.Select(Constants.discordBotConnStr, "GetActivePetPuzzle",
             [new SqlParameter("@ChannelID", msg.Channel.Id.ToString())]);
 
@@ -628,46 +555,10 @@ internal sealed class BotHost(
 
                 new Audit().InsertGameTriggerAudit("petpuzzle", userId, serverId, Constants.discordBotConnStr);
 
-                // Always award credits for solving the puzzle.
-                _creditEco.AddCredits(userId, serverId, CreditHelper.PuzzleSolveAmount, "puzzle");
-
-                var solverPet = _sp.Select(Constants.discordBotConnStr, "GetActivePet",
-                    [new SqlParameter("@UserID", userId)]);
-
-                bool awardedXp = false;
-                string petLine  = string.Empty;
-
-                // Pet XP bonus is separate from the credit reward above and only applies
-                // if the solver has an active, non-hibernating pet.
-                if (solverPet.Rows.Count > 0)
-                {
-                    bool solverHib = bool.TryParse(
-                        solverPet.Rows[0]["IsHibernating"].ToString(), out bool sh) && sh;
-
-                    if (!solverHib)
-                    {
-                        int    solverPetId   = int.Parse(solverPet.Rows[0]["PetID"].ToString()!);
-                        string solverPetName = solverPet.Rows[0]["Name"].ToString()!;
-
-                        _sp.Select(Constants.discordBotConnStr, "AddPetXP",
-                        [
-                            new SqlParameter("@PetID",  solverPetId),
-                            new SqlParameter("@Amount", DiscordBot.Helper.PetHelper.XpWordPuzzle)
-                        ]);
-
-                        awardedXp = true;
-                        petLine   = $"\n**{solverPetName}** earned **+{DiscordBot.Helper.PetHelper.XpWordPuzzle} XP**! 🐾";
-                    }
-                }
-
-                string description = awardedXp
-                    ? $"{msg.Author.Mention} solved the bonus word puzzle!\n" +
-                      $"They earned {CreditHelper.Format(CreditHelper.PuzzleSolveAmount)}!{petLine} 🎉"
-                    : $"{msg.Author.Mention} solved the bonus word puzzle!\n" +
-                      $"They earned {CreditHelper.Format(CreditHelper.PuzzleSolveAmount)}! 🎉";
-
                 await msg.Channel.SendMessageAsync(embed: _embed.BuildSimpleEmbed(
-                    "🧩  Puzzle Solved!", description, Color.Green).Build());
+                    "🧩  Puzzle Solved!",
+                    $"{msg.Author.Mention} solved the bonus word puzzle! 🎉",
+                    Color.Green).Build());
 
                 return;
             }
@@ -691,8 +582,7 @@ internal sealed class BotHost(
                     {
                         await guessState.Message.ModifyAsync(m => m.Embed = _embed.BuildSimpleEmbed(
                             "🧩  Bonus Word Puzzle!",
-                            $"Type the secret word in this channel to earn " +
-                            $"**+{DiscordBot.Helper.PetHelper.XpWordPuzzle} XP** for your active pet!\n\n" +
+                            $"Type the secret word in this channel.\n\n" +
                             $"**Hint:** `{guessHint}`  ({guessState.Word.Length} letters)\n" +
                             $"*(A letter was revealed after {totalGuesses} guesses!)*\n\n" +
                             $"⏳ First correct answer wins!",
@@ -1002,11 +892,10 @@ internal sealed class BotHost(
 
 
     /// <summary>
-    /// Background loop that drives every time-based feature: reminders and journal pings
-    /// (every tick), pet stat decay (every 30 min), activity-based pet XP (every 15 min),
-    /// bonus word puzzles and jackpot draws (hourly), plus stock-price ticks via
-    /// <see cref="StartStockTimer"/> on its own separate timer. Runs for the lifetime of the
-    /// process; <see cref="OnConnectedAsync"/> restarts it if it ever dies while disconnected.
+    /// Background loop that drives every time-based feature: reminders, journal pings, and
+    /// birthday greetings (every tick), the hourly bonus word puzzle, and scheduled keyword
+    /// deliveries. Runs for the lifetime of the process; <see cref="OnConnectedAsync"/>
+    /// restarts it if it ever dies while disconnected.
     /// </summary>
     private async Task RunSchedulerAsync()
     {
@@ -1113,76 +1002,6 @@ internal sealed class BotHost(
                     catch { /* guild/channel may no longer exist */ }
                 }
 
-            // Runs once every 30 minutes (tick increments once per minute).
-            if (_schedulerTick % 30 == 0)
-            {
-                var decayed = _sp.Select(Constants.discordBotConnStr, "DecayPetStats", []);
-
-                foreach (DataRow decayRow in decayed.Rows)
-                {
-                    try
-                    {
-                        ulong ownerId = ulong.Parse(decayRow["UserID"].ToString()!);
-                        var owner = await client.GetUserAsync(ownerId);
-                        if (owner is null) continue;
-
-                        string petName = decayRow["Name"].ToString()!;
-                        string species = decayRow["Species"].ToString()!;
-
-                        await owner.SendMessageAsync(embed: _embed.BuildSimpleEmbed(
-                            "💤  Your pet is hibernating!",
-                            $"**{petName}** the {species} has gone into hibernation.\n\n" +
-                            $"They were too hungry, unhappy, and tired while you were away.\n\n" +
-                            $"Use `/feed` to wake them up! Don't worry — they're safe. 🌿",
-                            Color.DarkGrey).Build());
-                    }
-                    catch { /* DMs disabled or user not found */ }
-                }
-            }
-
-            // Runs once every 15 minutes — awards pet XP to users currently shown as
-            // playing/listening/streaming (Discord "Activity" status), rewarding presence
-            // rather than requiring active chatting.
-            if (_schedulerTick % 15 == 0)
-            {
-                foreach (var guild in client.Guilds)
-                {
-                    await guild.DownloadUsersAsync();
-
-                    foreach (var guildUser in guild.Users.Where(u => !u.IsBot))
-                    {
-                        bool hasActivity = guildUser.Activities?.Any(a =>
-                            a.Type is ActivityType.Playing
-                                   or ActivityType.Listening
-                                   or ActivityType.Streaming) == true;
-
-                        if (!hasActivity) continue; // not showing a qualifying activity status right now
-
-                        var userPet = _sp.Select(Constants.discordBotConnStr, "GetActivePet",
-                            [new SqlParameter("@UserID", guildUser.Id.ToString())]);
-
-                        if (userPet.Rows.Count == 0) continue;
-
-                        var petRow = userPet.Rows[0];
-
-                        bool petHib = bool.TryParse(
-                            petRow["IsHibernating"].ToString(), out bool phibb) && phibb;
-                        if (petHib) continue;
-
-                        int petHunger = int.Parse(petRow["Hunger"].ToString()!);
-                        if (petHunger <= 20) continue;
-
-                        int activityPetId = int.Parse(petRow["PetID"].ToString()!);
-
-                        _sp.Select(Constants.discordBotConnStr, "AddPetXP",
-                        [
-                            new SqlParameter("@PetID",  activityPetId),
-                            new SqlParameter("@Amount", DiscordBot.Helper.PetHelper.XpActivity)
-                        ]);
-                    }
-                }
-            }
-
             // Runs once every 60 minutes — posts a new bonus word puzzle to every eligible guild.
             if (_schedulerTick % 60 == 0)
             {
@@ -1210,8 +1029,7 @@ internal sealed class BotHost(
 
                     var puzzleMsg = await channel.SendMessageAsync(embed: _embed.BuildSimpleEmbed(
                         "🧩  Bonus Word Puzzle!",
-                        $"Type the secret word in this channel to earn " +
-                        $"**+{DiscordBot.Helper.PetHelper.XpWordPuzzle} XP** for your active pet!\n\n" +
+                        $"Type the secret word in this channel.\n\n" +
                         $"**Hint:** `{blankHint}`  ({puzzleWord.Length} letters)\n\n" +
                         $"⏳ Expires in 55 minutes — first correct answer wins!",
                         new Color(255, 179, 71)).Build());
@@ -1241,8 +1059,7 @@ internal sealed class BotHost(
                         {
                             await capturedMsg.ModifyAsync(m => m.Embed = _embed.BuildSimpleEmbed(
                                 "🧩  Bonus Word Puzzle!",
-                                $"Type the secret word in this channel to earn " +
-                                $"**+{DiscordBot.Helper.PetHelper.XpWordPuzzle} XP** for your active pet!\n\n" +
+                                $"Type the secret word in this channel.\n\n" +
                                 $"**Hint:** `{hint30}`  ({capturedWord.Length} letters)\n" +
                                 $"*(A letter has been revealed!)*\n\n" +
                                 $"⏳ Expires in ~25 minutes — first correct answer wins!",
@@ -1266,8 +1083,7 @@ internal sealed class BotHost(
                         {
                             await capturedMsg.ModifyAsync(m => m.Embed = _embed.BuildSimpleEmbed(
                                 "🧩  Bonus Word Puzzle — Last Chance!",
-                                $"Type the secret word in this channel to earn " +
-                                $"**+{DiscordBot.Helper.PetHelper.XpWordPuzzle} XP** for your active pet!\n\n" +
+                                $"Type the secret word in this channel.\n\n" +
                                 $"**Hint:** `{hint50}`  ({capturedWord.Length} letters)\n" +
                                 $"*(Another letter has been revealed!)*\n\n" +
                                 $"⏳ Only **5 minutes** left — first correct answer wins!",
@@ -1307,109 +1123,6 @@ internal sealed class BotHost(
                 }
 
                 skipPuzzle:;
-            }
-
-            // Runs once every 60 minutes — draws a weighted-random winner from each guild's
-            // entry jackpot pool (contributions from /jackpot).
-            if (_schedulerTick % 60 == 0)
-            {
-                foreach (var guild in client.Guilds)
-                {
-                    var potDt = _sp.Select(Constants.discordBotConnStr, "GetJackpotTotal",
-                        [new SqlParameter("@ServerID", guild.Id.ToString())]);
-
-                    if (potDt.Rows.Count == 0) continue;
-                    long pot = long.Parse(potDt.Rows[0]["Total"].ToString()!);
-                    int entries = int.Parse(potDt.Rows[0]["Entries"].ToString()!);
-
-                    if (pot <= 0 || entries == 0) continue;
-
-                    var serverDetails = ServerHelper.GetServerInfo(guild.Id);
-                    if (serverDetails is null || !serverDetails.AnnouncementsEnabled) continue;
-
-                    var entryDt = _sp.Select(Constants.discordBotConnStr, "GetJackpotEntries",
-                    [new SqlParameter("@ServerID", guild.Id.ToString())]);
-
-                    if (entryDt.Rows.Count == 0) continue;
-
-                    // Weighted random draw: each entrant's odds are proportional to how much
-                    // they contributed. Sum every contribution, roll a point in that range,
-                    // then walk the running cumulative total until the roll falls inside it.
-                    long totalWeight = entryDt.AsEnumerable()
-                        .Sum(r => long.Parse(r["TotalContributed"].ToString()!));
-
-                    long roll = (long)(Random.Shared.NextDouble() * totalWeight);
-                    long cum = 0;
-                    string? winnerId = null;
-
-                    foreach (System.Data.DataRow eRow in entryDt.Rows)
-                    {
-                        cum += long.Parse(eRow["TotalContributed"].ToString()!);
-                        if (roll < cum) { winnerId = eRow["UserID"].ToString()!; break; }
-                    }
-
-                    winnerId ??= entryDt.Rows[0]["UserID"].ToString()!; // floating-point fallback — should be unreachable
-
-                    var _eco = new DiscordBot.SlashCommands.Economy();
-                    _eco.AddCredits(winnerId, guild.Id.ToString(), pot, "jackpot_win");
-
-                    _sp.UpdateCreate(Constants.discordBotConnStr, "ClearJackpot",
-                        [new SqlParameter("@ServerID", guild.Id.ToString())]);
-
-                    var channel = ResolveAnnouncementChannel(guild, serverDetails.DefaultChannelID);
-                    if (channel is null) continue;
-
-                    IUser? winner = null;
-                    try { winner = await client.GetUserAsync(ulong.Parse(winnerId)); } catch { }
-
-                    string winnerDisplay = winner is not null ? winner.Mention : $"<@{winnerId}>";
-
-                    await channel.SendMessageAsync(embed: _embed.BuildSimpleEmbed(
-                        "🎰  Jackpot Winner!",
-                        $"🎉 {winnerDisplay} won the jackpot!\n\n" +
-                        $"💰 **Prize:** {CreditHelper.Format(pot)}\n" +
-                        $"🎟️ **Entries this round:** {entries}\n\n" +
-                        $"*The jackpot resets now — use `/jackpot` to enter the next round!*\n" +
-                        $"*The jackpot will also add 1% of all gambling bets to the next round!*",
-                        new Color(255, 215, 0)).Build());
-                }
-            }
-
-            // ── Passive jackpot hourly draw ────────────────────────────────────────
-            // Runs once every 60 minutes — separate pool from the entry jackpot above,
-            // fed automatically by 1% of every gambling bet rather than direct contributions.
-            if (_schedulerTick % 60 == 0)
-            {
-                foreach (var guild in client.Guilds)
-                {
-                    var drawDt = _sp.Select(Constants.discordBotConnStr, "DrawPassiveJackpot",
-                        [new SqlParameter("@ServerID", (long)guild.Id)]);
-
-                    if (drawDt.Rows.Count == 0) continue; // pool empty or no contributors
-
-                    string passiveWinnerId = drawDt.Rows[0]["UserID"].ToString()!;
-                    decimal passivePool    = decimal.Parse(drawDt.Rows[0]["Pool"].ToString()!);
-
-                    var passiveEco = new DiscordBot.SlashCommands.Economy();
-                    passiveEco.AddCredits(passiveWinnerId, guild.Id.ToString(), passivePool, "passive_jackpot_win");
-
-                    // Announce in the server's announcement channel (if configured and enabled).
-                    var passiveDetails = ServerHelper.GetServerInfo(guild.Id);
-                    if (passiveDetails is null || !passiveDetails.AnnouncementsEnabled) continue;
-
-                    var passiveChan = ResolveAnnouncementChannel(guild, passiveDetails.DefaultChannelID);
-                    if (passiveChan is null) continue;
-
-                    IUser? passiveWinner = null;
-                    try { passiveWinner = await client.GetUserAsync(ulong.Parse(passiveWinnerId)); } catch { }
-                    string passiveDisplay = passiveWinner is not null ? passiveWinner.Mention : $"<@{passiveWinnerId}>";
-
-                    await passiveChan.SendMessageAsync(embed: _embed.BuildSimpleEmbed(
-                        "🌊  Passive Jackpot Winner!",
-                        $"🎉 {passiveDisplay} won the **passive jackpot** and took home **{DiscordBot.Helper.CreditHelper.Format(passivePool)}**!\n\n" +
-                        $"*1% of every gambling bet feeds this pool — keep playing to build it back up!*",
-                        new Color(100, 200, 255)).Build());
-                }
             }
             } // end outer try
             catch (Exception ex)
@@ -1540,104 +1253,6 @@ internal sealed class BotHost(
                     $"Scheduled send failed for user {userId}.\n{ex.StackTrace}\n" +
                     $"Requeued for {DateTime.Now.AddMinutes(1):yyyy-MM-dd hh:mm tt}.");
             }
-        }
-    }
-
-
-    /// <summary>
-    /// Starts the two stock-market timers, independent of the minute-based scheduler loop:
-    /// a repeating price-tick timer, and a one-shot-then-repeating 24h high/low reset timer
-    /// aligned to UTC midnight. Both fire their handler via the .NET <c>Timer.Elapsed</c>
-    /// event rather than polling.
-    /// </summary>
-    private void StartStockTimer()
-    {
-        // Price tick every 15 minutes
-        _stockTimer = new System.Timers.Timer(
-            TimeSpan.FromMinutes(StockHelper.TickIntervalMinutes).TotalMilliseconds);
-        _stockTimer.Elapsed += (_, _) => TickStockPrices(); // event-driven: fires automatically on each interval
-        _stockTimer.AutoReset = true;
-        _stockTimer.Start();
-
-        // 24h high/low reset — fire at next midnight UTC, then every 24h
-        var now = DateTime.UtcNow;
-        var nextMidnight = now.Date.AddDays(1);
-        double initialDelay = (nextMidnight - now).TotalMilliseconds;
-
-        _stockDayResetTimer = new System.Timers.Timer(initialDelay);
-        _stockDayResetTimer.Elapsed += (_, _) =>
-        {
-            // First firing lands exactly at midnight (initialDelay above); once it fires,
-            // reconfigure the same timer to repeat every 24h from then on.
-            ResetStockDayRange();
-            _stockDayResetTimer!.Interval = TimeSpan.FromHours(24).TotalMilliseconds;
-            _stockDayResetTimer.AutoReset = true;
-        };
-        _stockDayResetTimer.AutoReset = false; // one-shot until the handler above switches it to repeating
-        _stockDayResetTimer.Start();
-
-        Console.WriteLine(
-            $"[StockMarket] Timers started — tick every {StockHelper.TickIntervalMinutes} min, " +
-            $"day reset at {nextMidnight:HH:mm} UTC.");
-    }
-
-    /// <summary>Timer.Elapsed handler: advances every stock's price by one random-walk step and clears expired shop effects.</summary>
-    private void TickStockPrices()
-    {
-        try
-        {
-            // Clean expired shop effects on every tick (every 15 min)
-            try { _sp.UpdateCreate(Constants.discordBotConnStr, "CleanExpiredEffects", []); }
-            catch { /* non-fatal */ }
-
-            var dt = _sp.Select(Constants.discordBotConnStr, "GetAllStocks", []);
-
-            foreach (System.Data.DataRow row in dt.Rows)
-            {
-                string ticker = row["Ticker"].ToString()!;
-                decimal price = decimal.Parse(row["Price"].ToString()!);
-
-                // Per-stock volatility and trend — both columns are now in GetAllStocks
-                double volatility = double.Parse(row["Volatility"].ToString()!);
-                double trend = double.Parse(row["Trend"].ToString()!);
-
-                decimal newPrice = StockHelper.NextPrice(price, volatility, trend);
-
-                _sp.UpdateCreate(Constants.discordBotConnStr, "ApplyStockTick",
-                [
-                    new SqlParameter("@Ticker",   ticker),
-                    // Explicitly typed to match DECIMAL(18,2) in ApplyStockTick.
-                    // Without explicit Precision/Scale ADO.NET infers them as 0,0
-                    // and SQL Server raises "Error converting data type numeric to decimal".
-                    new SqlParameter("@NewPrice", System.Data.SqlDbType.Decimal)
-                    {
-                        Value     = newPrice,
-                        Precision = 18,
-                        Scale     = 2
-                    }
-                ]);
-            }
-
-            Console.WriteLine(
-                $"[StockMarket] Tick at {DateTime.UtcNow:HH:mm:ss} UTC — {dt.Rows.Count} stocks updated.");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[StockMarket] Tick error: {ex.Message}");
-        }
-    }
-
-    /// <summary>Timer.Elapsed handler (fires once at UTC midnight, then every 24h): resets each stock's recorded 24h high/low.</summary>
-    private void ResetStockDayRange()
-    {
-        try
-        {
-            _sp.UpdateCreate(Constants.discordBotConnStr, "ResetStockDayRange", []);
-            Console.WriteLine($"[StockMarket] 24h high/low reset at {DateTime.UtcNow:yyyy-MM-dd}.");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[StockMarket] Day reset error: {ex.Message}");
         }
     }
 

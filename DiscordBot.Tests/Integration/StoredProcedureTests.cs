@@ -52,25 +52,24 @@ public class StoredProcedureTests : IClassFixture<DatabaseFixture>
 
     [SkippableFact]
     [Trait("Category", "Integration")]
-    public void Select_GetAllStocks_ReturnsDataTable()
+    public void Select_GetServers_ReturnsDataTable()
     {
         Skip.If(!_db.IsAvailable, _db.UnavailableReason);
 
-        DataTable result = _sp.Select(_db.ConnectionString, "GetAllStocks", []);
+        DataTable result = _sp.Select(_db.ConnectionString, "GetServers", []);
 
         Assert.NotNull(result);
     }
 
     [SkippableFact]
     [Trait("Category", "Integration")]
-    public void Select_GetAllStocks_HasExpectedColumns()
+    public void Select_GetServers_HasExpectedColumns()
     {
         Skip.If(!_db.IsAvailable, _db.UnavailableReason);
 
-        DataTable result = _sp.Select(_db.ConnectionString, "GetAllStocks", []);
+        DataTable result = _sp.Select(_db.ConnectionString, "GetServers", []);
 
-        string[] expected = ["Ticker", "CompanyName", "Sector", "Price", "PrevPrice",
-                             "High24h", "Low24h", "Volatility", "Trend", "LastUpdated"];
+        string[] expected = ["ServerUID", "ServerName", "DefaultChannelID", "IsActive"];
         foreach (string col in expected)
             Assert.True(result.Columns.Contains(col), $"Expected column '{col}' not found in result.");
     }
@@ -79,17 +78,16 @@ public class StoredProcedureTests : IClassFixture<DatabaseFixture>
 
     [SkippableFact]
     [Trait("Category", "Integration")]
-    public void Select_GetCredits_NonExistentUser_ReturnsEmptyTable()
+    public void Select_GetServerByID_NonExistentServer_ReturnsEmptyTable()
     {
         Skip.If(!_db.IsAvailable, _db.UnavailableReason);
 
         var parameters = new List<SqlParameter>
         {
-            new("@UserID",   "0000000000000000"),   // impossible Discord snowflake
-            new("@ServerID", "0000000000000000"),
+            new("@ServerUID", 1L),   // impossible guild id
         };
 
-        DataTable result = _sp.Select(_db.ConnectionString, "GetCredits", parameters);
+        DataTable result = _sp.Select(_db.ConnectionString, "GetServerByID", parameters);
 
         Assert.NotNull(result);
         Assert.Equal(0, result.Rows.Count);
@@ -99,12 +97,12 @@ public class StoredProcedureTests : IClassFixture<DatabaseFixture>
 
     [SkippableFact]
     [Trait("Category", "Integration")]
-    public void Select_GetAllStocks_NullParameterList_DoesNotThrow()
+    public void Select_GetServers_NullParameterList_DoesNotThrow()
     {
         Skip.If(!_db.IsAvailable, _db.UnavailableReason);
 
         // StoredProcedure.Select has a null-guard; verify it doesn't throw.
-        DataTable result = _sp.Select(_db.ConnectionString, "GetAllStocks", null!);
+        DataTable result = _sp.Select(_db.ConnectionString, "GetServers", null!);
 
         Assert.NotNull(result);
     }
@@ -131,7 +129,7 @@ public class StoredProcedureTests : IClassFixture<DatabaseFixture>
         const string bad = "Server=localhost\\DOESNOTEXIST;DataBase=NoSuchDB;Connect Timeout=1;TrustServerCertificate=True";
 
         Assert.ThrowsAny<Exception>(() =>
-            _sp.Select(bad, "GetAllStocks", []));
+            _sp.Select(bad, "GetServers", []));
     }
 
     [Fact]
@@ -141,6 +139,6 @@ public class StoredProcedureTests : IClassFixture<DatabaseFixture>
         const string bad = "Server=localhost\\DOESNOTEXIST;DataBase=NoSuchDB;Connect Timeout=1;TrustServerCertificate=True";
 
         Assert.ThrowsAny<Exception>(() =>
-            _sp.UpdateCreate(bad, "GetAllStocks", []));
+            _sp.UpdateCreate(bad, "GetServers", []));
     }
 }
