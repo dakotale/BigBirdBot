@@ -8,11 +8,13 @@ using Discord.Interactions;
 using Discord.Net;
 using Discord.WebSocket;
 using DiscordBot.Constants;
+using DiscordBot.Data;
 using DiscordBot.Helper;
 using DiscordBot.Services;
 using Fergun.Interactive;
 using KillersLibrary.Services;
 using Lavalink4NET.Extensions;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -77,6 +79,11 @@ static void ConfigureServices(IServiceCollection services) =>
         .AddHttpClient()
         .AddSingleton<ISpotifyService, SpotifyService>()
         .AddSingleton<IAIChatService, AIChatService>()
+        // EF Core — keyword feature area (the rest of the bot still uses StoredProcedure).
+        // A factory + singleton service: the bot has no request scope, and each unit of
+        // work opens and disposes its own context.
+        .AddDbContextFactory<BigBirdContext>(o => o.UseSqlServer(Constants.discordBotConnStr))
+        .AddSingleton<KeywordService>()
         .AddLogging(x => x.ClearProviders().SetMinimumLevel(LogLevel.Trace));
 
 
@@ -91,7 +98,8 @@ internal sealed class BotHost(
     DiscordSocketClient client,
     LoggingService logger,
     IServiceProvider services,
-    IHttpClientFactory httpClientFactory)
+    IHttpClientFactory httpClientFactory,
+    KeywordService keywords)
 {
     private const ulong LogGuildId = 880569055856185354UL;
     private const ulong LogChannelId = 1156625507840954369UL;
@@ -664,7 +672,7 @@ internal sealed class BotHost(
         // "-keyword ..." — add or manage a chat-triggered keyword; handled entirely elsewhere.
         if (message.StartsWith(prefix))
         {
-            await HandlePrefixCommandAsync(msg, message, serverId, userId, prefix, cleanup);
+            await HandlePrefixCommandAsync(msg, message, prefix, cleanup);
             return;
         }
 
@@ -837,17 +845,11 @@ internal sealed class BotHost(
             return;
 
 
-        // Fall-through: check whether this exact message text matches a registered
-        // chat-triggered keyword (e.g. auto-replying with a saved image/link).
-        var actions = _sp.Select(Constants.discordBotConnStr, "GetChatAction",
-        [
-            new SqlParameter("@ServerID", long.Parse(serverId)),
-            new SqlParameter("@Message",  message)
-        ]);
-
-        if (actions.Rows.Count > 0)
+        // Fall-through: check whether this message contains a registered chat-triggered
+        // keyword (e.g. auto-replying with a saved image/link).
+        if (await keywords.ResolveChatActionAsync(msgChannel.Guild.Id, message) is { } action)
             // Fire-and-forget: don't block the gateway event handler on file/network I/O.
-            _ = Task.Run(() => SendChatActionsAsync(msg, msgChannel, actions));
+            _ = Task.Run(() => SendChatActionAsync(msg, msgChannel, action));
     }
 
     /// <summary>
@@ -892,25 +894,22 @@ internal sealed class BotHost(
     /// <summary>
     /// Handles a "-keyword ..." message: registers an attachment, single URL, or comma-
     /// separated list of URLs against a chat-triggered keyword so it can later be replayed
-    /// by <see cref="SendChatActionsAsync"/>.
+    /// by <see cref="SendChatActionAsync"/>.
     /// </summary>
     private async Task HandlePrefixCommandAsync(
-        SocketMessage msg, string message, string serverId,
-        string userId, string prefix, URLCleanup cleanup)
+        SocketMessage msg, string message, string prefix, URLCleanup cleanup)
     {
         var parts = message.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length == 0) return;
 
         string keyword = parts[0][prefix.Length..];
-        var keywordMap = _sp.Select(Constants.discordBotConnStr, "GetChatKeywordMap",
-            [new SqlParameter("@AddKeyword", keyword)]);
+        string? mappedKeyword = await keywords.ResolveAddKeywordAsync(keyword);
 
-        if (keywordMap.Rows.Count == 0) return; // not a registered keyword — ignore silently
+        if (mappedKeyword is null) return; // not a registered keyword — ignore silently
 
         if (msg.Attachments.Count > 0)
         {
-            await AddAttachmentsAsync(msg, keywordMap.Rows[0]["Keyword"].ToString()!,
-                                      Constants.discordBotConnStr, userId);
+            await AddAttachmentsAsync(msg, mappedKeyword);
             await msg.Channel.SendMessageAsync(
                 embed: _embed.BuildSimpleEmbed("Added Image", "Added attachment(s) successfully.", Color.Blue).Build());
         }
@@ -934,7 +933,7 @@ internal sealed class BotHost(
 
                 string storeValue = await TrySaveSocialImageAsync(url, keyword)
                                     ?? cleanup.CleanURLEmbed(url);
-                StoreChatKeyword(keywordMap, storeValue, userId);
+                await keywords.AddEntryAsync(mappedKeyword, storeValue);
             }
 
             await msg.Channel.SendMessageAsync(
@@ -945,7 +944,7 @@ internal sealed class BotHost(
             string storeValue = await TrySaveSocialImageAsync(content, keyword)
                                 ?? cleanup.CleanURLEmbed(content);
 
-            StoreChatKeyword(keywordMap, storeValue, userId);
+            await keywords.AddEntryAsync(mappedKeyword, storeValue);
 
             // Locally-downloaded social media images get a different confirmation message
             // than a plain URL/text entry, since the stored value is a file path either way.
@@ -958,92 +957,70 @@ internal sealed class BotHost(
         }
     }
 
-    /// <summary>Persists one keyword value (a file path, URL, or plain text) for every table name the keyword maps to.</summary>
-    private void StoreChatKeyword(DataTable keywordMap, string value, string userId)
-    {
-        foreach (DataRow row in keywordMap.Rows)
-        {
-            _sp.UpdateCreate(Constants.discordBotConnStr, "AddChatKeyword",
-            [
-                new SqlParameter("@FilePath",  value),
-                new SqlParameter("@TableName", row["Keyword"].ToString()),
-                new SqlParameter("@UserID",    userId)
-            ]);
-        }
-    }
-
     /// <summary>
-    /// Replays every registered response for a matched chat keyword: a locally-stored file,
+    /// Replays one registered response for a matched chat keyword: a locally-stored file,
     /// a live URL, or plain text. Dead links are auto-removed from the keyword's URL list;
     /// posted images/links get a ❌ reaction so any member can delete them (see
     /// <see cref="OnReactionAddedAsync"/>).
     /// </summary>
-    private async Task SendChatActionsAsync(SocketMessage msg, SocketGuildChannel msgChannel, DataTable actions)
+    private async Task SendChatActionAsync(SocketMessage msg, SocketGuildChannel msgChannel, ChatActionEntry action)
     {
         if (client.GetChannel(msgChannel.Id) is not IMessageChannel sender) return;
 
-        foreach (DataRow row in actions.Rows)
+        string chatAction = action.FilePath;
+        bool isNsfw = action.Nsfw;
+
+        if (string.IsNullOrWhiteSpace(chatAction)) return;
+
+        await msg.Channel.TriggerTypingAsync();
+
+        string keyword = char.ToUpperInvariant(action.Keyword[0]) + action.Keyword[1..];
+
+        // Three possible stored shapes for a keyword's value: a local file path,
+        // a live URL, or plain text — each is delivered differently.
+        if (chatAction.StartsWith(@"C:\"))
         {
-            string chatAction = row["ChatAction"].ToString()!;
-            string keyword = row["Keyword"].ToString()!;
-            bool isNsfw = bool.TryParse(row["NSFW"]?.ToString(), out bool n) && n;
+            bool isSpoiler = isNsfw && !chatAction.Contains("SPOILER_");
+            var embed = new EmbedBuilder()
+                .WithTitle(keyword)
+                .WithImageUrl("attachment://" + Path.GetFileName(chatAction))
+                .WithColor(isNsfw ? Color.DarkRed : Color.Blue)
+                .Build();
 
-            if (string.IsNullOrWhiteSpace(chatAction)) continue;
+            await using var stream = File.OpenRead(chatAction);
+            var output = await msg.Channel.SendFileAsync(
+                stream, Path.GetFileName(chatAction), embed: embed, isSpoiler: isSpoiler);
 
-            await msg.Channel.TriggerTypingAsync();
-
-            keyword = char.ToUpperInvariant(keyword[0]) + keyword[1..];
-
-            // Three possible stored shapes for a keyword's value: a local file path,
-            // a live URL, or plain text — each is delivered differently.
-            if (chatAction.StartsWith(@"C:\"))
+            if (!isSpoiler) // spoilered NSFW content isn't tagged for deletion — it's already hidden
+                await output.AddReactionAsync(new Emoji("❌"));
+        }
+        else if (chatAction.Contains("http"))
+        {
+            if (await IsLinkWorkingAsync(chatAction))
             {
-                bool isSpoiler = isNsfw && !chatAction.Contains("SPOILER_");
                 var embed = new EmbedBuilder()
-                    .WithTitle(keyword)
-                    .WithImageUrl("attachment://" + Path.GetFileName(chatAction))
+                    .WithTitle(msg.Content)
+                    .WithImageUrl(chatAction)
                     .WithColor(isNsfw ? Color.DarkRed : Color.Blue)
                     .Build();
 
-                await using var stream = File.OpenRead(chatAction);
-                var output = await msg.Channel.SendFileAsync(
-                    stream, Path.GetFileName(chatAction), embed: embed, isSpoiler: isSpoiler);
-
-                if (!isSpoiler) // spoilered NSFW content isn't tagged for deletion — it's already hidden
-                    await output.AddReactionAsync(new Emoji("❌"));
-            }
-            else if (chatAction.Contains("http"))
-            {
-                if (await IsLinkWorkingAsync(chatAction))
-                {
-                    var embed = new EmbedBuilder()
-                        .WithTitle(msg.Content)
-                        .WithImageUrl(chatAction)
-                        .WithColor(isNsfw ? Color.DarkRed : Color.Blue)
-                        .Build();
-
-                    var output = await msg.Channel.SendMessageAsync(embed: embed);
-                    if (!isNsfw)
-                        await output.AddReactionAsync(new Emoji("❌"));
-                }
-                else
-                {
-                    // Link is dead — remove it from the keyword's rotation so it isn't served again.
-                    await sender.SendMessageAsync($"Link was dead so I deleted it :) -> {chatAction}");
-                    _sp.UpdateCreate(Constants.discordBotConnStr, "DeleteChatKeywordURL",
-                    [
-                        new SqlParameter("@FilePath", chatAction),
-                        new SqlParameter("@Keyword",  "")
-                    ]);
-                }
-            }
-            else
-            {
-                string display = isNsfw ? $"||{chatAction}||" : chatAction; // Discord spoiler markup
-                var output = await sender.SendMessageAsync(display);
+                var output = await msg.Channel.SendMessageAsync(embed: embed);
                 if (!isNsfw)
                     await output.AddReactionAsync(new Emoji("❌"));
             }
+            else
+            {
+                // Link is dead — remove it from the keyword's rotation so it isn't served again.
+                await sender.SendMessageAsync($"Link was dead so I deleted it :) -> {chatAction}");
+                await keywords.DeleteEntryAsync(chatAction, "");
+            }
+        }
+        else
+        {
+            string display = isNsfw ? $"||{chatAction}||" : chatAction; // Discord spoiler markup
+            var output = await sender.SendMessageAsync(display);
+            if (!isNsfw)
+                await output.AddReactionAsync(new Emoji("❌"));
         }
     }
 
@@ -1158,15 +1135,9 @@ internal sealed class BotHost(
         Cacheable<IMessageChannel, ulong> channel,
         SocketReaction reaction)
     {
-        var existing = _sp.Select(Constants.discordBotConnStr, "GetKeywordNSFW",
-            [new SqlParameter("@Message", content)]);
+        if (await keywords.GetNsfwAsync(content) == true) return; // already flagged — nothing to do
 
-        if (existing.AsEnumerable().Any(r => r["NSFW"].ToString() == "1")) return; // already flagged — nothing to do
-
-        var result = _sp.Select(Constants.discordBotConnStr, "MarkKeywordNSFW",
-            [new SqlParameter("@Message", content)]);
-
-        if (result.Rows.Count > 0)
+        if (await keywords.MarkNsfwAsync(content))
         {
             await channel.Value.SendMessageAsync(embed: _embed.BuildMessageEmbed(
                 "NSFW",
@@ -1672,25 +1643,24 @@ internal sealed class BotHost(
     /// </summary>
     private async Task RunScheduledKeywordsAsync()
     {
-        System.Data.DataTable dt;
+        IReadOnlyList<DueKeywordDelivery> due;
         try
         {
-            dt = _sp.Select(Constants.discordBotConnStr, "GetUsersScheduledKeyword", []);
+            due = await keywords.GetDueDeliveriesAsync();
         }
         catch (Exception ex)
         {
-            await NotifyOwnerAsync($"[Keywords] SP call failed: {ex.Message}");
+            await NotifyOwnerAsync($"[Keywords] lookup failed: {ex.Message}");
             return;
         }
 
-        if (dt.Rows.Count == 0) return;
+        if (due.Count == 0) return;
 
-        foreach (DataRow row in dt.Rows)
+        foreach (var delivery in due)
         {
-            string userId = row["UserID"].ToString()!;
-            string filePath = row["FilePath"].ToString()!;
-            string tableName = row["ThirstTable"].ToString()!;
-            tableName = char.ToUpperInvariant(tableName[0]) + tableName[1..];
+            string userId = delivery.UserId;
+            string filePath = delivery.FilePath;
+            string tableName = char.ToUpperInvariant(delivery.Keyword[0]) + delivery.Keyword[1..];
             string timestamp = DateTime.Now.ToString("MM/dd/yyyy hh:mm tt ET");
 
             try
@@ -1712,7 +1682,7 @@ internal sealed class BotHost(
                 {
                     if (!File.Exists(filePath)) // file was moved/deleted since being registered
                     {
-                        _sp.Select(Constants.discordBotConnStr, "UpdateUsersScheduledKeywordRequeue", [new SqlParameter("@UserID", userId)]);
+                        await keywords.RequeueScheduleAsync(userId);
                     }
                     else if (new FileInfo(filePath).Length > 8 * 1024 * 1024) // exceeds Discord's non-boosted upload limit
                     {
@@ -1765,11 +1735,7 @@ internal sealed class BotHost(
                 }
                 else // link no longer resolves — remove it rather than keep re-attempting a dead send
                 {
-                    _sp.UpdateCreate(Constants.discordBotConnStr, "DeleteChatKeywordURL",
-                    [
-                        new SqlParameter("@FilePath", filePath),
-                        new SqlParameter("@Keyword",  "")
-                    ]);
+                    await keywords.DeleteEntryAsync(filePath, "");
                     var deadEmbed = new EmbedBuilder()
                         .WithTitle(tableName)
                         .WithColor(Color.Red)
@@ -1786,8 +1752,7 @@ internal sealed class BotHost(
             }
             catch (Exception ex)
             {
-                _sp.UpdateCreate(Constants.discordBotConnStr, "UpdateUsersScheduledKeywordRequeue",
-                    [new SqlParameter("@UserID", userId)]);
+                await keywords.RequeueScheduleAsync(userId);
                 await NotifyOwnerAsync(
                     $"Scheduled send failed for user {userId}.\n{ex.StackTrace}\n" +
                     $"Requeued for {DateTime.Now.AddMinutes(1):yyyy-MM-dd hh:mm tt}.");
@@ -2041,8 +2006,7 @@ internal sealed class BotHost(
     }
 
     /// <summary>Downloads every attachment on a message and registers each as a value under the given keyword.</summary>
-    private async Task AddAttachmentsAsync(
-        SocketMessage msg, string tablename, string connStr, string userId)
+    private async Task AddAttachmentsAsync(SocketMessage msg, string tablename)
     {
         tablename = tablename.Replace("KeywordMulti.", "");
 
@@ -2052,12 +2016,7 @@ internal sealed class BotHost(
             string uniqueName = $"{parts[0]}_{DateTime.Now:yyyyMMdd_HHmmssfffff}";
             string path = $@"C:\Temp\DiscordBot\{tablename}\{uniqueName}.{parts[1]}";
 
-            _sp.UpdateCreate(connStr, "AddChatKeyword",
-            [
-                new SqlParameter("@FilePath",  path),
-                new SqlParameter("@TableName", tablename),
-                new SqlParameter("@UserID",    userId)
-            ]);
+            await keywords.AddEntryAsync(tablename, path);
 
             using var http = httpClientFactory.CreateClient();
             var bytes = await http.GetByteArrayAsync(attachment.Url);

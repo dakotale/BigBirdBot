@@ -1,9 +1,6 @@
-﻿using System.Data;
-using Microsoft.Data.SqlClient;
 using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
-using DiscordBot.Constants;
 using DiscordBot.Helper;
 
 namespace DiscordBot.SlashCommands;
@@ -16,12 +13,13 @@ namespace DiscordBot.SlashCommands;
 /// /keyword alias      add | delete | list
 /// /keyword url        delete
 /// /keyword schedule   add | remove | list | requeue
+///
+/// All keyword data access goes through <see cref="KeywordService"/> (EF Core).
 /// </summary>
 [Group("keyword", "Keyword management commands.")]
-public class Keyword : InteractionModuleBase<SocketInteractionContext>
+public class Keyword(KeywordService keywords) : InteractionModuleBase<SocketInteractionContext>
 {
     private readonly EmbedHelper _embed = new();
-    private readonly StoredProcedure _sp = new();
 
     private string Username => Context.User.Username;
 
@@ -39,13 +37,7 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
         {
             keyword = keyword.Trim().ToLowerInvariant();
 
-            _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "AddChatKeywordMap",
-            [
-                new SqlParameter("@ServerID",   (long)Context.Guild.Id),
-                new SqlParameter("@Keyword",    keyword),
-                new SqlParameter("@AddKeyword", "add" + keyword),
-                new SqlParameter("@CreatedBy",  Username)
-            ]);
+            await keywords.AddMapAsync(Context.Guild.Id, "add" + keyword, Username);
 
             Directory.CreateDirectory(
                 Path.Combine(Constants.Constants.keywordDirectory, keyword));
@@ -74,10 +66,7 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
     {
         await DeferAsync(ephemeral: true);
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "DeleteChatKeyword",
-        [
-            new SqlParameter("@Keyword", keyword.Trim())
-        ]);
+        await keywords.DeleteKeywordAsync(keyword.Trim());
 
         await FollowupAsync(embed: _embed.BuildMessageEmbed(
             "Keyword Deleted",
@@ -101,12 +90,7 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
 
         try
         {
-            _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "RenameChatKeyword",
-            [
-                new SqlParameter("@OldKeyword", oldName),
-                new SqlParameter("@NewKeyword", newName),
-                new SqlParameter("@ServerID",   (long)Context.Guild.Id)
-            ]);
+            await keywords.RenameKeywordAsync(oldName, newName, Context.Guild.Id);
 
             string oldDir = Path.Combine(Constants.Constants.keywordDirectory, oldName);
             string newDir = Path.Combine(Constants.Constants.keywordDirectory, newName);
@@ -127,16 +111,11 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
     }
 
 
-    // ══════════════════════════════════════════════════════════════════════════
-    // /keyword alias [subcommand]
-    // ══════════════════════════════════════════════════════════════════════════
-
     /// <summary>/keyword alias subcommands — extra trigger words that serve entries from an existing keyword.</summary>
     [Group("alias", "Manage keyword aliases.")]
-    public class AliasCommands : InteractionModuleBase<SocketInteractionContext>
+    public class AliasCommands(KeywordService keywords) : InteractionModuleBase<SocketInteractionContext>
     {
-        private readonly EmbedHelper     _embed = new();
-        private readonly StoredProcedure _sp    = new();
+        private readonly EmbedHelper _embed = new();
 
         private string Username => Context.User.Username;
 
@@ -158,15 +137,9 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
 
             try
             {
-                var dt = _sp.Select(Constants.Constants.discordBotConnStr, "AddChatKeywordAlias",
-                [
-                    new SqlParameter("@Alias",     alias),
-                    new SqlParameter("@Keyword",   keyword),
-                    new SqlParameter("@ServerID",  (long)Context.Guild.Id),
-                    new SqlParameter("@CreatedBy", Username)
-                ]);
+                bool added = await keywords.AddAliasAsync(alias, keyword, Context.Guild.Id, Username);
 
-                if (dt.Rows.Count > 0 && dt.Rows[0]["Result"].ToString() == "exists")
+                if (!added)
                 {
                     await FollowupAsync(embed: _embed.BuildErrorEmbed(
                         "Alias", $"**{alias}** is already an alias in this server.", Username).Build(),
@@ -199,11 +172,7 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
 
             alias = alias.Trim().ToLowerInvariant();
 
-            _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "DeleteChatKeywordAlias",
-            [
-                new SqlParameter("@Alias",    alias),
-                new SqlParameter("@ServerID", (long)Context.Guild.Id)
-            ]);
+            await keywords.DeleteAliasAsync(alias, Context.Guild.Id);
 
             await FollowupAsync(embed: _embed.BuildMessageEmbed(
                 "Alias Removed",
@@ -224,13 +193,9 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
 
             keyword = keyword.Trim().ToLowerInvariant();
 
-            var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetChatKeywordAliases",
-            [
-                new SqlParameter("@Keyword",  keyword),
-                new SqlParameter("@ServerID", (long)Context.Guild.Id)
-            ]);
+            var aliases = await keywords.GetAliasesAsync(keyword, Context.Guild.Id);
 
-            if (dt.Rows.Count == 0)
+            if (aliases.Count == 0)
             {
                 await FollowupAsync(embed: _embed.BuildMessageEmbed(
                     "Keyword Aliases",
@@ -239,11 +204,11 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
                 return;
             }
 
-            string list = string.Join(", ", dt.AsEnumerable().Select(r => $"`{r["Alias"]}`"));
+            string list = string.Join(", ", aliases.Select(a => $"`{a.Alias}`"));
 
             await FollowupAsync(embed: _embed.BuildMessageEmbed(
                 $"Aliases — {keyword}",
-                $"**{dt.Rows.Count}** alias(es): {list}",
+                $"**{aliases.Count}** alias(es): {list}",
                 "", Username, Color.Blue).Build(), ephemeral: true);
         }
     }
@@ -260,10 +225,9 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
 
         keyword = keyword.Trim().ToLowerInvariant();
 
-        var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetChatKeywordInfo",
-            [new SqlParameter("@Keyword", keyword)]);
+        var info = await keywords.GetInfoAsync(keyword);
 
-        if (dt.Rows.Count == 0)
+        if (info is null)
         {
             await FollowupAsync(embed: _embed.BuildErrorEmbed(
                 "Keyword Info", $"No data found for keyword **{keyword}**.", Username).Build(),
@@ -271,19 +235,14 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        var row = dt.Rows[0];
-        string count = row["EntryCount"].ToString()!;
-        string created = row["CreatedBy"]?.ToString() ?? "Unknown";
+        string count = info.EntryCount.ToString();
+        string created = info.CreatedBy ?? "Unknown";
 
-        var recent = _sp.Select(Constants.Constants.discordBotConnStr, "GetChatKeywordRecent",
-            [new SqlParameter("@Keyword", keyword)]);
+        var recent = await keywords.GetRecentEntriesAsync(keyword);
 
-        string recentStr = recent.AsEnumerable().Any()
-            ? string.Join("\n", recent.AsEnumerable().Take(5).Select(r =>
-            {
-                string fp = r["FilePath"].ToString()!;
-                return fp.StartsWith(@"C:\") ? $"📁 `{Path.GetFileName(fp)}`" : $"🔗 {fp}";
-            }))
+        string recentStr = recent.Count > 0
+            ? string.Join("\n", recent.Take(5).Select(fp =>
+                fp.StartsWith(@"C:\") ? $"📁 `{Path.GetFileName(fp)}`" : $"🔗 {fp}"))
             : "*No entries yet*";
 
         await FollowupAsync(embed: _embed.BuildSimpleEmbed(
@@ -303,10 +262,9 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
     {
         await DeferAsync(ephemeral: true);
 
-        var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetChatKeywordsByServer",
-            [new SqlParameter("@ServerID", (long)Context.Guild.Id)]);
+        var rows = await keywords.GetKeywordsForServerAsync(Context.Guild.Id);
 
-        if (dt.Rows.Count == 0)
+        if (rows.Count == 0)
         {
             await FollowupAsync(embed: _embed.BuildMessageEmbed(
                 "Keywords", "No keywords have been registered in this server yet.",
@@ -315,7 +273,6 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
         }
 
         const int pageSize = 15;
-        var rows = dt.AsEnumerable().ToList();
 
         for (int page = 0; page < (int)Math.Ceiling(rows.Count / (double)pageSize); page++)
         {
@@ -325,12 +282,7 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
                 footerIconUrl: Context.User.GetAvatarUrl());
 
             foreach (var r in rows.Skip(page * pageSize).Take(pageSize))
-            {
-                string kw = r["Keyword"].ToString()!;
-                string trigger = r["AddKeyword"].ToString()!;
-                string creator = r["CreatedBy"].ToString()!;
-                builder.AddField($"`-{trigger}`", $"Keyword: **{kw}**  •  Created by: {creator}", inline: false);
-            }
+                builder.AddField($"`-{r.AddKeyword}`", $"Keyword: **{r.Keyword}**  •  Created by: {r.CreatedBy}", inline: false);
 
             await FollowupAsync(embed: builder.Build(), ephemeral: true);
         }
@@ -342,10 +294,9 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
 
     /// <summary>/keyword attachment subcommands — bulk-upload files as keyword entries.</summary>
     [Group("attachment", "Bulk-upload attachments to one or more keywords.")]
-    public class AttachmentCommands : InteractionModuleBase<SocketInteractionContext>
+    public class AttachmentCommands(KeywordService keywords) : InteractionModuleBase<SocketInteractionContext>
     {
-        private readonly EmbedHelper     _embed = new();
-        private readonly StoredProcedure _sp    = new();
+        private readonly EmbedHelper      _embed = new();
         private static readonly HttpClient _http = new();
 
         private string Username => Context.User.Username;
@@ -357,7 +308,7 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
         [SlashCommand("add", "Attach up to 10 files to one or more keywords at once.")]
         [CommandContextType(InteractionContextType.Guild)]
         public async Task HandleBulkAddAsync(
-            [Summary("keywords", "Comma-separated keyword names, e.g. cat,dog,bird")] string keywords,
+            [Summary("keywords", "Comma-separated keyword names, e.g. cat,dog,bird")] string keywordNames,
             IAttachment  file1,
             IAttachment? file2  = null,
             IAttachment? file3  = null,
@@ -378,7 +329,7 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
                 .ToList();
 
             // Parse and validate keyword list
-            var keywordList = keywords
+            var keywordList = keywordNames
                 .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .Select(k => k.ToLowerInvariant())
                 .Distinct()
@@ -441,13 +392,7 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
                     try
                     {
                         await File.WriteAllBytesAsync(destPath, fileBytes);
-
-                        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "AddChatKeyword",
-                        [
-                            new SqlParameter("@FilePath",  destPath),
-                            new SqlParameter("@TableName", keyword),
-                            new SqlParameter("@UserID",    Context.User.Id.ToString())
-                        ]);
+                        await keywords.AddEntryAsync(keyword, destPath);
                     }
                     catch (Exception ex)
                     {
@@ -480,16 +425,11 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
         }
     }
 
-    // ══════════════════════════════════════════════════════════════════════════
-    // /keyword url [subcommand]
-    // ══════════════════════════════════════════════════════════════════════════
-
     /// <summary>/keyword url subcommands — manage individual URL entries attached to a keyword.</summary>
     [Group("url", "Manage URLs attached to keywords.")]
-    public class UrlCommands : InteractionModuleBase<SocketInteractionContext>
+    public class UrlCommands(KeywordService keywords) : InteractionModuleBase<SocketInteractionContext>
     {
         private readonly EmbedHelper _embed = new();
-        private readonly StoredProcedure _sp = new();
 
         private string Username => Context.User.Username;
 
@@ -507,11 +447,7 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
             url = url.Trim();
             keyword = keyword.Trim();
 
-            _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "DeleteChatKeywordURL",
-            [
-                new SqlParameter("@FilePath", url),
-                new SqlParameter("@Keyword",  keyword)
-            ]);
+            await keywords.DeleteEntryAsync(url, keyword);
 
             await FollowupAsync(embed: _embed.BuildMessageEmbed(
                 "URL Deleted",
@@ -520,16 +456,11 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
         }
     }
 
-    // ══════════════════════════════════════════════════════════════════════════
-    // /keyword schedule [subcommand]
-    // ══════════════════════════════════════════════════════════════════════════
-
     /// <summary>/keyword schedule subcommands — configure recurring DM deliveries of a keyword's entries to a specific user (sent by BotHost.RunScheduledKeywordsAsync).</summary>
     [Group("schedule", "Manage scheduled keyword deliveries for users.")]
-    public class ScheduleCommands : InteractionModuleBase<SocketInteractionContext>
+    public class ScheduleCommands(KeywordService keywords) : InteractionModuleBase<SocketInteractionContext>
     {
         private readonly EmbedHelper _embed = new();
-        private readonly StoredProcedure _sp = new();
 
         private string Username => Context.User.Username;
 
@@ -546,13 +477,9 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
 
             try
             {
-                var dt = _sp.Select(Constants.Constants.discordBotConnStr, "AddUsersScheduledKeyword",
-                [
-                    new SqlParameter("@UserID",  (long)user.Id),
-                    new SqlParameter("@Keyword", keyword.Trim())
-                ]);
+                var summaries = await keywords.AddScheduleAsync(user.Id.ToString(), keyword.Trim());
 
-                if (dt.Rows.Count == 0)
+                if (summaries.Count == 0)
                 {
                     await FollowupAsync(embed: _embed.BuildErrorEmbed(
                         "Schedule Error", "No schedule record was returned.", Username).Build(),
@@ -560,16 +487,13 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
                     return;
                 }
 
-                foreach (DataRow dr in dt.Rows)
+                foreach (var summary in summaries)
                 {
-                    var scheduleTime = DateTime.Parse(dr["ScheduleTime"].ToString()!);
-                    string tableList = dr["ScheduledEventTable"].ToString()!;
-
                     await FollowupAsync(embed: _embed.BuildMessageEmbed(
                         "Scheduled Event Added",
                         $"**{user.DisplayName}** will start receiving **{keyword}** on " +
-                        $"**{scheduleTime:MM/dd/yyyy hh:mm tt} ET**.\n\n" +
-                        $"Current scheduled keywords: *{tableList}*",
+                        $"**{summary.ScheduleTime:MM/dd/yyyy hh:mm tt} ET**.\n\n" +
+                        $"Current scheduled keywords: *{summary.KeywordsCsv}*",
                         "", Username, Color.Blue).Build(), ephemeral: true);
                 }
             }
@@ -591,11 +515,7 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
         {
             await DeferAsync(ephemeral: true);
 
-            _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "DeleteUsersScheduledKeyword",
-            [
-                new SqlParameter("@UserID",  user.Id.ToString()),
-                new SqlParameter("@Keyword", keyword.Trim())
-            ]);
+            await keywords.RemoveScheduleAsync(user.Id.ToString(), keyword.Trim());
 
             await FollowupAsync(embed: _embed.BuildMessageEmbed(
                 "Schedule Removed",
@@ -612,10 +532,9 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
         {
             await DeferAsync(ephemeral: true);
 
-            var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetUsersScheduledKeywords",
-                [new SqlParameter("@UserID", user.Id.ToString())]);
+            var schedule = await keywords.GetUserScheduleAsync(user.Id.ToString());
 
-            if (dt.Rows.Count == 0)
+            if (schedule.Count == 0)
             {
                 await FollowupAsync(embed: _embed.BuildMessageEmbed(
                     "User Schedule",
@@ -629,13 +548,8 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
                 footer: $"Requested by {Username}", footerIconUrl: Context.User.GetAvatarUrl())
                 .WithThumbnailUrl(user.GetDisplayAvatarUrl() ?? user.GetDefaultAvatarUrl());
 
-            foreach (DataRow row in dt.Rows)
-            {
-                string kw = row["ThirstTable"].ToString()!;
-                string time = DateTime.Parse(row["ScheduleTime"].ToString()!)
-                                   .ToString("MM/dd/yyyy hh:mm tt") + " ET";
-                builder.AddField(kw, time, inline: true);
-            }
+            foreach (var row in schedule)
+                builder.AddField(row.Keyword, row.ScheduleTime.ToString("MM/dd/yyyy hh:mm tt") + " ET", inline: true);
 
             await FollowupAsync(embed: builder.Build(), ephemeral: true);
         }
@@ -649,16 +563,11 @@ public class Keyword : InteractionModuleBase<SocketInteractionContext>
         {
             await DeferAsync(ephemeral: true);
 
-            var dt = _sp.Select(Constants.Constants.discordBotConnStr,
-                "UpdateUsersScheduledKeywordRequeue",
-                [new SqlParameter("@UserID", user.Id.ToString())]);
+            string message = await keywords.RequeueScheduleAsync(user.Id.ToString());
 
-            foreach (DataRow dr in dt.Rows)
-            {
-                await FollowupAsync(embed: _embed.BuildMessageEmbed(
-                    "Event Requeued", dr["Message"].ToString()!,
-                    "", Username, Color.Blue).Build(), ephemeral: true);
-            }
+            await FollowupAsync(embed: _embed.BuildMessageEmbed(
+                "Event Requeued", message,
+                "", Username, Color.Blue).Build(), ephemeral: true);
         }
     }
 }

@@ -12,7 +12,7 @@ namespace DiscordBot.SlashCommands
     /// <summary>Bot-owner-only maintenance commands: cross-server announcements, schedule/connection listings, user table backfill, and manual keyword-image cleanup.</summary>
     // GuildModule decoration limits these commands to only show by the guild below.
     [GuildModule(880569055856185354)]
-    public class OwnerCommands : InteractionModuleBase<SocketInteractionContext>
+    public class OwnerCommands(KeywordService keywords) : InteractionModuleBase<SocketInteractionContext>
     {
         /// <summary>Broadcasts a message (with optional attachment) to every server's default channel where the bot has permission to post, reporting which servers were skipped.</summary>
         [SlashCommand("announcement", "Broadcast a message to all servers.")]
@@ -79,15 +79,13 @@ namespace DiscordBot.SlashCommands
         public async Task HandleServerList()
         {
             await DeferAsync(ephemeral: true);
-            StoredProcedure stored = new StoredProcedure();
 
-            DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "GetScheduledEventUsers", new List<SqlParameter>());
+            var events = await keywords.GetAllScheduledEventUsersAsync();
             EmbedHelper embedHelper = new EmbedHelper();
             string description = "";
 
-            if (dt.Rows.Count > 0)
-                foreach (DataRow dr in dt.Rows)
-                    description += "- " + dr["Username"].ToString() + " - " + dr["ScheduledEventTable"].ToString() + " - " + DateTime.Parse(dr["EventDateTime"].ToString()).ToString("MM/dd hh:mm tt") + "\n";
+            foreach (var ev in events)
+                description += "- " + ev.Username + " - " + ev.Keyword + " - " + ev.ScheduledFor.ToString("MM/dd hh:mm tt") + "\n";
 
             await FollowupAsync(embed: embedHelper.BuildMessageEmbed("Scheduled List", description, "", Context.User.Username, Discord.Color.Blue).Build(), ephemeral: true).ConfigureAwait(false);
         }
@@ -183,13 +181,8 @@ namespace DiscordBot.SlashCommands
             EmbedHelper embedHelper = new EmbedHelper();
             string tableName = chatName.Trim();
             fileName = @"C:\Temp\DiscordBot\" + tableName + @"\" + fileName.Trim();
-            StoredProcedure stored = new StoredProcedure();
 
-            stored.UpdateCreate(Constants.Constants.discordBotConnStr, "DeleteChatKeywordURL", new List<SqlParameter>
-            {
-                new SqlParameter("@FilePath", fileName),
-                new SqlParameter("@Keyword", tableName)
-            });
+            await keywords.DeleteEntryAsync(fileName, tableName);
 
             EmbedBuilder embed = embedHelper.BuildMessageEmbed("Delete Successful", $"Image {fileName} was successfully deleted from the {tableName} table.", "", Context.User.Username, Color.Blue, "");
             await FollowupAsync(embed: embed.Build(), ephemeral: true);
