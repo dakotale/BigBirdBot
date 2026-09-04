@@ -1,4 +1,4 @@
-using Microsoft.Data.SqlClient;
+using Npgsql;
 
 namespace DiscordBot.Tests.Integration;
 
@@ -9,10 +9,10 @@ namespace DiscordBot.Tests.Integration;
 /// Connection string resolution order (same as the bot):
 ///   1. Environment variable  discordBotConnStr
 ///   2. discordBotConnStr key in a secrets.json file placed next to the test DLL
-///   3. Default localhost Integrated Security string
+///   3. Default localhost connection string (no password - fails cleanly if unconfigured)
 ///
 /// Tests decorated with [SkippableFact] will skip automatically when
-/// <see cref="IsAvailable"/> is false, keeping CI green without a SQL Server instance.
+/// <see cref="IsAvailable"/> is false, keeping CI green without a PostgreSQL instance.
 /// </summary>
 public sealed class DatabaseFixture : IDisposable
 {
@@ -27,7 +27,7 @@ public sealed class DatabaseFixture : IDisposable
 
         try
         {
-            using var conn = new SqlConnection(ConnectionString);
+            using var conn = new NpgsqlConnection(ConnectionString);
             conn.Open();
             IsAvailable = true;
             UnavailableReason = string.Empty;

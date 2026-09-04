@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 namespace DiscordBot.Tests.Integration;
 
 /// <summary>
-/// Integration tests for <see cref="KeywordService"/> (EF Core over SQL Server).
+/// Integration tests for <see cref="KeywordService"/> (EF Core over PostgreSQL).
 /// Skipped automatically when the database is unavailable, so CI stays green.
 ///
 /// Every test scopes its data to a dedicated fake server / user id and a
@@ -32,7 +32,7 @@ public sealed class KeywordServiceTests : IClassFixture<DatabaseFixture>
     private sealed class Factory(string connectionString) : IDbContextFactory<BigBirdContext>
     {
         private readonly DbContextOptions<BigBirdContext> _options =
-            new DbContextOptionsBuilder<BigBirdContext>().UseSqlServer(connectionString).Options;
+            new DbContextOptionsBuilder<BigBirdContext>().UseNpgsql(connectionString).Options;
 
         public BigBirdContext CreateDbContext() => new(_options);
     }

@@ -51,7 +51,7 @@ public sealed class CoreServicesTests : IClassFixture<DatabaseFixture>
     private sealed class Factory(string connectionString) : IDbContextFactory<BigBirdContext>
     {
         private readonly DbContextOptions<BigBirdContext> _options =
-            new DbContextOptionsBuilder<BigBirdContext>().UseSqlServer(connectionString).Options;
+            new DbContextOptionsBuilder<BigBirdContext>().UseNpgsql(connectionString).Options;
 
         public BigBirdContext CreateDbContext() => new(_options);
     }

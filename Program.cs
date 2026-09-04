@@ -68,7 +68,7 @@ static void ConfigureServices(IServiceCollection services) =>
         // EF Core — every stored-procedure-backed feature area has now moved onto this.
         // A factory + singleton service: the bot has no request scope, and each unit of
         // work opens and disposes its own context.
-        .AddDbContextFactory<BigBirdContext>(o => o.UseSqlServer(Constants.discordBotConnStr))
+        .AddDbContextFactory<BigBirdContext>(o => o.UseNpgsql(Constants.discordBotConnStr))
         .AddSingleton<KeywordService>()
         .AddSingleton<AuditService>()
         .AddSingleton<AutoRoleService>()
