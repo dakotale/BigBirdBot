@@ -1,6 +1,4 @@
-﻿using Microsoft.Data.SqlClient;
-using Discord;
-using DiscordBot.Constants;
+﻿using Discord;
 using Lavalink4NET.Players;
 using Lavalink4NET.Players.Queued;
 using Lavalink4NET.Protocol.Payloads.Events;
@@ -14,12 +12,14 @@ namespace DiscordBot.Helper;
 public sealed class CustomPlayer : QueuedLavalinkPlayer
 {
     private readonly ITextChannel? _textChannel;
+    private readonly MusicService? _musicService;
 
-    /// <summary>Captures the bound text channel from the player options for later Now Playing notifications.</summary>
+    /// <summary>Captures the bound text channel and music service from the player options for later use.</summary>
     public CustomPlayer(IPlayerProperties<CustomPlayer, CustomPlayerOptions> properties)
         : base(properties)
     {
         _textChannel = properties.Options.Value.TextChannel;
+        _musicService = properties.Options.Value.MusicService;
     }
 
     /// <inheritdoc/>
@@ -60,16 +60,13 @@ public sealed class CustomPlayer : QueuedLavalinkPlayer
         await base.NotifyTrackEndedAsync(queueItem, endReason, cancellationToken).ConfigureAwait(false);
 
         // DB cleanup is fire-and-forget; never let it block or throw into the event loop.
-        if (queueItem?.Track is { } t)
+        if (queueItem?.Track is { } t && _musicService is not null)
         {
-            _ = Task.Run(() =>
+            _ = Task.Run(async () =>
             {
                 try
                 {
-                    new StoredProcedure().UpdateCreate(
-                        Constants.Constants.discordBotConnStr,
-                        "DeleteMusicQueue",
-                        [new SqlParameter("@URL", t.Uri?.OriginalString ?? "")]);
+                    await _musicService.DeleteQueueEntryAsync(t.Uri?.OriginalString ?? "");
                 }
                 catch
                 {

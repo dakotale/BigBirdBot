@@ -3,16 +3,13 @@ using Discord.Interactions;
 using Discord.WebSocket;
 using DiscordBot.Constants;
 using DiscordBot.Helper;
-using System.Data;
-using Microsoft.Data.SqlClient;
 
 namespace DiscordBot.SlashCommands
 {
     /// <summary>Server moderation/admin utility commands: pronoun-role menu, bot nickname, message purge, and announcement toggling.</summary>
-    public class AdminCommands : InteractionModuleBase<SocketInteractionContext>
+    public class AdminCommands(PronounService pronouns, ServerService servers) : InteractionModuleBase<SocketInteractionContext>
     {
         private readonly EmbedHelper _embed = new();
-        private readonly StoredProcedure _sp = new();
 
         private string Username => Context.User.Username;
 
@@ -24,11 +21,11 @@ namespace DiscordBot.SlashCommands
         {
             await DeferAsync();
 
-            var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetPronouns", []);
+            var pronounList = await pronouns.GetAllAsync();
 
             var builder = new ComponentBuilder();
-            foreach (DataRow dr in dt.Rows)
-                builder.WithButton(dr["Pronoun"].ToString(), dr["ID"].ToString());
+            foreach (var (id, name) in pronounList)
+                builder.WithButton(name, id.ToString());
 
             await FollowupAsync(
                 embed: _embed.BuildMessageEmbed(
@@ -106,13 +103,9 @@ namespace DiscordBot.SlashCommands
         {
             await DeferAsync(ephemeral: true);
 
-            var dt = _sp.Select(Constants.Constants.discordBotConnStr, "ToggleAnnouncements",
-            [
-                new SqlParameter("@ServerUID", (long)Context.Guild.Id),
-                new SqlParameter("@ChannelID", (long)Context.Channel.Id)
-            ]);
+            var toggled = await servers.ToggleAnnouncementsAsync(Context.Guild.Id, Context.Channel.Id);
 
-            string result = dt.Rows.Count > 0 ? dt.Rows[0]["Result"].ToString() ?? "" : "Unknown error toggling announcements.";
+            string result = toggled?.Message ?? "Unknown error toggling announcements.";
 
             await FollowupAsync(embed: _embed.BuildMessageEmbed(
                 "📣  Announcements",

@@ -87,16 +87,3 @@ public sealed class UsersScheduledKeyword
 
     public DateTime ScheduledDateTime { get; set; }
 }
-
-/// <summary>
-/// Minimal read-only projection of <c>dbo.Users</c> — only the columns the keyword
-/// area needs (<c>/owner schedulelist</c>). Future feature areas will expand this.
-/// </summary>
-public sealed class User
-{
-    public string UserId { get; set; } = "";
-
-    public string Username { get; set; } = "";
-
-    public long ServerUid { get; set; }
-}

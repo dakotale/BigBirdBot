@@ -5,8 +5,6 @@ using DiscordBot.Constants;
 using DiscordBot.Helper;
 using DiscordBot.Models;
 using DiscordBot.Services;
-using System.Data;
-using Microsoft.Data.SqlClient;
 
 namespace DiscordBot.SlashCommands;
 
@@ -20,14 +18,15 @@ public class AICommands : InteractionModuleBase<SocketInteractionContext>
 {
     private readonly ISpotifyService _spotifyService;
     private readonly IAIChatService _aiChatService;
+    private readonly AIMessageService _messages;
     private readonly EmbedHelper _embed = new();
-    private readonly StoredProcedure _sp = new();
 
-    /// <summary>Injects the Spotify and AI chat backends used by /mood and /chat respectively.</summary>
-    public AICommands(ISpotifyService spotifyService, IAIChatService aiChatService)
+    /// <summary>Injects the Spotify, AI chat, and message-history backends used by /mood, /chat, and /detectaibyattachment respectively.</summary>
+    public AICommands(ISpotifyService spotifyService, IAIChatService aiChatService, AIMessageService messages)
     {
         _spotifyService = spotifyService;
         _aiChatService = aiChatService;
+        _messages = messages;
     }
 
     private string Username => Context.User.Username;
@@ -73,49 +72,16 @@ public class AICommands : InteractionModuleBase<SocketInteractionContext>
         try
         {
             if (isNew)
-            {
-                _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "DeleteBotAIMessage",
-                [
-                    new SqlParameter("@UserID",    userId),
-                    new SqlParameter("@ServerUID", serverUid),
-                    new SqlParameter("@ChannelID", channelId)
-                ]);
-            }
+                await _messages.DeleteHistoryAsync(userId, serverUid, channelId);
 
-            var history = isNew
-                ? new DataTable()
-                : _sp.Select(Constants.Constants.discordBotConnStr, "GetBotAIMessage",
-                [
-                    new SqlParameter("@UserID",    userId),
-                    new SqlParameter("@ServerUID", serverUid),
-                    new SqlParameter("@ChannelID", channelId)
-                ]);
-
-            var historyPairs = history.Rows.Cast<DataRow>()
-                .Select(dr => (Role: dr["ChatRole"].ToString()!, Text: dr["ChatMessage"].ToString()!));
+            var historyPairs = isNew
+                ? []
+                : await _messages.GetHistoryAsync(userId, serverUid, channelId);
 
             string aiText = await _aiChatService.GetResponseAsync(persona, historyPairs, message);
 
-            SqlParameter[] baseParams =
-            [
-                new SqlParameter("@UserID",    userId),
-                new SqlParameter("@ServerUID", serverUid),
-                new SqlParameter("@ChannelID", channelId)
-            ];
-
-            _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "AddBotAIMessage",
-            [
-                .. baseParams,
-                new SqlParameter("@ChatRole",    "user"),
-                new SqlParameter("@ChatMessage", message)
-            ]);
-
-            _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "AddBotAIMessage",
-            [
-                .. baseParams,
-                new SqlParameter("@ChatRole",    "assistant"),
-                new SqlParameter("@ChatMessage", aiText)
-            ]);
+            await _messages.AddMessageAsync(userId, serverUid, channelId, "user", message);
+            await _messages.AddMessageAsync(userId, serverUid, channelId, "assistant", aiText);
 
             string title = personality == "None" ? "Chat" : personality;
             string description = $"**Message:** {message}\n\n**Response:** {aiText}";
@@ -195,17 +161,14 @@ public class AICommands : InteractionModuleBase<SocketInteractionContext>
                 return;
             }
 
-            var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetAIJSONImageReturn",
-                [new SqlParameter("@json", body)]);
+            var (status, percentage) = AIMessageService.ParseImageDetectionResult(body);
 
-            if (dt.Rows.Count == 0 || dt.Rows[0]["Status"].ToString() != "success")
+            if (status != "success" || percentage is not { } rate)
             {
                 await FollowupAsync(embed: _embed.BuildErrorEmbed(
                     "AI Detection", "The detection request failed.", Username).Build());
                 return;
             }
-
-            double rate = double.Parse(dt.Rows[0]["PercentageChance"].ToString()!);
 
             string desc = rate switch
             {

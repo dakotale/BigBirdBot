@@ -1,6 +1,4 @@
-﻿using System.Data;
-using Microsoft.Data.SqlClient;
-using System.Runtime.CompilerServices;
+﻿using System.Runtime.CompilerServices;
 using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
@@ -22,7 +20,7 @@ namespace DiscordBot.SlashCommands;
 /// via Lavalink4NET, including queueing, playback control, and volume management.
 /// Supports interactive button controls on Now Playing embeds.
 /// </summary>
-public sealed class Audio(IAudioService audioService, InteractiveService interactiveService)
+public sealed class Audio(IAudioService audioService, InteractiveService interactiveService, MusicService music)
     : InteractionModuleBase<SocketInteractionContext>
 {
     private readonly EmbedHelper _embed = new();
@@ -82,7 +80,7 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
 
         await audioService.StartAsync();
         await Task.Delay(3_000);
-        AddPlayerConnected(voiceState);
+        await AddPlayerConnectedAsync(voiceState);
 
         var player = await GetPlayerAsync(connectToVoiceChannel: true);
 
@@ -92,7 +90,7 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
             return;
         }
 
-        int vol = GetVolume(GuildId);
+        int vol = await GetVolumeAsync(GuildId);
         var embed = MakeEmbed(EmojiJoin, "Joined", ColourSuccess)
             .WithDescription($"Ready to play! Current volume is **{vol}%**.")
             .WithThumbnailUrl(Context.Client.CurrentUser.GetAvatarUrl());
@@ -112,7 +110,7 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
         else if (await GetPlayerAsync() is null)
             return;
 
-        DeletePlayerConnected(GuildId);
+        await DeletePlayerConnectedAsync(GuildId);
         await FollowupAsync(embed: LeaveEmbed().Build());
     }
 
@@ -233,7 +231,7 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
             await player.DisconnectAsync();
         }
 
-        DeletePlayerConnected(GuildId);
+        await DeletePlayerConnectedAsync(GuildId);
         await FollowupAsync(embed: LeaveEmbed().Build());
     }
 
@@ -247,11 +245,7 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
 
         await player.SetVolumeAsync(volume / 100f);
 
-        new StoredProcedure().UpdateCreate(Constants.Constants.discordBotConnStr, "UpdateVolume",
-        [
-            new SqlParameter("@ServerUID", GuildId),
-            new SqlParameter("@Volume",    volume)
-        ]);
+        await music.UpdateVolumeAsync((ulong)GuildId, volume);
 
         var embed = MakeEmbed(EmojiVolume, "Volume", ColourSuccess)
             .AddField("Level", $"{VolumeBar(volume)}  **{volume}%**");
@@ -440,10 +434,7 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
         int count = player.Queue.Count;
         await player.Queue.ClearAsync();
 
-        new StoredProcedure().UpdateCreate(Constants.Constants.discordBotConnStr, "DeleteMusicQueueAll",
-        [
-            new SqlParameter("@ServerID", GuildId)
-        ]);
+        await music.ClearQueueAsync((ulong)GuildId);
 
         await ReplyEmbedAsync(EmojiQueue, "Queue Cleared", $"Removed **{count}** track(s).", ColourSuccess);
     }
@@ -586,7 +577,7 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
 
         await player.StopAsync();
         await player.DisconnectAsync();
-        DeletePlayerConnected(GuildId);
+        await DeletePlayerConnectedAsync(GuildId);
 
         await ModifyOriginalResponseAsync(m =>
         {
@@ -688,7 +679,8 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
         var options = new CustomPlayerOptions
         {
             SelfMute = true,
-            TextChannel = Context.Channel as ITextChannel
+            TextChannel = Context.Channel as ITextChannel,
+            MusicService = music
         };
 
         var retrieveOptions = new PlayerRetrieveOptions(
@@ -726,7 +718,7 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
 
         await audioService.StartAsync();
         await Task.Delay(3_000);
-        AddPlayerConnected(voiceState);
+        await AddPlayerConnectedAsync(voiceState);
         return await GetPlayerAsync(connectToVoiceChannel: true);
     }
 
@@ -751,7 +743,7 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
     /// <summary>Queues a single resolved track (or inserts it next), applies the guild's saved volume, records it in the music history table, and replies with a track-detail embed.</summary>
     private async Task PlaySingleTrackAsync(LavalinkPlayer player, LavalinkTrack track, bool playNext)
     {
-        AddMusicTable(track, Context.Guild.Id.ToString(), Context.User.Username);
+        await AddMusicTableAsync(track, Context.Guild.Id.ToString(), Context.User.Username);
 
         string artist = ExtractAdditionalInfo(track, "artistUrl");
         string albumName = ExtractAdditionalInfo(track, "albumName");
@@ -761,7 +753,7 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
         else
             await player.PlayAsync(track);
 
-        float volume = GetVolume(GuildId) / 100f;
+        float volume = await GetVolumeAsync(GuildId) / 100f;
         await player.SetVolumeAsync(volume);
 
         var queueCount = (await GetPlayerAsync(connectToVoiceChannel: false))?.Queue.Count ?? 0;
@@ -826,7 +818,7 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
         else
             await EnqueueAllAsync(player, tracks, guildIdStr, userName);
 
-        float volume = GetVolume(GuildId) / 100f;
+        float volume = await GetVolumeAsync(GuildId) / 100f;
         await player.SetVolumeAsync(volume);
 
         var embed = MakeEmbed(EmojiPlay, playNext ? "Playlist — Playing Next" : "Playlist Added", ColourSuccess);
@@ -893,7 +885,7 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
         foreach (var t in tracks.Tracks)
         {
             await player.PlayAsync(t);
-            AddMusicTable(t, guildIdStr, userName);
+            await AddMusicTableAsync(t, guildIdStr, userName);
         }
     }
 
@@ -904,16 +896,12 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
         var player = await GetPlayerAsync(connectToVoiceChannel: false);
         if (player is null) return;
 
-        int current = GetVolume(GuildId);
+        int current = await GetVolumeAsync(GuildId);
         int newVol = Math.Clamp(current + delta, 0, 100);
 
         await player.SetVolumeAsync(newVol / 100f);
 
-        new StoredProcedure().UpdateCreate(Constants.Constants.discordBotConnStr, "UpdateVolume",
-        [
-            new SqlParameter("@ServerUID", GuildId),
-            new SqlParameter("@Volume",    newVol)
-        ]);
+        await music.UpdateVolumeAsync((ulong)GuildId, newVol);
 
         await UpdateNowPlayingMessageAsync(player, player.State is PlayerState.Paused);
     }
@@ -1063,55 +1051,32 @@ public sealed class Audio(IAudioService audioService, InteractiveService interac
     #region DB Helpers
 
     /// <summary>Reads the guild's saved playback volume, defaulting to 50 if none is stored.</summary>
-    private int GetVolume(long guildId)
-    {
-        var dt = new StoredProcedure().Select(Constants.Constants.discordBotConnStr, "GetVolume",
-        [
-            new SqlParameter("@ServerUID", guildId)
-        ]);
-
-        foreach (DataRow row in dt.Rows)
-        {
-            if (int.TryParse(row["Volume"]?.ToString(), out int v))
-                return v;
-        }
-
-        return 50;
-    }
+    private async Task<int> GetVolumeAsync(long guildId) =>
+        await music.GetVolumeAsync((ulong)guildId) ?? 50;
 
     /// <summary>Records that the bot has connected to a voice/text channel pair in this guild.</summary>
-    private void AddPlayerConnected(IVoiceState voiceState) =>
-        new StoredProcedure().UpdateCreate(Constants.Constants.discordBotConnStr, "AddPlayerConnected",
-        [
-            new SqlParameter("@ServerID",       GuildId),
-            new SqlParameter("@VoiceChannelID", (long)voiceState.VoiceChannel.Id),
-            new SqlParameter("@TextChannelID",  (long)((ITextChannel)Context.Channel).Id),
-            new SqlParameter("@CreatedBy",      Context.User.Id.ToString())
-        ]);
+    private Task AddPlayerConnectedAsync(IVoiceState voiceState) =>
+        music.AddPlayerConnectedAsync(
+            (ulong)GuildId,
+            voiceState.VoiceChannel.Id,
+            ((ITextChannel)Context.Channel).Id,
+            Context.User.Id.ToString());
 
     /// <summary>Clears the guild's connected-player record and any leftover queued-track rows.</summary>
-    private void DeletePlayerConnected(long serverId)
+    private async Task DeletePlayerConnectedAsync(long serverId)
     {
-        SqlParameter[] p = [new SqlParameter("@ServerID", serverId)];
-        var sp = new StoredProcedure();
-        sp.UpdateCreate(Constants.Constants.discordBotConnStr, "DeletePlayerConnected", [.. p]);
-        sp.UpdateCreate(Constants.Constants.discordBotConnStr, "DeleteMusicQueueAll", [.. p]);
+        await music.DeletePlayerConnectedAsync((ulong)serverId);
+        await music.ClearQueueAsync((ulong)serverId);
     }
 
     /// <summary>Logs a played track to the music history table.</summary>
-    private void AddMusicTable(LavalinkTrack? track, string serverId, string createdBy)
+    private async Task AddMusicTableAsync(LavalinkTrack? track, string serverId, string createdBy)
     {
         if (track is null) return;
 
-        new StoredProcedure().UpdateCreate(Constants.Constants.discordBotConnStr, "AddMusic",
-        [
-            new SqlParameter("@ServerID",  long.Parse(serverId)),
-            new SqlParameter("@VideoID",   track.Identifier),
-            new SqlParameter("@Author",    track.Author),
-            new SqlParameter("@Title",     track.Title),
-            new SqlParameter("@URL",       track.Uri?.OriginalString ?? ""),
-            new SqlParameter("@CreatedBy", createdBy)
-        ]);
+        await music.AddMusicAsync(
+            ulong.Parse(serverId), track.Identifier, track.Author, track.Title,
+            track.Uri?.OriginalString ?? "", createdBy);
     }
 
     #endregion

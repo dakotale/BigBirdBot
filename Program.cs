@@ -1,6 +1,4 @@
 ﻿using System.Collections.Concurrent;
-using System.Data;
-using Microsoft.Data.SqlClient;
 using System.Text;
 using Discord;
 using Discord.Interactions;
@@ -77,11 +75,20 @@ static void ConfigureServices(IServiceCollection services) =>
         .AddHttpClient()
         .AddSingleton<ISpotifyService, SpotifyService>()
         .AddSingleton<IAIChatService, AIChatService>()
-        // EF Core — keyword feature area (the rest of the bot still uses StoredProcedure).
+        // EF Core — every stored-procedure-backed feature area has now moved onto this.
         // A factory + singleton service: the bot has no request scope, and each unit of
         // work opens and disposes its own context.
         .AddDbContextFactory<BigBirdContext>(o => o.UseSqlServer(Constants.discordBotConnStr))
         .AddSingleton<KeywordService>()
+        .AddSingleton<AuditService>()
+        .AddSingleton<AutoRoleService>()
+        .AddSingleton<SchedulingService>()
+        .AddSingleton<AIMessageService>()
+        .AddSingleton<WordPuzzleService>()
+        .AddSingleton<ServerService>()
+        .AddSingleton<UserService>()
+        .AddSingleton<PronounService>()
+        .AddSingleton<MusicService>()
         .AddLogging(x => x.ClearProviders().SetMinimumLevel(LogLevel.Trace));
 
 
@@ -97,7 +104,15 @@ internal sealed class BotHost(
     LoggingService logger,
     IServiceProvider services,
     IHttpClientFactory httpClientFactory,
-    KeywordService keywords)
+    KeywordService keywords,
+    AuditService audit,
+    AutoRoleService autoRoles,
+    SchedulingService scheduling,
+    WordPuzzleService wordPuzzles,
+    ServerService serverService,
+    UserService userService,
+    PronounService pronouns,
+    MusicService music)
 {
     private const ulong LogGuildId = 880569055856185354UL;
     private const ulong LogChannelId = 1156625507840954369UL;
@@ -186,7 +201,6 @@ internal sealed class BotHost(
         _puzzleHintStates = new();
 
     private readonly EmbedHelper _embed = new();
-    private readonly StoredProcedure _sp = new();
 
 
     /// <summary>
@@ -290,40 +304,30 @@ internal sealed class BotHost(
 
 
     /// <summary>Fires when a member leaves (or is removed from) a guild: purges their DB row and audits the departure.</summary>
-    private Task OnUserLeftAsync(SocketGuild guild, SocketUser user)
+    private async Task OnUserLeftAsync(SocketGuild guild, SocketUser user)
     {
-        if (user.IsBot || user.IsWebhook) return Task.CompletedTask; // bots/webhooks aren't tracked in the user table
+        if (user.IsBot || user.IsWebhook) return; // bots/webhooks aren't tracked in the user table
 
-        _sp.UpdateCreate(Constants.discordBotConnStr, "DeleteUser",
-        [
-            new SqlParameter("@UserID",   user.Id.ToString()),
-            new SqlParameter("@ServerID", guild.Id.ToString())
-        ]);
-        new Audit().InsertUserLeftAudit(user.Id.ToString(), guild.Id.ToString(), Constants.discordBotConnStr);
-        return Task.CompletedTask;
+        await userService.DeleteUserAsync(user.Id.ToString(), guild.Id);
+        await audit.InsertUserLeftAuditAsync(user.Id, guild.Id);
     }
 
     /// <summary>Fires when a member joins a guild: records them in the DB, audits the join, and assigns the guild's auto-role (if configured).</summary>
     private async Task OnUserJoinedAsync(SocketGuildUser user)
     {
         if (user.IsBot || user.IsWebhook) return; // bots/webhooks aren't tracked in the user table
-        AddUserToDatabase(user, user.Guild.Id);
-        new Audit().InsertUserJoinedAudit(user.Id.ToString(), user.Guild.Id.ToString(), Constants.discordBotConnStr);
+        await AddUserToDatabaseAsync(user, user.Guild.Id);
+        await audit.InsertUserJoinedAuditAsync(user.Id, user.Guild.Id);
         await AssignAutoRoleAsync(user);
     }
 
     /// <summary>Grants the guild's configured auto-role to a newly-joined member, if one is set up.</summary>
     private async Task AssignAutoRoleAsync(SocketGuildUser user)
     {
-        var dt = _sp.Select(Constants.discordBotConnStr, "GetGuildAutoRole",
-        [
-            new SqlParameter("@GuildId", (long)user.Guild.Id)
-        ]);
+        ulong? roleId = await autoRoles.GetRoleIdAsync(user.Guild.Id);
+        if (roleId is null) return; // no auto-role configured for this guild
 
-        if (dt.Rows.Count == 0) return; // no auto-role configured for this guild
-
-        ulong roleId = (ulong)(long)dt.Rows[0]["RoleId"];
-        var role = user.Guild.GetRole(roleId);
+        var role = user.Guild.GetRole(roleId.Value);
         if (role is null) return; // role was deleted since being configured
 
         try { await user.AddRoleAsync(role); }
@@ -356,28 +360,16 @@ internal sealed class BotHost(
     /// </summary>
     private async Task ProcessJoinedGuildAsync(SocketGuild guild)
     {
-        await Task.Run(() =>
-        {
-            new Audit().InsertGuildJoinedAudit(guild.Id.ToString(), guild.Name, Constants.discordBotConnStr);
+        await audit.InsertGuildJoinedAuditAsync(guild.Id, guild.Name);
 
-            // Build the set of server IDs we already know about, so re-adding the bot to a
-            // guild it was previously in doesn't insert a duplicate row.
-            var existingIds = _sp
-                .Select(Constants.discordBotConnStr, "GetServers", [])
-                .AsEnumerable()
-                .Select(r => r["ServerUID"].ToString())
-                .ToHashSet();
+        // Build the set of server IDs we already know about, so re-adding the bot to a
+        // guild it was previously in doesn't insert a duplicate row.
+        var existingIds = (await serverService.GetActiveServersAsync())
+            .Select(s => s.ServerUid.ToString())
+            .ToHashSet();
 
-            if (!existingIds.Contains(guild.Id.ToString()))
-            {
-                _sp.UpdateCreate(Constants.discordBotConnStr, "AddServer",
-                [
-                    new SqlParameter("@ServerUID",        (long)guild.Id),
-                    new SqlParameter("@ServerName",       guild.Name),
-                    new SqlParameter("@DefaultChannelID", (long)guild.DefaultChannel.Id)
-                ]);
-            }
-        });
+        if (!existingIds.Contains(guild.Id.ToString()))
+            await serverService.AddServerAsync(guild.Id, guild.Name, guild.DefaultChannel.Id);
 
         await guild.DownloadUsersAsync();
 
@@ -391,27 +383,17 @@ internal sealed class BotHost(
             return;
         }
 
-        await Task.Run(() =>
-        {
-            // Backfill every existing human member — new joins after this point are
-            // handled individually by OnUserJoinedAsync.
-            foreach (var user in guild.Users.Where(u => !u.IsBot && !u.IsWebhook))
-                AddUserToDatabase(user, guild.Id);
-        });
+        // Backfill every existing human member — new joins after this point are
+        // handled individually by OnUserJoinedAsync.
+        foreach (var user in guild.Users.Where(u => !u.IsBot && !u.IsWebhook))
+            await AddUserToDatabaseAsync(user, guild.Id);
 
         await logger.InfoAsync($"{guild.Users.Count} users added for {guild.Name}");
     }
 
-    /// <summary>Inserts or updates a single member's row in the user table.</summary>
-    private void AddUserToDatabase(SocketGuildUser user, ulong guildId) =>
-        _sp.UpdateCreate(Constants.discordBotConnStr, "AddUser",
-        [
-            new SqlParameter("@UserID",    user.Id.ToString()),
-            new SqlParameter("@Username",  user.Username),
-            new SqlParameter("@JoinDate",  user.JoinedAt),
-            new SqlParameter("@ServerUID", (long)guildId),
-            new SqlParameter("@Nickname",  user.Nickname)
-        ]);
+    /// <summary>Registers a single member's row in the user table, if they aren't already known for this server.</summary>
+    private Task AddUserToDatabaseAsync(SocketGuildUser user, ulong guildId) =>
+        userService.AddUserIfMissingAsync(user.Id.ToString(), user.Username, user.JoinedAt?.UtcDateTime ?? DateTime.UtcNow, guildId, user.Nickname);
 
 
     /// <summary>
@@ -426,20 +408,17 @@ internal sealed class BotHost(
         if (component.Data.CustomId.Contains('_') || component.Data.CustomId.Contains(':'))
             return;
 
-        var pronounTable = _sp.Select(Constants.discordBotConnStr, "GetPronouns", []);
+        var pronounList = await pronouns.GetAllAsync();
         string pronounSelected = "";
         var guild = client.GetGuild(component.GuildId!.Value);
 
-        foreach (DataRow row in pronounTable.Rows)
+        foreach (var (id, name) in pronounList)
         {
-            string name = row["Pronoun"].ToString()!;
-            string id = row["ID"].ToString()!;
-
             // Lazily create the pronoun role on this guild the first time it's needed.
             if (!guild.Roles.Any(r => r.Name == name))
                 await guild.CreateRoleAsync(name);
 
-            if (id == component.Data.CustomId)
+            if (id.ToString() == component.Data.CustomId)
                 pronounSelected = name;
         }
 
@@ -458,11 +437,10 @@ internal sealed class BotHost(
             await ((IGuildUser)guildUser).AddRoleAsync(role);
 
         string action = hasRole ? "removed" : "added";
-        new Audit().InsertButtonAudit(
+        await audit.InsertButtonAuditAsync(
             $"{pronounSelected} {action}",
-            component.User.Id.ToString(),
-            component.GuildId!.Value.ToString(),
-            Constants.discordBotConnStr);
+            component.User.Id,
+            component.GuildId!.Value);
         await component.RespondAsync(
             embed: _embed.BuildMessageEmbed(
                 "Pronoun Selection",
@@ -486,22 +464,17 @@ internal sealed class BotHost(
         if (msg.Channel is not SocketGuildChannel msgChannel) return; // DMs and non-guild channels — nothing to do
 
         string message = msg.Content.Trim().ToLowerInvariant();
-        string serverId = msgChannel.Guild.Id.ToString();
-        string userId = msg.Author.Id.ToString();
+        ulong serverId = msgChannel.Guild.Id;
+        ulong userId = msg.Author.Id;
         const string prefix = "-"; // marks a keyword-add/lookup command, e.g. "-cat http://..."
 
-        _sp.UpdateCreate(Constants.discordBotConnStr, "UpdateUserLastSeen",
-        [
-            new SqlParameter("@UserID",   userId),
-            new SqlParameter("@ServerID", long.Parse(serverId))
-        ]);
+        await userService.UpdateLastSeenAsync(userId.ToString(), serverId);
 
-        var serverInfo = _sp.Select(Constants.discordBotConnStr, "GetServerByID",
-            [new SqlParameter("ServerUID", long.Parse(serverId))]);
+        var serverInfo = await serverService.GetServerInfoAsync(serverId);
 
         // Server-wide kill switch — if the server record is missing/inactive, skip all
         // further processing (no keyword triggers, no word puzzle) for this message.
-        if (!bool.TryParse(serverInfo.Rows[0]["IsActive"]?.ToString(), out bool active) || !active)
+        if (serverInfo is null || !serverInfo.IsActive)
             return;
 
         var cleanup = new URLCleanup();
@@ -510,13 +483,11 @@ internal sealed class BotHost(
         // be broken, and that isn't itself a "-" keyword command — try to fix its embed.
         if (cleanup.HasSocialMediaEmbed(message) && !message.StartsWith(prefix))
         {
-            var embedSettings = _sp.Select(Constants.discordBotConnStr, "GetEmbedBroken",
-                [new SqlParameter("@ServerUID", long.Parse(serverId))]);
+            bool fix = await serverService.GetEmbedFixEnabledAsync(serverId);
 
             // Only step in if this server opted into the fix AND Discord's own crawler
             // didn't manage to attach a rich embed on its own within the wait window.
-            if (bool.TryParse(embedSettings.Rows[0]["FixEmbed"]?.ToString(), out bool fix) && fix
-                && !await DiscordEmbedSucceededAsync(msg.Id))
+            if (fix && !await DiscordEmbedSucceededAsync(msg.Id))
             {
                 await msg.Channel.SendMessageAsync(cleanup.CleanURLEmbed(message));
             }
@@ -532,14 +503,13 @@ internal sealed class BotHost(
         }
 
 
-        var petPuzzle = _sp.Select(Constants.discordBotConnStr, "GetActivePetPuzzle",
-            [new SqlParameter("@ChannelID", msg.Channel.Id.ToString())]);
+        var petPuzzle = await wordPuzzles.GetActivePuzzleAsync(msg.Channel.Id.ToString());
 
         // A bonus word puzzle (posted hourly by the scheduler) is active in this channel.
-        if (petPuzzle.Rows.Count > 0)
+        if (petPuzzle is not null)
         {
-            string puzzleWord = petPuzzle.Rows[0]["Word"].ToString()!;
-            int puzzleId = int.Parse(petPuzzle.Rows[0]["PuzzleID"].ToString()!);
+            string puzzleWord = petPuzzle.Word;
+            int puzzleId = petPuzzle.PuzzleId;
 
             string puzzleChannelId = msg.Channel.Id.ToString();
 
@@ -548,10 +518,9 @@ internal sealed class BotHost(
                 // Clean up shared hint state for this channel
                 _puzzleHintStates.TryRemove(puzzleChannelId, out _);
 
-                _sp.UpdateCreate(Constants.discordBotConnStr, "ClaimPetPuzzle",
-                    [new SqlParameter("@PuzzleID", puzzleId)]);
+                await wordPuzzles.ClaimPuzzleAsync(puzzleId);
 
-                new Audit().InsertGameTriggerAudit("petpuzzle", userId, serverId, Constants.discordBotConnStr);
+                await audit.InsertGameTriggerAuditAsync("petpuzzle", userId, serverId);
 
                 await msg.Channel.SendMessageAsync(embed: _embed.BuildSimpleEmbed(
                     "🧩  Puzzle Solved!",
@@ -783,8 +752,6 @@ internal sealed class BotHost(
         var guild = before.VoiceChannel?.Guild ?? after.VoiceChannel?.Guild;
         if (guild is null) return;
 
-        SqlParameter[] serverParam = [new SqlParameter("@ServerID", guild.Id.ToString())];
-
         // Local helper: forces every bot user out of a voice channel (used both when the
         // music bot itself disconnects and when the last human leaves).
         async Task DisconnectBotsAsync(SocketVoiceChannel channel)
@@ -800,7 +767,7 @@ internal sealed class BotHost(
             if (after.VoiceChannel is null && before.VoiceChannel is not null)
             {
                 await DisconnectBotsAsync(before.VoiceChannel);
-                _sp.UpdateCreate(Constants.discordBotConnStr, "DeletePlayerConnected", [.. serverParam]);
+                await music.DeletePlayerConnectedAsync(guild.Id);
             }
         }
         else if (before.VoiceChannel is not null && after.VoiceChannel is null)
@@ -811,8 +778,8 @@ internal sealed class BotHost(
             if (!anyNonBotRemaining)
             {
                 await DisconnectBotsAsync(before.VoiceChannel);
-                _sp.UpdateCreate(Constants.discordBotConnStr, "DeletePlayerConnected", [.. serverParam]);
-                _sp.UpdateCreate(Constants.discordBotConnStr, "DeleteMusicQueueAll", [.. serverParam]);
+                await music.DeletePlayerConnectedAsync(guild.Id);
+                await music.ClearQueueAsync(guild.Id);
             }
         }
     }
@@ -846,12 +813,11 @@ internal sealed class BotHost(
 
                 if (!string.IsNullOrEmpty(fileName))
                 {
-                    new Audit().InsertReactionAudit(
+                    await audit.InsertReactionAuditAsync(
                         reaction.Emote.Name,
-                        download.Id.ToString(),
-                        reaction.UserId.ToString(),
-                        cachedChannel.Id.ToString(),
-                        Constants.discordBotConnStr);
+                        download.Id,
+                        reaction.UserId,
+                        cachedChannel.Id);
                     await TryMarkNsfwAsync(fileName, cachedChannel, reaction);
                     return;
                 }
@@ -917,13 +883,13 @@ internal sealed class BotHost(
                 await RunScheduledKeywordsAsync();
 
                 // ── Reminders (every tick = every minute) ───────────────────
-                var dueReminders = _sp.Select(Constants.discordBotConnStr, "GetDueReminders", []);
-                foreach (DataRow reminderRow in dueReminders.Rows)
+                var dueReminders = await scheduling.GetDueRemindersAsync();
+                foreach (var reminderRow in dueReminders)
                 {
                     try
                     {
-                        ulong userId = ulong.Parse(reminderRow["UserID"].ToString()!);
-                        string message = reminderRow["Message"].ToString()!;
+                        ulong userId = ulong.Parse(reminderRow.UserId);
+                        string message = reminderRow.Message;
                         var reminderUser = await client.GetUserAsync(userId)
                                         ?? await client.Rest.GetUserAsync(userId);
                         if (reminderUser is null) continue;
@@ -937,16 +903,14 @@ internal sealed class BotHost(
                 }
 
                 // ── Birthdays (every tick = every minute) ────────────────────
-                var todaysBirthdays = _sp.Select(Constants.discordBotConnStr, "GetTodaysBirthdays", []);
-                foreach (DataRow birthdayRow in todaysBirthdays.Rows)
+                var todaysBirthdays = await scheduling.GetTodaysBirthdaysAsync();
+                foreach (var birthdayRow in todaysBirthdays)
                 {
                     try
                     {
-                        string mention = birthdayRow["BirthdayUser"].ToString()!;
-                        ulong guildId = ulong.Parse(birthdayRow["BirthdayGuild"].ToString()!);
-                        string? overrideChannelId = birthdayRow.Table.Columns.Contains("BirthdayChannel")
-                            ? birthdayRow["BirthdayChannel"] as string
-                            : null;
+                        string mention = birthdayRow.Mention;
+                        ulong guildId = ulong.Parse(birthdayRow.GuildId);
+                        string? overrideChannelId = birthdayRow.ChannelId;
 
                         var birthdayGuild = client.GetGuild(guildId);
                         if (birthdayGuild is null) continue;
@@ -958,10 +922,10 @@ internal sealed class BotHost(
 
                         if (channel is null)
                         {
-                            var serverDetails = ServerHelper.GetServerInfo(guildId);
+                            var serverDetails = await serverService.GetServerInfoAsync(guildId);
                             if (serverDetails is null || !serverDetails.AnnouncementsEnabled) continue;
 
-                            channel = ResolveAnnouncementChannel(birthdayGuild, serverDetails.DefaultChannelID);
+                            channel = ResolveAnnouncementChannel(birthdayGuild, serverDetails.DefaultChannelId);
                         }
 
                         if (channel is null) continue;
@@ -978,24 +942,17 @@ internal sealed class BotHost(
             if (_schedulerTick % 60 == 0)
             {
                 // Pull a random word from the Words table
-                var wordDt = _sp.Select(Constants.discordBotConnStr, "GetRandomWord", []);
-                if (wordDt.Rows.Count == 0) goto skipPuzzle;
-                string puzzleWord = wordDt.Rows[0]["Word"].ToString()!.Trim();
+                string? puzzleWord = (await wordPuzzles.GetRandomWordAsync())?.Trim();
                 if (string.IsNullOrWhiteSpace(puzzleWord)) goto skipPuzzle;
 
                 foreach (var guild in client.Guilds)
                 {
-                    var serverDetails = ServerHelper.GetServerInfo(guild.Id);
+                    var serverDetails = await serverService.GetServerInfoAsync(guild.Id);
                     if (serverDetails is null || !serverDetails.AnnouncementsEnabled) continue;
-                    var channel = ResolveAnnouncementChannel(guild, serverDetails.DefaultChannelID);
+                    var channel = ResolveAnnouncementChannel(guild, serverDetails.DefaultChannelId);
                     if (channel is null) continue;
 
-                    _sp.UpdateCreate(Constants.discordBotConnStr, "AddPetWordPuzzle",
-                    [
-                        new SqlParameter("@ChannelID", serverDetails.DefaultChannelID),
-                        new SqlParameter("@Word",      puzzleWord),
-                        new SqlParameter("@ExpiresAt", DateTime.UtcNow.AddMinutes(55))
-                    ]);
+                    await wordPuzzles.AddPuzzleAsync(serverDetails.DefaultChannelId, puzzleWord, DateTime.UtcNow.AddMinutes(55));
 
                     string blankHint = $"{puzzleWord[0]}{new string('_', puzzleWord.Length - 1)}";
 
@@ -1008,7 +965,7 @@ internal sealed class BotHost(
 
                     // Register shared hint state — all reveal sources (T+30, T+50, every-20-guesses)
                     // accumulate into this so the hint only ever grows, never resets.
-                    string capturedChannelId = serverDetails.DefaultChannelID;
+                    string capturedChannelId = serverDetails.DefaultChannelId;
                     var hintState = new PuzzleHintState(puzzleWord, puzzleMsg);
                     _puzzleHintStates[capturedChannelId] = hintState;
 
@@ -1021,9 +978,8 @@ internal sealed class BotHost(
                     {
                         await Task.Delay(TimeSpan.FromMinutes(30));
 
-                        var stillActive = _sp.Select(Constants.discordBotConnStr, "GetPetWordPuzzle",
-                            [new SqlParameter("@ChannelID", capturedCh.Id.ToString())]);
-                        if (stillActive.Rows.Count == 0) return;
+                        var stillActive = await wordPuzzles.GetActivePuzzleAsync(capturedCh.Id.ToString());
+                        if (stillActive is null) return;
 
                         if (!hintState.TryRevealNext(out string hint30)) return; // all letters already shown
 
@@ -1045,9 +1001,8 @@ internal sealed class BotHost(
                     {
                         await Task.Delay(TimeSpan.FromMinutes(50));
 
-                        var stillActive = _sp.Select(Constants.discordBotConnStr, "GetPetWordPuzzle",
-                            [new SqlParameter("@ChannelID", capturedCh.Id.ToString())]);
-                        if (stillActive.Rows.Count == 0) return;
+                        var stillActive = await wordPuzzles.GetActivePuzzleAsync(capturedCh.Id.ToString());
+                        if (stillActive is null) return;
 
                         if (!hintState.TryRevealNext(out string hint50)) return; // all letters already shown
 
@@ -1071,14 +1026,10 @@ internal sealed class BotHost(
 
                         _puzzleHintStates.TryRemove(capturedChannelId, out _);
 
-                        // GetPetWordPuzzle filters ExpiresAt > NOW — use GetPuzzleClaimedStatus
-                        // instead so we can distinguish solved vs expired-unsolved.
-                        var statusDt = _sp.Select(Constants.discordBotConnStr, "GetPuzzleClaimedStatus",
-                            [new SqlParameter("@ChannelID", capturedCh.Id.ToString())]);
-
-                        if (statusDt.Rows.Count > 0
-                            && bool.TryParse(statusDt.Rows[0]["Claimed"].ToString(), out bool wasClaimed)
-                            && wasClaimed)
+                        // GetActivePuzzleAsync filters ExpiresAt > NOW — use the claimed-status
+                        // lookup instead so we can distinguish solved vs expired-unsolved.
+                        bool? wasClaimed = await wordPuzzles.GetClaimedStatusAsync(capturedCh.Id.ToString());
+                        if (wasClaimed == true)
                             return;
 
                         try

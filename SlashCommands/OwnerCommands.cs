@@ -1,10 +1,7 @@
-﻿using System.Data;
-using Microsoft.Data.SqlClient;
-using Discord;
+﻿using Discord;
 using Discord.Interactions;
 using Discord.Net.Extensions.Interactions;
 using Discord.WebSocket;
-using DiscordBot.Constants;
 using DiscordBot.Helper;
 
 namespace DiscordBot.SlashCommands
@@ -12,7 +9,7 @@ namespace DiscordBot.SlashCommands
     /// <summary>Bot-owner-only maintenance commands: cross-server announcements, schedule/connection listings, user table backfill, and manual keyword-image cleanup.</summary>
     // GuildModule decoration limits these commands to only show by the guild below.
     [GuildModule(880569055856185354)]
-    public class OwnerCommands(KeywordService keywords) : InteractionModuleBase<SocketInteractionContext>
+    public class OwnerCommands(KeywordService keywords, ServerService servers, UserService userService, MusicService music) : InteractionModuleBase<SocketInteractionContext>
     {
         /// <summary>Broadcasts a message (with optional attachment) to every server's default channel where the bot has permission to post, reporting which servers were skipped.</summary>
         [SlashCommand("announcement", "Broadcast a message to all servers.")]
@@ -25,21 +22,20 @@ namespace DiscordBot.SlashCommands
             List<string> serverListNoPerms = new List<string>();
             try
             {
-                StoredProcedure stored = new StoredProcedure();
                 string imageUrl = "";
 
                 if (attachment != null)
                     imageUrl = attachment.Url;
 
-                DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "GetServers", new List<SqlParameter>());
+                var activeServers = await servers.GetActiveServersAsync();
                 EmbedHelper embedHelper = new EmbedHelper();
-                foreach (DataRow dr in dt.Rows)
+                foreach (var srv in activeServers)
                 {
                     // Need to check if Guild exists
-                    if (Context.Client.GetGuild(ulong.Parse(dr["ServerUID"].ToString())) != null)
+                    if (Context.Client.GetGuild(srv.ServerUid) != null)
                     {
-                        SocketGuild guild = Context.Client.GetGuild(ulong.Parse(dr["ServerUID"].ToString()));
-                        SocketTextChannel textChannel = guild.GetTextChannel(ulong.Parse(dr["DefaultChannelID"].ToString()));
+                        SocketGuild guild = Context.Client.GetGuild(srv.ServerUid);
+                        SocketTextChannel textChannel = guild.GetTextChannel(ulong.Parse(srv.DefaultChannelId));
                         if (textChannel != null)
                         {
                             IUser bot = guild.Users.Where(s => s.IsBot && s.Username.Contains("BigBirdBot")).FirstOrDefault();
@@ -97,8 +93,7 @@ namespace DiscordBot.SlashCommands
         public async Task HandlePlayersConnected()
         {
             await DeferAsync(ephemeral: true);
-            StoredProcedure stored = new StoredProcedure();
-            DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "GetPlayerConnected", new List<SqlParameter>());
+            var connected = await music.GetConnectedPlayersAsync();
             EmbedHelper embed = new EmbedHelper();
 
             string title = "Players Connected";
@@ -107,12 +102,12 @@ namespace DiscordBot.SlashCommands
             string imageUrl = "";
             string embedCreatedBy = "Command from: " + Context.User.Username;
 
-            if (dt.Rows.Count > 0)
+            if (connected.Count > 0)
             {
-                desc = $"Total Players Connected: {dt.Rows.Count}\n";
-                foreach (DataRow dr in dt.Rows)
+                desc = $"Total Players Connected: {connected.Count}\n";
+                foreach (var cp in connected)
                 {
-                    desc += "\n- " + dr["ServerName"];
+                    desc += "\n- " + cp.ServerName;
                 }
                 await FollowupAsync(embed: embed.BuildMessageEmbed(title, desc, thumbnailUrl, embedCreatedBy, Discord.Color.Blue, imageUrl).Build(), ephemeral: true);
             }
@@ -132,30 +127,23 @@ namespace DiscordBot.SlashCommands
             await DeferAsync(ephemeral: true);
             try
             {
-                StoredProcedure stored = new StoredProcedure();
-
                 // GetServer ulong IDs
                 // var test = Context.Client.GetGuild(id).Users.Where(s => s.IsBot == false).ToList();
-                DataTable dt = stored.Select(Constants.Constants.discordBotConnStr, "GetServers", new List<SqlParameter>());
+                var activeServers = await servers.GetActiveServersAsync();
 
-                foreach (DataRow dr in dt.Rows)
+                foreach (var srv in activeServers)
                 {
                     // Need to check if Guild exists
-                    if (Context.Client.GetGuild(ulong.Parse(dr["ServerUID"].ToString())) != null)
+                    if (Context.Client.GetGuild(srv.ServerUid) != null)
                     {
-                        List<SocketGuildUser> users = Context.Client.GetGuild(ulong.Parse(dr["ServerUID"].ToString())).Users.Where(s => s.IsBot == false && s.IsWebhook == false).ToList() ?? new List<SocketGuildUser>();
-                        if (users.Count > 0)
+                        List<SocketGuildUser> members = Context.Client.GetGuild(srv.ServerUid).Users.Where(s => s.IsBot == false && s.IsWebhook == false).ToList() ?? new List<SocketGuildUser>();
+                        if (members.Count > 0)
                         {
-                            foreach (SocketGuildUser? u in users)
+                            foreach (SocketGuildUser? u in members)
                             {
-                                stored.UpdateCreate(Constants.Constants.discordBotConnStr, "AddUser", new List<SqlParameter>
-                                {
-                                    new SqlParameter("@UserID", u.Id.ToString()),
-                                    new SqlParameter("@Username", u.Username),
-                                    new SqlParameter("@JoinDate", u.JoinedAt),
-                                    new SqlParameter("@ServerUID", Int64.Parse(u.Guild.Id.ToString())),
-                                    new SqlParameter("@Nickname", u.Nickname)
-                                });
+                                await userService.AddUserIfMissingAsync(
+                                    u.Id.ToString(), u.Username, u.JoinedAt?.UtcDateTime ?? DateTime.UtcNow,
+                                    u.Guild.Id, u.Nickname);
                             }
                         }
                     }

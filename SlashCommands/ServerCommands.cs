@@ -3,18 +3,15 @@ using Discord.Interactions;
 using Discord.WebSocket;
 using DiscordBot.Constants;
 using DiscordBot.Helper;
-using System.Data;
-using Microsoft.Data.SqlClient;
 
 namespace DiscordBot.SlashCommands;
 
 /// <summary>
 /// Server and user information commands, plus server management utilities.
 /// </summary>
-public class ServerCommands : InteractionModuleBase<SocketInteractionContext>
+public class ServerCommands(SchedulingService scheduling) : InteractionModuleBase<SocketInteractionContext>
 {
     private readonly EmbedHelper _embed = new();
-    private readonly StoredProcedure _sp = new();
 
     private string Username => Context.User.Username;
     private string AvatarUrl => Context.User.GetAvatarUrl();
@@ -126,13 +123,7 @@ public class ServerCommands : InteractionModuleBase<SocketInteractionContext>
 
             var birthday = new DateTime(DateTime.Now.Year, monthNumber, dayNumber);
 
-            _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "AddBirthday",
-            [
-                new SqlParameter("@BirthdayDate",    birthday),
-                new SqlParameter("@BirthdayUser",    user.Mention),
-                new SqlParameter("@BirthdayGuild",   guild.Id.ToString()),
-                new SqlParameter("@BirthdayChannel", (object?)channel?.Id.ToString() ?? DBNull.Value)
-            ]);
+            await scheduling.AddBirthdayAsync(birthday, user.Mention, guild.Id.ToString(), channel?.Id.ToString());
 
             string channelNote = channel is not null
                 ? $" Announcements will post in {channel.Mention}."

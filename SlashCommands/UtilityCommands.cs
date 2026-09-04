@@ -4,8 +4,6 @@ using Discord.WebSocket;
 using DiscordBot.Constants;
 using DiscordBot.Helper;
 using DiscordBot.Misc;
-using System.Data;
-using Microsoft.Data.SqlClient;
 using System.Text;
 
 namespace DiscordBot.SlashCommands;
@@ -14,10 +12,9 @@ namespace DiscordBot.SlashCommands;
 /// General-purpose utility commands.
 /// These are self-contained tools with no external API dependencies.
 /// </summary>
-public class UtilityCommands : InteractionModuleBase<SocketInteractionContext>
+public class UtilityCommands(SchedulingService scheduling, ServerService servers) : InteractionModuleBase<SocketInteractionContext>
 {
     private readonly EmbedHelper _embed = new();
-    private readonly StoredProcedure _sp = new();
 
     private string Username => Context.User.Username;
     private string AvatarUrl => Context.User.GetAvatarUrl();
@@ -196,12 +193,7 @@ public class UtilityCommands : InteractionModuleBase<SocketInteractionContext>
             return;
         }
 
-        _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "AddReminder",
-        [
-            new SqlParameter("@UserID",      Context.User.Id.ToString()),
-            new SqlParameter("@Message",     reminder),
-            new SqlParameter("@RemindAtUtc", reminderUtc)
-        ]);
+        await scheduling.AddReminderAsync(Context.User.Id.ToString(), reminder, reminderUtc);
 
         string offsetLabel = utcOffset >= 0 ? $"UTC+{utcOffset}" : $"UTC{utcOffset}";
         string displayTime = parsedLocal.ToString("MMMM d, yyyy 'at' h:mm tt");
@@ -314,10 +306,7 @@ public class UtilityCommands : InteractionModuleBase<SocketInteractionContext>
     {
         await DeferAsync(ephemeral: true);
 
-        var dt = _sp.Select(Constants.Constants.discordBotConnStr, "UpdateBrokenEmbed",
-            [new SqlParameter("@ServerID", long.Parse(Context.Guild.Id.ToString()))]);
-
-        string result = dt.Rows.Count > 0 ? dt.Rows[^1]["Result"].ToString() ?? "" : "";
+        string result = await servers.ToggleEmbedFixAsync(Context.Guild.Id) ?? "";
 
         await FollowupAsync(embed: _embed.BuildMessageEmbed(
             "Embeds", result, "", $"Command from: {Username}", Color.Green).Build(),

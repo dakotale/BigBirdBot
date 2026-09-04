@@ -8,8 +8,6 @@ using Lavalink4NET.Players;
 using Lavalink4NET.Players.Queued;
 using Lavalink4NET.Rest.Entities.Tracks;
 using Microsoft.Extensions.DependencyInjection;
-using System.Data;
-using Microsoft.Data.SqlClient;
 using System.Reflection;
 
 namespace DiscordBot.Services;
@@ -23,6 +21,8 @@ public sealed class InteractionHandlerService
     private readonly InteractionService _handler;
     private readonly IServiceProvider _services;
     private readonly IAudioService _audioService;
+    private readonly AuditService _audit;
+    private readonly MusicService _music;
 
     // Ensures ReadyAsync only runs once even if the client reconnects.
     private int _readyFired;
@@ -31,12 +31,16 @@ public sealed class InteractionHandlerService
         DiscordSocketClient client,
         InteractionService handler,
         IServiceProvider services,
-        IAudioService audioService)
+        IAudioService audioService,
+        AuditService audit,
+        MusicService music)
     {
         _client = client;
         _handler = handler;
         _services = services;
         _audioService = audioService;
+        _audit = audit;
+        _music = music;
     }
 
     /// <summary>Discovers every interaction module and wires up the Ready/InteractionCreated/InteractionExecuted event handlers.</summary>
@@ -142,15 +146,13 @@ public sealed class InteractionHandlerService
     /// </summary>
     private async Task RestorePlayersAsync(LoggingService logging)
     {
-        var dt = new StoredProcedure().Select(
-            Constants.Constants.discordBotConnStr, "GetPlayerConnected", []);
-        if (dt.Rows.Count == 0) return;
+        var connectedPlayers = await _music.GetConnectedPlayersAsync();
+        if (connectedPlayers.Count == 0) return;
 
-        foreach (DataRow row in dt.Rows)
+        foreach (var row in connectedPlayers)
         {
-            if (!ulong.TryParse(row["VoiceChannelID"]?.ToString(), out var voiceId) ||
-                !ulong.TryParse(row["TextChannelID"]?.ToString(), out var textId))
-                continue;
+            ulong voiceId = row.VoiceChannelId;
+            ulong textId = row.TextChannelId;
 
             foreach (var guild in _client.Guilds)
             {
@@ -164,14 +166,8 @@ public sealed class InteractionHandlerService
                     continue;
                 }
 
-                // Snapshot URLs on the main thread — DataTable is not thread-safe.
-                var queueUrls = new StoredProcedure()
-                    .Select(Constants.Constants.discordBotConnStr, "GetMusicQueue",
-                    [
-                        new SqlParameter("@ServerID", guild.Id.ToString())
-                    ])
-                    .Rows.Cast<DataRow>()
-                    .Select(r => r["URL"].ToString()!)
+                var queueUrls = (await _music.GetQueueAsync(guild.Id))
+                    .Select(q => q.Url)
                     .Where(url => !string.IsNullOrWhiteSpace(url))
                     .ToList();
 
@@ -196,18 +192,14 @@ public sealed class InteractionHandlerService
                                     new CustomPlayerOptions
                                     {
                                         SelfMute = true,
-                                        TextChannel = capturedText
+                                        TextChannel = capturedText,
+                                        MusicService = _music
                                     }));
 
                         await logging.DebugAsync(
                             $"Player restored in {capturedGuild.Name} / {capturedVoice.Name}");
 
-                        var volDt = new StoredProcedure().Select(
-                            Constants.Constants.discordBotConnStr, "GetVolume",
-                            [new SqlParameter("@ServerUID", (long)capturedGuild.Id)]);
-
-                        if (volDt.Rows.Count > 0 &&
-                            int.TryParse(volDt.Rows[0]["Volume"]?.ToString(), out int savedVol))
+                        if (await _music.GetVolumeAsync(capturedGuild.Id) is { } savedVol)
                         {
                             await player.SetVolumeAsync(savedVol / 100f);
                             await logging.DebugAsync($"Volume restored to {savedVol}% for {capturedGuild.Name}");
@@ -280,15 +272,9 @@ public sealed class InteractionHandlerService
                 string fullName = GetFullCommandName(cmd);
                 try
                 {
-                    var guildOrChannel = context.Guild is not null
-                        ? context.Guild.Id.ToString()
-                        : context.Channel.Id.ToString();
+                    long guildOrChannel = (long)(context.Guild?.Id ?? context.Channel.Id);
 
-                    new Audit().InsertAudit(
-                        fullName,
-                        context.User.Id.ToString(),
-                        Constants.Constants.discordBotConnStr,
-                        guildOrChannel);
+                    await _audit.InsertAuditAsync(fullName, context.User.Id.ToString(), guildOrChannel);
 
                     if (logging is not null)
                         _ = logging.InfoAsync($"[Audit] OK — '{fullName}' by {context.User.Id}");

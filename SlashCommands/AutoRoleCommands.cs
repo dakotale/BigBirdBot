@@ -3,7 +3,6 @@ using Discord.Interactions;
 using Discord.WebSocket;
 using DiscordBot.Constants;
 using DiscordBot.Helper;
-using Microsoft.Data.SqlClient;
 
 namespace DiscordBot.SlashCommands
 {
@@ -11,10 +10,9 @@ namespace DiscordBot.SlashCommands
     [Group("autorole", "Configure the role automatically assigned to new members.")]
     [CommandContextType(InteractionContextType.Guild)]
     [RequireUserPermission(GuildPermission.ManageRoles)]
-    public class AutoRoleCommands : InteractionModuleBase<SocketInteractionContext>
+    public class AutoRoleCommands(AutoRoleService autoRoles) : InteractionModuleBase<SocketInteractionContext>
     {
         private readonly EmbedHelper _embed = new();
-        private readonly StoredProcedure _sp = new();
 
         private string Username => Context.User.Username;
 
@@ -25,11 +23,7 @@ namespace DiscordBot.SlashCommands
         {
             await DeferAsync(ephemeral: true);
 
-            _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "UpsertGuildAutoRole",
-            [
-                new SqlParameter("@GuildId", (long)Context.Guild.Id),
-                new SqlParameter("@RoleId",  (long)role.Id)
-            ]);
+            await autoRoles.SetAsync(Context.Guild.Id, role.Id);
 
             await FollowupAsync(embed: _embed.BuildMessageEmbed(
                 "Auto-Role Set",
@@ -43,10 +37,7 @@ namespace DiscordBot.SlashCommands
         {
             await DeferAsync(ephemeral: true);
 
-            _sp.UpdateCreate(Constants.Constants.discordBotConnStr, "DeleteGuildAutoRole",
-            [
-                new SqlParameter("@GuildId", (long)Context.Guild.Id)
-            ]);
+            await autoRoles.ClearAsync(Context.Guild.Id);
 
             await FollowupAsync(embed: _embed.BuildMessageEmbed(
                 "Auto-Role Cleared",
@@ -60,12 +51,9 @@ namespace DiscordBot.SlashCommands
         {
             await DeferAsync(ephemeral: true);
 
-            var dt = _sp.Select(Constants.Constants.discordBotConnStr, "GetGuildAutoRole",
-            [
-                new SqlParameter("@GuildId", (long)Context.Guild.Id)
-            ]);
+            ulong? roleId = await autoRoles.GetRoleIdAsync(Context.Guild.Id);
 
-            if (dt.Rows.Count == 0)
+            if (roleId is null)
             {
                 await FollowupAsync(embed: _embed.BuildMessageEmbed(
                     "Auto-Role Status",
@@ -74,8 +62,7 @@ namespace DiscordBot.SlashCommands
                 return;
             }
 
-            ulong roleId = (ulong)(long)dt.Rows[0]["RoleId"];
-            var role = Context.Guild.GetRole(roleId);
+            var role = Context.Guild.GetRole(roleId.Value);
             string roleName = role is not null ? $"**{role.Name}**" : $"<deleted role `{roleId}`>";
 
             await FollowupAsync(embed: _embed.BuildMessageEmbed(
