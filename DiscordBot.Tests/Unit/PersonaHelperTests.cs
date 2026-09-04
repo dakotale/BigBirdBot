@@ -112,6 +112,6 @@ public class PersonaHelperTests
     [Fact]
     public void NamedPersonalities_CountIsCorrect()
     {
-        Assert.Equal(6, PersonaHelper.NamedPersonalities.Count);
+        Assert.Equal(9, PersonaHelper.NamedPersonalities.Count);
     }
 }

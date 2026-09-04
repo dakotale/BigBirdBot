@@ -3,7 +3,6 @@ using System.Data;
 using Microsoft.Data.SqlClient;
 using System.Text;
 using Discord;
-using Discord.Commands;
 using Discord.Interactions;
 using Discord.Net;
 using Discord.WebSocket;
@@ -47,7 +46,6 @@ static void ConfigureServices(IServiceCollection services) =>
             LogLevel = LogSeverity.Verbose
         })
         .AddSingleton<DiscordSocketClient>()
-        .AddSingleton<CommandService>()
         .AddSingleton<LoggingService>()
         .AddSingleton<InteractionHandlerService>()
         .AddSingleton<InteractionService>(p =>

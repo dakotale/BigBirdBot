@@ -2,7 +2,6 @@
 using System.Runtime.CompilerServices;
 using System.Text;
 using Discord;
-using Discord.Commands;
 using Discord.Interactions;
 using Discord.WebSocket;
 using Microsoft.Extensions.DependencyInjection;
@@ -53,7 +52,7 @@ public sealed class LoggingService
     public LoggingService(IServiceProvider services, OutputType outputType, FilterSeverity filterSeverity)
         : this(services, outputType, filterSeverity, null) { }
 
-    /// <summary>Creates a fully-configured logger and subscribes it to Discord.NET's CommandService/DiscordSocketClient/InteractionService log events.</summary>
+    /// <summary>Creates a fully-configured logger and subscribes it to Discord.NET's DiscordSocketClient/InteractionService log events.</summary>
     public LoggingService(
         IServiceProvider services,
         OutputType outputType,
@@ -65,7 +64,6 @@ public sealed class LoggingService
         _logPath = logPath;
         _discordLogDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs");
 
-        services.GetRequiredService<CommandService>().Log += OnDiscordLogAsync;
         services.GetRequiredService<DiscordSocketClient>().Log += OnDiscordLogAsync;
         services.GetService<InteractionService>()?.Log += OnDiscordLogAsync;
     }

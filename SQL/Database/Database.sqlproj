@@ -79,12 +79,10 @@
     <Build Include="dbo\Tables\PlayerConnected.sql" />
     <Build Include="dbo\Tables\TriviaMessage.sql" />
     <Build Include="dbo\Stored Procedures\DeleteUser.sql" />
-    <Build Include="dbo\Stored Procedures\DeactiveServer.sql" />
     <Build Include="dbo\Stored Procedures\AddAudit.sql" />
     <Build Include="dbo\Stored Procedures\AddBirthday.sql" />
     <Build Include="dbo\Stored Procedures\AddBotAIMessage.sql" />
     <Build Include="dbo\Stored Procedures\AddMusic.sql" />
-    <Build Include="dbo\Stored Procedures\AddMusicQueue.sql" />
     <Build Include="dbo\Stored Procedures\AddPlayerConnected.sql" />
     <Build Include="dbo\Stored Procedures\AddServer.sql" />
     <Build Include="dbo\Stored Procedures\AddUser.sql" />
@@ -94,7 +92,6 @@
     <Build Include="dbo\Stored Procedures\DeletePlayerConnected.sql" />
     <Build Include="dbo\Stored Procedures\GetBotAIMessage.sql" />
     <Build Include="dbo\Stored Procedures\GetMusicQueue.sql" />
-    <Build Include="dbo\Stored Procedures\GetMusicQueueByTrack.sql" />
     <Build Include="dbo\Stored Procedures\GetPlayerConnected.sql" />
     <Build Include="dbo\Stored Procedures\GetPronouns.sql" />
     <Build Include="dbo\Stored Procedures\GetServerByID.sql" />

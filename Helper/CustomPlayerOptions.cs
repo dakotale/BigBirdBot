@@ -9,7 +9,7 @@ namespace DiscordBot.Helper
     /// </summary>
     public sealed record class CustomPlayerOptions : QueuedLavalinkPlayerOptions
     {
-        public ITextChannel TextChannel { get; set; }
+        public ITextChannel? TextChannel { get; set; }
     }
 }
 
