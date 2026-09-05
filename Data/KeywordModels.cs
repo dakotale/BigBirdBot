@@ -24,7 +24,7 @@ public sealed record ScheduleSummary(DateTime ScheduleTime, string KeywordsCsv);
 public sealed record UserScheduleEntry(string Keyword, DateTime ScheduleTime);
 
 /// <summary>A due scheduled delivery to send now (replaces a <c>GetUsersScheduledKeyword</c> row).</summary>
-public sealed record DueKeywordDelivery(string UserId, string FilePath, string Keyword);
+public sealed record DueKeywordDelivery(string UserId, string FilePath, string Keyword, int? EntryId = null);
 
 /// <summary>One row of the owner-only schedule listing (replaces a <c>GetScheduledEventUsers</c> row).</summary>
 public sealed record ScheduledEventUser(string Username, string Keyword, DateTime ScheduledFor);

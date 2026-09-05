@@ -4,8 +4,8 @@ using Microsoft.EntityFrameworkCore;
 namespace DiscordBot.Helper;
 
 /// <summary>
-/// All keyword-area database access, using EF Core against SQL Server. Replaces the
-/// former <c>ChatKeyword*</c> / <c>UsersScheduledKeyword</c> / <c>GetChatAction</c> /
+/// All keyword-area database access, using EF Core (PostgreSQL). Replaces the former
+/// <c>ChatKeyword*</c> / <c>UsersScheduledKeyword</c> / <c>GetChatAction</c> /
 /// <c>GetScheduledEventUsers</c> stored procedures.
 ///
 /// Registered as a singleton; every method opens and disposes its own
@@ -41,11 +41,7 @@ public sealed class KeywordService(IDbContextFactory<BigBirdContext> contextFact
         await db.SaveChangesAsync();
     }
 
-    /// <summary>
-    /// Removes entries matching an exact file path (and keyword). Replaces <c>DeleteChatKeywordURL</c>.
-    /// Note: the message-handler cleanup path passes <paramref name="keyword"/> as <c>""</c>,
-    /// which matches nothing — dead links are not actually removed (pre-existing behaviour).
-    /// </summary>
+    /// <summary>Removes entries matching an exact stored value (and keyword). Replaces <c>DeleteChatKeywordURL</c>.</summary>
     public async Task DeleteEntryAsync(string filePath, string keyword)
     {
         await using var db = await contextFactory.CreateDbContextAsync();
@@ -53,6 +49,40 @@ public sealed class KeywordService(IDbContextFactory<BigBirdContext> contextFact
         await db.ChatKeywords
             .Where(k => k.FilePath == filePath && k.Keyword == keyword)
             .ExecuteDeleteAsync();
+    }
+
+    /// <summary>Removes one entry by its row id — used when a dead link or missing local file is hit at serve time.</summary>
+    public async Task DeleteEntryByIdAsync(int id)
+    {
+        await using var db = await contextFactory.CreateDbContextAsync();
+
+        await db.ChatKeywords.Where(k => k.Id == id).ExecuteDeleteAsync();
+    }
+
+    /// <summary>Every local-file entry (id + stored <c>file:</c> value), for the reconcile job.</summary>
+    public async Task<IReadOnlyList<(int Id, string Value)>> GetLocalFileEntriesAsync()
+    {
+        await using var db = await contextFactory.CreateDbContextAsync();
+
+        var rows = await db.ChatKeywords
+            .Where(k => !k.FilePath.StartsWith("http"))
+            .Select(k => new { k.Id, k.FilePath })
+            .ToListAsync();
+
+        return rows
+            .Where(r => KeywordFiles.IsLocalFile(r.FilePath))
+            .Select(r => (r.Id, r.FilePath))
+            .ToList();
+    }
+
+    /// <summary>Bulk-removes entries by row id. Returns the number deleted.</summary>
+    public async Task<int> DeleteEntriesByIdAsync(IReadOnlyCollection<int> ids)
+    {
+        if (ids.Count == 0) return 0;
+
+        await using var db = await contextFactory.CreateDbContextAsync();
+
+        return await db.ChatKeywords.Where(k => ids.Contains(k.Id)).ExecuteDeleteAsync();
     }
 
     /// <summary>Returns a keyword's entry paths, newest first. Replaces <c>GetChatKeywordRecent</c>.</summary>
@@ -180,6 +210,15 @@ public sealed class KeywordService(IDbContextFactory<BigBirdContext> contextFact
         await db.ChatKeywordMaps
             .Where(m => m.Keyword == oldName && m.ServerId == sid)
             .ExecuteUpdateAsync(s => s.SetProperty(m => m.AddKeyword, newAddKeyword));
+
+        // Local-file entries are stored as "file:<keyword>/<name>" and the folder is moved
+        // on disk to match, so rewrite the prefix before the keyword name itself changes.
+        string oldPrefix = $"file:{oldName}/";
+        string newPrefix = $"file:{newName}/";
+        await db.ChatKeywords
+            .Where(k => k.Keyword == oldName && k.FilePath.StartsWith(oldPrefix))
+            .ExecuteUpdateAsync(s => s.SetProperty(k => k.FilePath,
+                k => newPrefix + k.FilePath.Substring(oldPrefix.Length)));
 
         await db.ChatKeywords
             .Where(k => k.Keyword == oldName)
@@ -463,24 +502,26 @@ public sealed class KeywordService(IDbContextFactory<BigBirdContext> contextFact
             .ExecuteUpdateAsync(s => s.SetProperty(u => u.ScheduledDateTime, rescheduleTo));
 
         var results = new List<DueKeywordDelivery>();
-        var entriesByKeyword = new Dictionary<string, List<string>>();
+        var entriesByKeyword = new Dictionary<string, List<(int Id, string Path)>>();
 
         foreach (var d in due)
         {
-            if (!entriesByKeyword.TryGetValue(d.ChatKeyword, out var paths))
+            if (!entriesByKeyword.TryGetValue(d.ChatKeyword, out var entries))
             {
-                paths = await db.ChatKeywords
+                entries = (await db.ChatKeywords
                     .Where(k => k.Keyword == d.ChatKeyword)
-                    .Select(k => k.FilePath)
-                    .ToListAsync();
-                entriesByKeyword[d.ChatKeyword] = paths;
+                    .Select(k => new { k.Id, k.FilePath })
+                    .ToListAsync())
+                    .Select(k => (k.Id, k.FilePath))
+                    .ToList();
+                entriesByKeyword[d.ChatKeyword] = entries;
             }
 
-            if (paths.Count == 0)
+            if (entries.Count == 0)
                 continue; // CROSS APPLY drops keywords with no entries
 
-            results.Add(new DueKeywordDelivery(
-                d.UserId, paths[Random.Shared.Next(paths.Count)], d.ChatKeyword));
+            var chosen = entries[Random.Shared.Next(entries.Count)];
+            results.Add(new DueKeywordDelivery(d.UserId, chosen.Path, d.ChatKeyword, chosen.Id));
         }
 
         AddWeekdaySpecials(now, dueUserIds, results);

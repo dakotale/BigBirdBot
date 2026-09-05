@@ -242,7 +242,7 @@ public class Keyword(KeywordService keywords) : InteractionModuleBase<SocketInte
 
         string recentStr = recent.Count > 0
             ? string.Join("\n", recent.Take(5).Select(fp =>
-                fp.StartsWith(@"C:\") ? $"📁 `{Path.GetFileName(fp)}`" : $"🔗 {fp}"))
+                KeywordFiles.IsLocalFile(fp) ? $"📁 `{Path.GetFileName(KeywordFiles.Resolve(fp))}`" : $"🔗 {fp}"))
             : "*No entries yet*";
 
         await FollowupAsync(embed: _embed.BuildSimpleEmbed(
@@ -386,13 +386,12 @@ public class Keyword(KeywordService keywords) : InteractionModuleBase<SocketInte
                 // Copy into every keyword directory and register in DB
                 foreach (string keyword in keywordList)
                 {
-                    string destDir  = Path.Combine(Constants.Constants.keywordDirectory, keyword);
-                    string destPath = Path.Combine(destDir, uniqueName);
+                    string destPath = Path.Combine(Constants.Constants.keywordDirectory, keyword, uniqueName);
 
                     try
                     {
                         await File.WriteAllBytesAsync(destPath, fileBytes);
-                        await keywords.AddEntryAsync(keyword, destPath);
+                        await keywords.AddEntryAsync(keyword, KeywordFiles.ToStored(keyword, uniqueName));
                     }
                     catch (Exception ex)
                     {

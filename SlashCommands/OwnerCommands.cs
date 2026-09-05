@@ -9,7 +9,7 @@ namespace DiscordBot.SlashCommands
     /// <summary>Bot-owner-only maintenance commands: cross-server announcements, schedule/connection listings, user table backfill, and manual keyword-image cleanup.</summary>
     // GuildModule decoration limits these commands to only show by the guild below.
     [GuildModule(880569055856185354)]
-    public class OwnerCommands(KeywordService keywords, ServerService servers, UserService userService, MusicService music) : InteractionModuleBase<SocketInteractionContext>
+    public class OwnerCommands(KeywordService keywords, KeywordMaintenanceService keywordMaintenance, ServerService servers, UserService userService, MusicService music) : InteractionModuleBase<SocketInteractionContext>
     {
         /// <summary>Broadcasts a message (with optional attachment) to every server's default channel where the bot has permission to post, reporting which servers were skipped.</summary>
         [SlashCommand("announcement", "Broadcast a message to all servers.")]
@@ -195,12 +195,27 @@ namespace DiscordBot.SlashCommands
 
             EmbedHelper embedHelper = new EmbedHelper();
             string tableName = chatName.Trim();
-            fileName = @"C:\Temp\DiscordBot\" + tableName + @"\" + fileName.Trim();
+            string stored = KeywordFiles.ToStored(tableName, fileName.Trim());
 
-            await keywords.DeleteEntryAsync(fileName, tableName);
+            await keywords.DeleteEntryAsync(stored, tableName);
 
-            EmbedBuilder embed = embedHelper.BuildMessageEmbed("Delete Successful", $"Image {fileName} was successfully deleted from the {tableName} table.", "", Context.User.Username, Color.Blue, "");
+            EmbedBuilder embed = embedHelper.BuildMessageEmbed("Delete Successful", $"Image {stored} was successfully deleted from the {tableName} table.", "", Context.User.Username, Color.Blue, "");
             await FollowupAsync(embed: embed.Build(), ephemeral: true);
+        }
+
+        /// <summary>Reconciles the keyword image store with the database: drops rows whose file is gone, and reports (or purges) files no row points at.</summary>
+        [SlashCommand("keywordreconcile", "Sync the keyword image folder with the database.")]
+        [CommandContextType(InteractionContextType.Guild)]
+        [RequireOwner]
+        public async Task HandleKeywordReconcile(bool purgeOrphanFiles = false)
+        {
+            await DeferAsync(ephemeral: true);
+
+            var result = await keywordMaintenance.ReconcileAsync(purgeOrphanFiles);
+
+            await FollowupAsync(embed: new EmbedHelper().BuildMessageEmbed(
+                "Keyword Reconcile", result.ToString(), "", Context.User.Username, Color.Blue, "").Build(),
+                ephemeral: true);
         }
     }
 }

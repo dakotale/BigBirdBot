@@ -70,6 +70,7 @@ static void ConfigureServices(IServiceCollection services) =>
         // work opens and disposes its own context.
         .AddDbContextFactory<BigBirdContext>(o => o.UseNpgsql(Constants.discordBotConnStr))
         .AddSingleton<KeywordService>()
+        .AddSingleton<KeywordMaintenanceService>()
         .AddSingleton<AuditService>()
         .AddSingleton<AutoRoleService>()
         .AddSingleton<SchedulingService>()
@@ -95,6 +96,7 @@ internal sealed class BotHost(
     IServiceProvider services,
     IHttpClientFactory httpClientFactory,
     KeywordService keywords,
+    KeywordMaintenanceService keywordMaintenance,
     AuditService audit,
     AutoRoleService autoRoles,
     SchedulingService scheduling,
@@ -660,7 +662,7 @@ internal sealed class BotHost(
                     continue;
                 }
 
-                string storeValue = await TrySaveSocialImageAsync(url, keyword)
+                string storeValue = await TrySaveSocialImageAsync(url, mappedKeyword)
                                     ?? cleanup.CleanURLEmbed(url);
                 await keywords.AddEntryAsync(mappedKeyword, storeValue);
             }
@@ -670,14 +672,14 @@ internal sealed class BotHost(
         }
         else
         {
-            string storeValue = await TrySaveSocialImageAsync(content, keyword)
+            string storeValue = await TrySaveSocialImageAsync(content, mappedKeyword)
                                 ?? cleanup.CleanURLEmbed(content);
 
             await keywords.AddEntryAsync(mappedKeyword, storeValue);
 
             // Locally-downloaded social media images get a different confirmation message
-            // than a plain URL/text entry, since the stored value is a file path either way.
-            string confirmation = storeValue.StartsWith(@"C:\")
+            // than a plain URL/text entry.
+            string confirmation = KeywordFiles.IsLocalFile(storeValue)
                 ? "Image downloaded and saved locally."
                 : "Added URL/Text successfully.";
 
@@ -705,20 +707,31 @@ internal sealed class BotHost(
 
         string keyword = char.ToUpperInvariant(action.Keyword[0]) + action.Keyword[1..];
 
-        // Three possible stored shapes for a keyword's value: a local file path,
-        // a live URL, or plain text — each is delivered differently.
-        if (chatAction.StartsWith(@"C:\"))
+        // Three possible stored shapes for a keyword's value: a local file, a live URL,
+        // or plain text — each is delivered differently.
+        if (KeywordFiles.IsLocalFile(chatAction))
         {
-            bool isSpoiler = isNsfw && !chatAction.Contains("SPOILER_");
+            string localPath = KeywordFiles.Resolve(chatAction);
+
+            if (!File.Exists(localPath))
+            {
+                // File was moved/deleted since it was registered — drop the entry like a dead link.
+                await keywords.DeleteEntryByIdAsync(action.Id);
+                await sender.SendMessageAsync($"File was missing so I removed that entry :) -> {Path.GetFileName(localPath)}");
+                return;
+            }
+
+            string fileName = Path.GetFileName(localPath);
+            bool isSpoiler = isNsfw && !fileName.Contains("SPOILER_");
             var embed = new EmbedBuilder()
                 .WithTitle(keyword)
-                .WithImageUrl("attachment://" + Path.GetFileName(chatAction))
+                .WithImageUrl("attachment://" + fileName)
                 .WithColor(isNsfw ? Color.DarkRed : Color.Blue)
                 .Build();
 
-            await using var stream = File.OpenRead(chatAction);
+            await using var stream = File.OpenRead(localPath);
             var output = await msg.Channel.SendFileAsync(
-                stream, Path.GetFileName(chatAction), embed: embed, isSpoiler: isSpoiler);
+                stream, fileName, embed: embed, isSpoiler: isSpoiler);
 
             if (!isSpoiler) // spoilered NSFW content isn't tagged for deletion — it's already hidden
                 await output.AddReactionAsync(new Emoji("❌"));
@@ -741,7 +754,7 @@ internal sealed class BotHost(
             {
                 // Link is dead — remove it from the keyword's rotation so it isn't served again.
                 await sender.SendMessageAsync($"Link was dead so I deleted it :) -> {chatAction}");
-                await keywords.DeleteEntryAsync(chatAction, "");
+                await keywords.DeleteEntryByIdAsync(action.Id);
             }
         }
         else
@@ -1060,6 +1073,11 @@ internal sealed class BotHost(
 
                 skipPuzzle:;
             }
+
+            // Twice a day — drop ChatKeyword rows whose local file has gone missing and
+            // log any files left orphaned in a keyword folder (see KeywordMaintenanceService).
+            if (_schedulerTick % 720 == 0)
+                await keywordMaintenance.ReconcileAsync();
             } // end outer try
             catch (Exception ex)
             {
@@ -1109,16 +1127,21 @@ internal sealed class BotHost(
                     continue;
                 }
 
-                // Stored value is either a local file path or a URL — branch accordingly.
-                if (filePath.StartsWith(@"C:\"))
+                // Stored value is either a local file or a URL — branch accordingly.
+                if (KeywordFiles.IsLocalFile(filePath))
                 {
-                    if (!File.Exists(filePath)) // file was moved/deleted since being registered
+                    string localPath = KeywordFiles.Resolve(filePath);
+                    string localName = Path.GetFileName(localPath);
+
+                    if (!File.Exists(localPath)) // file was moved/deleted since being registered
                     {
+                        if (delivery.EntryId is { } missingId)
+                            await keywords.DeleteEntryByIdAsync(missingId);
                         await keywords.RequeueScheduleAsync(userId);
                     }
-                    else if (new FileInfo(filePath).Length > 8 * 1024 * 1024) // exceeds Discord's non-boosted upload limit
+                    else if (new FileInfo(localPath).Length > 8 * 1024 * 1024) // exceeds Discord's non-boosted upload limit
                     {
-                        using var compressed = TryCompressImageUnder8Mb(filePath);
+                        using var compressed = TryCompressImageUnder8Mb(localPath);
                         if (compressed is null)
                         {
                             await NotifyOwnerAsync($"[Keywords] Skipped {filePath} for user {userId} — file exceeds 8 MB Discord limit and could not be compressed.");
@@ -1127,22 +1150,22 @@ internal sealed class BotHost(
                         {
                             var fileEmbed = new EmbedBuilder()
                                 .WithTitle(tableName)
-                                .WithImageUrl("attachment://" + Path.GetFileName(filePath))
+                                .WithImageUrl("attachment://" + localName)
                                 .WithColor(Color.Blue)
                                 .WithFooter(timestamp)
                                 .Build();
-                            await user.SendFileAsync(compressed, Path.GetFileName(filePath), embed: fileEmbed);
+                            await user.SendFileAsync(compressed, localName, embed: fileEmbed);
                         }
                     }
                     else
                     {
                         var fileEmbed = new EmbedBuilder()
                             .WithTitle(tableName)
-                            .WithImageUrl("attachment://" + Path.GetFileName(filePath))
+                            .WithImageUrl("attachment://" + localName)
                             .WithColor(Color.Blue)
                             .WithFooter(timestamp)
                             .Build();
-                        await user.SendFileAsync(filePath, embed: fileEmbed);
+                        await user.SendFileAsync(localPath, embed: fileEmbed);
                     }
                 }
 
@@ -1167,7 +1190,8 @@ internal sealed class BotHost(
                 }
                 else // link no longer resolves — remove it rather than keep re-attempting a dead send
                 {
-                    await keywords.DeleteEntryAsync(filePath, "");
+                    if (delivery.EntryId is { } deadId)
+                        await keywords.DeleteEntryByIdAsync(deadId);
                     var deadEmbed = new EmbedBuilder()
                         .WithTitle(tableName)
                         .WithColor(Color.Red)
@@ -1241,8 +1265,9 @@ internal sealed class BotHost(
         if (!IsSupportedExtension(ext)) return null;
 
         string folder = keyword.Replace("KeywordMulti.", "");
-        string dir = $@"C:\Temp\DiscordBot\{folder}";
-        string fullPath = Path.Combine(dir, $"social_{DateTime.Now:yyyyMMdd_HHmmssfffff}.{ext}");
+        string fileName = $"social_{DateTime.Now:yyyyMMdd_HHmmssfffff}.{ext}";
+        string dir = Path.Combine(Constants.keywordDirectory, folder);
+        string fullPath = Path.Combine(dir, fileName);
 
         Directory.CreateDirectory(dir);
 
@@ -1250,7 +1275,7 @@ internal sealed class BotHost(
         await File.WriteAllBytesAsync(fullPath, bytes);
 
         await logger.DebugAsync($"[SocialImage] Saved → {fullPath}");
-        return fullPath;
+        return KeywordFiles.ToStored(folder, fileName);
     }
 
 
@@ -1347,15 +1372,15 @@ internal sealed class BotHost(
         foreach (var attachment in msg.Attachments)
         {
             string[] parts = attachment.Filename.Split('.', StringSplitOptions.TrimEntries);
-            string uniqueName = $"{parts[0]}_{DateTime.Now:yyyyMMdd_HHmmssfffff}";
-            string path = $@"C:\Temp\DiscordBot\{tablename}\{uniqueName}.{parts[1]}";
+            string fileName = $"{parts[0]}_{DateTime.Now:yyyyMMdd_HHmmssfffff}.{parts[1]}";
+            string absPath = Path.Combine(Constants.keywordDirectory, tablename, fileName);
 
-            await keywords.AddEntryAsync(tablename, path);
+            await keywords.AddEntryAsync(tablename, KeywordFiles.ToStored(tablename, fileName));
 
             using var http = httpClientFactory.CreateClient();
             var bytes = await http.GetByteArrayAsync(attachment.Url);
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            await File.WriteAllBytesAsync(path, bytes);
+            Directory.CreateDirectory(Path.GetDirectoryName(absPath)!);
+            await File.WriteAllBytesAsync(absPath, bytes);
         }
     }
 
