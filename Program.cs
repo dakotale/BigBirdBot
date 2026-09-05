@@ -39,7 +39,7 @@ static void ConfigureServices(IServiceCollection services) =>
             AlwaysDownloadUsers = true,
             DefaultRetryMode = RetryMode.AlwaysRetry,
             LogGatewayIntentWarnings = false,
-            LogLevel = LogSeverity.Verbose
+            LogLevel = LogSeverity.Info
         })
         .AddSingleton<DiscordSocketClient>()
         .AddSingleton<LoggingService>()
@@ -441,121 +441,144 @@ internal sealed class BotHost(
 
 
     /// <summary>
-    /// Central message router — fires on every message the bot can see. Order matters: each
-    /// branch below returns as soon as it claims the message, so the social-media-embed fixer,
-    /// the "-" keyword prefix, and the bonus word puzzle are mutually exclusive per message.
-    /// Also drives passive credit income and pet XP-from-chatting, which apply to ordinary
-    /// conversation and don't return early.
+    /// Gateway hook for <see cref="DiscordSocketClient.MessageReceived"/>. Does only the
+    /// cheap synchronous filtering, then hands off to <see cref="ProcessMessageAsync"/> on a
+    /// background task and returns immediately — a slow branch (DB round-trips, REST calls,
+    /// the up-to-5s native-embed wait) must never block the gateway.
     /// </summary>
-    private async Task OnMessageReceivedAsync(SocketMessage msg)
+    private Task OnMessageReceivedAsync(SocketMessage msg)
     {
-        if (msg.Author.IsBot || msg.Author.IsWebhook) return; // never react to bots/webhooks (avoids feedback loops)
+        if (msg.Author.IsBot || msg.Author.IsWebhook) return Task.CompletedTask; // never react to bots/webhooks (avoids feedback loops)
+        if (msg.Channel is not SocketGuildChannel) return Task.CompletedTask;    // DMs and non-guild channels — nothing to do
 
-        if (msg.Channel is not SocketGuildChannel msgChannel) return; // DMs and non-guild channels — nothing to do
+        _ = Task.Run(() => ProcessMessageAsync(msg));
+        return Task.CompletedTask;
+    }
 
-        string message = msg.Content.Trim().ToLowerInvariant();
-        ulong serverId = msgChannel.Guild.Id;
-        ulong userId = msg.Author.Id;
-        const string prefix = "-"; // marks a keyword-add/lookup command, e.g. "-cat http://..."
-
-        await userService.UpdateLastSeenAsync(userId.ToString(), serverId);
-
-        var serverInfo = await serverService.GetServerInfoAsync(serverId);
-
-        // Server-wide kill switch — if the server record is missing/inactive, skip all
-        // further processing (no keyword triggers, no word puzzle) for this message.
-        if (serverInfo is null || !serverInfo.IsActive)
-            return;
-
-        var cleanup = new URLCleanup();
-
-        // A raw social-media link (Twitter/X, Bluesky, etc.) whose native Discord embed may
-        // be broken, and that isn't itself a "-" keyword command — try to fix its embed.
-        if (cleanup.HasSocialMediaEmbed(message) && !message.StartsWith(prefix))
+    /// <summary>
+    /// Central message router — runs off the gateway task. Order matters: each branch below
+    /// returns as soon as it claims the message, so the social-media-embed fixer, the "-"
+    /// keyword prefix, and the bonus word puzzle are mutually exclusive per message. Because
+    /// this is fire-and-forget, everything is wrapped so exceptions reach the log rather than
+    /// going unobserved.
+    /// </summary>
+    private async Task ProcessMessageAsync(SocketMessage msg)
+    {
+        try
         {
-            bool fix = await serverService.GetEmbedFixEnabledAsync(serverId);
+            var msgChannel = (SocketGuildChannel)msg.Channel;
 
-            // Only step in if this server opted into the fix AND Discord's own crawler
-            // didn't manage to attach a rich embed on its own within the wait window.
-            if (fix && !await DiscordEmbedSucceededAsync(msg.Id))
+            string message = msg.Content.Trim().ToLowerInvariant();
+            ulong serverId = msgChannel.Guild.Id;
+            ulong userId = msg.Author.Id;
+            const string prefix = "-"; // marks a keyword-add/lookup command, e.g. "-cat http://..."
+
+            await userService.UpdateLastSeenAsync(userId.ToString(), serverId);
+
+            var serverInfo = await serverService.GetServerInfoAsync(serverId);
+
+            // Server-wide kill switch — if the server record is missing/inactive, skip all
+            // further processing (no keyword triggers, no word puzzle) for this message.
+            if (serverInfo is null || !serverInfo.IsActive)
+                return;
+
+            var cleanup = new URLCleanup();
+
+            // A raw social-media link (Twitter/X, Bluesky, etc.) whose native Discord embed may
+            // be broken, and that isn't itself a "-" keyword command — try to fix its embed.
+            if (cleanup.HasSocialMediaEmbed(message) && !message.StartsWith(prefix))
             {
-                await msg.Channel.SendMessageAsync(cleanup.CleanURLEmbed(message));
-            }
+                bool fix = await serverService.GetEmbedFixEnabledAsync(serverId);
 
-            return;
-        }
-
-        // "-keyword ..." — add or manage a chat-triggered keyword; handled entirely elsewhere.
-        if (message.StartsWith(prefix))
-        {
-            await HandlePrefixCommandAsync(msg, message, prefix, cleanup);
-            return;
-        }
-
-
-        var petPuzzle = await wordPuzzles.GetActivePuzzleAsync(msg.Channel.Id.ToString());
-
-        // A bonus word puzzle (posted hourly by the scheduler) is active in this channel.
-        if (petPuzzle is not null)
-        {
-            string puzzleWord = petPuzzle.Word;
-            int puzzleId = petPuzzle.PuzzleId;
-
-            string puzzleChannelId = msg.Channel.Id.ToString();
-
-            if (string.Equals(message.Trim(), puzzleWord, StringComparison.OrdinalIgnoreCase))
-            {
-                // Clean up shared hint state for this channel
-                _puzzleHintStates.TryRemove(puzzleChannelId, out _);
-
-                await wordPuzzles.ClaimPuzzleAsync(puzzleId);
-
-                await audit.InsertGameTriggerAuditAsync("petpuzzle", userId, serverId);
-
-                await msg.Channel.SendMessageAsync(embed: _embed.BuildSimpleEmbed(
-                    "🧩  Puzzle Solved!",
-                    $"{msg.Author.Mention} solved the bonus word puzzle! 🎉",
-                    Color.Green).Build());
+                // Only step in if this server opted into the fix AND Discord's own crawler
+                // didn't manage to attach a rich embed on its own within the wait window.
+                if (fix && !await DiscordEmbedSucceededAsync(msg.Id))
+                {
+                    await msg.Channel.SendMessageAsync(cleanup.CleanURLEmbed(message));
+                }
 
                 return;
             }
 
-            // ── Every-20-guesses letter reveal ────────────────────────────────
-            // Count any single-word alphabetic attempt (wrong answers only —
-            // correct answers are handled and returned above).
-            string trimmedGuess = message.Trim();
-            bool isWordAttempt  = trimmedGuess.Length > 0 && trimmedGuess.All(char.IsLetter);
-
-            // Only channels with live hint-tracking state (i.e. the puzzle was posted by
-            // the scheduler, not left over some other way) accumulate reveals.
-            if (isWordAttempt && _puzzleHintStates.TryGetValue(puzzleChannelId, out var guessState))
+            // "-keyword ..." — add or manage a chat-triggered keyword; handled entirely elsewhere.
+            if (message.StartsWith(prefix))
             {
-                int totalGuesses = guessState.IncrementGuesses();
-                // Reveal one more letter every 20 wrong guesses, on top of the scheduler's
-                // own T+30/T+50 timed reveals — whichever fires first wins for that letter.
-                if (totalGuesses % 20 == 0 && guessState.TryRevealNext(out string guessHint))
+                await HandlePrefixCommandAsync(msg, message, prefix, cleanup);
+                return;
+            }
+
+
+            var petPuzzle = await wordPuzzles.GetActivePuzzleAsync(msg.Channel.Id.ToString());
+
+            // A bonus word puzzle (posted hourly by the scheduler) is active in this channel.
+            if (petPuzzle is not null)
+            {
+                string puzzleWord = petPuzzle.Word;
+                int puzzleId = petPuzzle.PuzzleId;
+
+                string puzzleChannelId = msg.Channel.Id.ToString();
+
+                if (string.Equals(message.Trim(), puzzleWord, StringComparison.OrdinalIgnoreCase))
                 {
-                    try
+                    // Clean up shared hint state for this channel
+                    _puzzleHintStates.TryRemove(puzzleChannelId, out _);
+
+                    // Only the first correct guess claims the puzzle; a concurrent second
+                    // correct guess (now possible since handlers run in parallel) gets
+                    // false back and stays silent instead of double-announcing.
+                    if (await wordPuzzles.ClaimPuzzleAsync(puzzleId))
                     {
-                        await guessState.Message.ModifyAsync(m => m.Embed = _embed.BuildSimpleEmbed(
-                            "🧩  Bonus Word Puzzle!",
-                            $"Type the secret word in this channel.\n\n" +
-                            $"**Hint:** `{guessHint}`  ({guessState.Word.Length} letters)\n" +
-                            $"*(A letter was revealed after {totalGuesses} guesses!)*\n\n" +
-                            $"⏳ First correct answer wins!",
-                            new Color(255, 179, 71)).Build());
+                        await audit.InsertGameTriggerAuditAsync("petpuzzle", userId, serverId);
+
+                        await msg.Channel.SendMessageAsync(embed: _embed.BuildSimpleEmbed(
+                            "🧩  Puzzle Solved!",
+                            $"{msg.Author.Mention} solved the bonus word puzzle! 🎉",
+                            Color.Green).Build());
                     }
-                    catch { /* message may have been deleted */ }
+
+                    return;
+                }
+
+                // ── Every-20-guesses letter reveal ────────────────────────────────
+                // Count any single-word alphabetic attempt (wrong answers only —
+                // correct answers are handled and returned above).
+                string trimmedGuess = message.Trim();
+                bool isWordAttempt  = trimmedGuess.Length > 0 && trimmedGuess.All(char.IsLetter);
+
+                // Only channels with live hint-tracking state (i.e. the puzzle was posted by
+                // the scheduler, not left over some other way) accumulate reveals.
+                if (isWordAttempt && _puzzleHintStates.TryGetValue(puzzleChannelId, out var guessState))
+                {
+                    int totalGuesses = guessState.IncrementGuesses();
+                    // Reveal one more letter every 20 wrong guesses, on top of the scheduler's
+                    // own T+30/T+50 timed reveals — whichever fires first wins for that letter.
+                    if (totalGuesses % 20 == 0 && guessState.TryRevealNext(out string guessHint))
+                    {
+                        try
+                        {
+                            await guessState.Message.ModifyAsync(m => m.Embed = _embed.BuildSimpleEmbed(
+                                "🧩  Bonus Word Puzzle!",
+                                $"Type the secret word in this channel.\n\n" +
+                                $"**Hint:** `{guessHint}`  ({guessState.Word.Length} letters)\n" +
+                                $"*(A letter was revealed after {totalGuesses} guesses!)*\n\n" +
+                                $"⏳ First correct answer wins!",
+                                new Color(255, 179, 71)).Build());
+                        }
+                        catch { /* message may have been deleted */ }
+                    }
                 }
             }
+
+
+            // Fall-through: check whether this message contains a registered chat-triggered
+            // keyword (e.g. auto-replying with a saved image/link).
+            if (await keywords.ResolveChatActionAsync(msgChannel.Guild.Id, message) is { } action)
+                await SendChatActionAsync(msg, msgChannel, action);
         }
-
-
-        // Fall-through: check whether this message contains a registered chat-triggered
-        // keyword (e.g. auto-replying with a saved image/link).
-        if (await keywords.ResolveChatActionAsync(msgChannel.Guild.Id, message) is { } action)
-            // Fire-and-forget: don't block the gateway event handler on file/network I/O.
-            _ = Task.Run(() => SendChatActionAsync(msg, msgChannel, action));
+        catch (Exception ex)
+        {
+            await logger.ErrorAsync(ex);
+        }
     }
 
     /// <summary>

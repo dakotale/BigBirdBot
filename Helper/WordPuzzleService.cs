@@ -56,14 +56,20 @@ public sealed class WordPuzzleService(IDbContextFactory<BigBirdContext> contextF
             .FirstOrDefaultAsync();
     }
 
-    /// <summary>Marks a puzzle solved. Replaces <c>ClaimPetPuzzle</c>.</summary>
-    public async Task ClaimPuzzleAsync(int puzzleId)
+    /// <summary>
+    /// Marks a puzzle solved. Replaces <c>ClaimPetPuzzle</c>. Returns <c>true</c> only if this
+    /// call is the one that claimed it — the <c>!p.Claimed</c> filter makes the update atomic,
+    /// so a second concurrent correct guess gets <c>false</c> and the caller stays silent.
+    /// </summary>
+    public async Task<bool> ClaimPuzzleAsync(int puzzleId)
     {
         await using var db = await contextFactory.CreateDbContextAsync();
 
-        await db.PetWordPuzzles
-            .Where(p => p.PuzzleId == puzzleId)
+        int affected = await db.PetWordPuzzles
+            .Where(p => p.PuzzleId == puzzleId && !p.Claimed)
             .ExecuteUpdateAsync(s => s.SetProperty(p => p.Claimed, true));
+
+        return affected > 0;
     }
 
     /// <summary>
