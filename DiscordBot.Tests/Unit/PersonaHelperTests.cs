@@ -112,6 +112,37 @@ public class PersonaHelperTests
     [Fact]
     public void NamedPersonalities_CountIsCorrect()
     {
-        Assert.Equal(9, PersonaHelper.NamedPersonalities.Count);
+        Assert.Equal(18, PersonaHelper.NamedPersonalities.Count);
+    }
+
+    // ── Mental-health support guides carry the safety framing ─────────────────
+
+    [Theory]
+    [InlineData("ADHD Support Guide")]
+    [InlineData("Anxiety Support Guide")]
+    [InlineData("Bipolar Support Guide")]
+    [InlineData("BPD Support Guide")]
+    [InlineData("Depression Support Guide")]
+    [InlineData("Eating Disorder Recovery Guide")]
+    [InlineData("OCD Support Guide")]
+    [InlineData("PTSD & Trauma Support Guide")]
+    [InlineData("Schizophrenia Support Guide")]
+    public void ResolvePersona_MentalHealthGuide_IncludesSafetyFraming(string persona)
+    {
+        string result = PersonaHelper.ResolvePersona(persona);
+
+        Assert.Contains("not therapy or medical advice", result, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("never diagnose", result, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("988", result, StringComparison.Ordinal);                    // crisis line
+        Assert.Contains("licensed mental-health professional", result, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("non-judgmental", result, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ResolvePersona_EatingDisorderGuide_RefusesToGiveNumbers()
+    {
+        string result = PersonaHelper.ResolvePersona("Eating Disorder Recovery Guide");
+        Assert.Contains("never provide weight, calorie", result, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("recovery", result, StringComparison.OrdinalIgnoreCase);
     }
 }
