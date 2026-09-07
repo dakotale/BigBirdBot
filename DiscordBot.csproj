@@ -7,6 +7,9 @@
     <Nullable>enable</Nullable>
     <ApplicationIcon>bigbirdbot.ico</ApplicationIcon>
     <Description>A Discord Bot</Description>
+    <!-- Deploy targets: Windows dev box and the Apple Silicon Mac Mini.
+         See README "Deployment" for the osx-arm64 publish command. -->
+    <RuntimeIdentifiers>win-x64;osx-arm64</RuntimeIdentifiers>
   </PropertyGroup>
 
   <ItemGroup>
@@ -39,8 +42,6 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="SkiaSharp" Version="4.151.2" />
-    <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="4.151.2" />
   </ItemGroup>
 
 </Project>

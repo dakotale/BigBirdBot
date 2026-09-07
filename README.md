@@ -166,11 +166,10 @@ Bot-owner-only maintenance tooling, visible only in the developer's own server.
 | Language | C# (.NET 10) |
 | Discord library | [Discord.Net](https://github.com/discord-net/Discord.Net) 3.20 (Interaction Framework — slash commands only) |
 | Music | [Lavalink4NET](https://github.com/angelobreuer/Lavalink4NET) |
-| Database | SQL Server via **EF Core** (`Microsoft.EntityFrameworkCore.SqlServer`) |
+| Database | PostgreSQL via **EF Core** (`Npgsql.EntityFrameworkCore.PostgreSQL`) |
 | AI chat | Anthropic (Claude) |
 | AI image detection | Sightengine |
 | Mood tracks | Spotify Web API |
-| Image processing | SkiaSharp |
 
 ### Architecture Notes
 
@@ -178,3 +177,24 @@ Bot-owner-only maintenance tooling, visible only in the developer's own server.
 - `SQL/Database/dbo/Migrations/` holds hand-written, numbered SQL migrations (schema changes and stored-procedure DROP scripts); they're run manually against the live database, not via EF Core migrations.
 - Every feature area's data access goes through EF Core (`Data/*Entities.cs` + `Helper/*Service.cs`, mapped explicitly onto the existing schema in `Data/BigBirdContext.cs`) — there is no remaining ADO.NET stored-procedure access anywhere in the app.
 - A single background loop (`BotHost.RunSchedulerAsync` in `Program.cs`) drives every time-based feature: DM reminders and birthday greetings (every minute), the hourly bonus word puzzle, and scheduled keyword deliveries.
+- No Windows-only dependencies: keyword images use OS-relative paths (`Constants.keywordDirectory`, resolved via `Helper/KeywordFiles.cs`), hex colours are parsed by `Helper/HexColor.cs`, and there is no `System.Drawing` / `SkiaSharp`.
+
+## Deployment
+
+The bot runs on Windows and macOS (Apple Silicon). Lavalink is a separate Java process — install a JRE (`brew install --cask temurin`) and run `Lavalink.jar` alongside its `application.yml` + `plugins/`.
+
+**Publish for the Mac Mini (osx-arm64), cross-compiles fine from Windows:**
+
+```bash
+dotnet publish DiscordBot.csproj -c Release -r osx-arm64 --self-contained -p:PublishSingleFile=true -o publish/osx
+```
+
+Produces a single ~100 MB `DiscordBot` executable with the .NET runtime bundled (nothing to install on the Mac). Put `secrets.json` next to it (or set the keys as env vars), then:
+
+```bash
+xattr -dr com.apple.quarantine publish/osx   # clear Gatekeeper once (unsigned binary)
+chmod +x publish/osx/DiscordBot
+./publish/osx/DiscordBot
+```
+
+Swap `-r osx-arm64` for `win-x64` (or `osx-x64` for an Intel Mac). Do **not** add `PublishTrimmed`/AOT — Discord.Net's interaction framework and EF Core rely on reflection.

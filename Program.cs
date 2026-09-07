@@ -1141,21 +1141,7 @@ internal sealed class BotHost(
                     }
                     else if (new FileInfo(localPath).Length > 8 * 1024 * 1024) // exceeds Discord's non-boosted upload limit
                     {
-                        using var compressed = TryCompressImageUnder8Mb(localPath);
-                        if (compressed is null)
-                        {
-                            await NotifyOwnerAsync($"[Keywords] Skipped {filePath} for user {userId} — file exceeds 8 MB Discord limit and could not be compressed.");
-                        }
-                        else
-                        {
-                            var fileEmbed = new EmbedBuilder()
-                                .WithTitle(tableName)
-                                .WithImageUrl("attachment://" + localName)
-                                .WithColor(Color.Blue)
-                                .WithFooter(timestamp)
-                                .Build();
-                            await user.SendFileAsync(compressed, localName, embed: fileEmbed);
-                        }
+                        await NotifyOwnerAsync($"[Keywords] Skipped {filePath} for user {userId} — file exceeds Discord's 8 MB upload limit.");
                     }
                     else
                     {
@@ -1278,60 +1264,6 @@ internal sealed class BotHost(
         return KeywordFiles.ToStored(folder, fileName);
     }
 
-
-    /// <summary>
-    /// Iteratively re-encodes an image until it fits Discord's 8 MB upload limit: first by
-    /// lowering JPEG quality in steps, then by shrinking dimensions once quality bottoms out
-    /// (PNG/WebP skip straight to shrinking, since quality isn't meaningful for them here).
-    /// Returns null if the format is unsupported or the image can't be shrunk further.
-    /// </summary>
-    private static MemoryStream? TryCompressImageUnder8Mb(string filePath)
-    {
-        var ext = Path.GetExtension(filePath).ToLowerInvariant();
-        if (ext is not (".jpg" or ".jpeg" or ".png" or ".webp"))
-            return null;
-
-        const long limit = 8 * 1024 * 1024;
-        var format = ext is ".png" ? SkiaSharp.SKEncodedImageFormat.Png : SkiaSharp.SKEncodedImageFormat.Jpeg;
-
-        using var original = SkiaSharp.SKBitmap.Decode(filePath);
-        if (original is null) return null;
-
-        int width = original.Width;
-        int height = original.Height;
-        int quality = 85;
-
-        while (true)
-        {
-            using var bitmap = original.Resize(new SkiaSharp.SKImageInfo(width, height), SkiaSharp.SKSamplingOptions.Default);
-            if (bitmap is null) return null;
-
-            using var image = SkiaSharp.SKImage.FromBitmap(bitmap);
-            using var encoded = image.Encode(format, quality);
-
-            if (encoded.Size <= limit)
-            {
-                var ms = new MemoryStream();
-                encoded.SaveTo(ms);
-                ms.Position = 0;
-                return ms;
-            }
-
-            // Try reducing quality first (JPEG only), then scale down dimensions
-            if (format == SkiaSharp.SKEncodedImageFormat.Jpeg && quality > 40)
-            {
-                quality -= 15;
-            }
-            else
-            {
-                width = (int)(width * 0.75);
-                height = (int)(height * 0.75);
-                quality = 85; // reset quality after a resize so the next pass starts from full quality again
-                if (width < 100 || height < 100)
-                    return null; // too small to shrink further — give up
-            }
-        }
-    }
 
     /// <summary>True if the URL's path ends in a recognized image extension (ignoring any query string).</summary>
     private static bool IsDirectImageUrl(string url)

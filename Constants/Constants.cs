@@ -59,6 +59,14 @@ namespace DiscordBot.Constants
             return fallback ?? string.Empty;
         }
 
+        /// <summary>
+        /// Per-user data directory used only for fallback defaults below — the real paths are
+        /// set in secrets.json / env vars. Resolves per-OS: <c>%LOCALAPPDATA%</c> on Windows,
+        /// <c>~/.local/share</c> on macOS/Linux.
+        /// </summary>
+        private static readonly string DataDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BigBirdBot");
+
         // PostgreSQL
         public static string discordBotConnStr => Get(nameof(discordBotConnStr), "Host=localhost;Port=5432;Database=discordbot;Username=discordbot");
         public static string botToken => Get(nameof(botToken));
@@ -68,8 +76,8 @@ namespace DiscordBot.Constants
         public static string errorImageUrl => Get(nameof(errorImageUrl), "https://cdn0.iconfinder.com/data/icons/shift-interfaces/32/Error-512.png");
         public static string aiApiUserId => Get(nameof(aiApiUserId));
         public static string aiApiSecretId => Get(nameof(aiApiSecretId));
-        public static string aiDetectorPath => Get(nameof(aiDetectorPath), @"C:\Temp\DiscordBot\AIDetector\");
-        public static string keywordDirectory => Get(nameof(keywordDirectory), @"C:\Temp\DiscordBot\");
+        public static string aiDetectorPath => Get(nameof(aiDetectorPath), Path.Combine(DataDir, "AIDetector"));
+        public static string keywordDirectory => Get(nameof(keywordDirectory), Path.Combine(DataDir, "keywords"));
         public static string spotifyClientId => Get(nameof(spotifyClientId), "9d3327c7e115414386b546393c6e935d");
         public static string spotifyClientSecret => Get(nameof(spotifyClientSecret), "e5c19c145b0e4ba68b8b76f3a5acf1b2");
         public static string anthropicApiKey => Get(nameof(anthropicApiKey));

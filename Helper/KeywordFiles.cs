@@ -22,7 +22,9 @@ public static class KeywordFiles
 
     /// <summary>True for a stored local-file value (the <c>file:</c> form or a legacy absolute path).</summary>
     public static bool IsLocalFile(string value) =>
-        value.StartsWith(Scheme, StringComparison.OrdinalIgnoreCase) || Path.IsPathRooted(value);
+        value.StartsWith(Scheme, StringComparison.OrdinalIgnoreCase)
+        || Path.IsPathRooted(value)
+        || (value.Length > 2 && char.IsLetter(value[0]) && value[1] == ':'); // legacy Windows "C:\…" seen from a non-Windows host
 
     /// <summary>The value to store for a file saved as <paramref name="fileName"/> under <paramref name="keyword"/>'s folder.</summary>
     public static string ToStored(string keyword, string fileName) => $"{Scheme}{keyword}/{fileName}";

@@ -125,12 +125,17 @@ public class ServerCommands(SchedulingService scheduling) : InteractionModuleBas
         await DeferAsync(ephemeral: true);
 
         string bare = hexCode.TrimStart('#');
-        string html = "#" + bare;
+
+        if (!HexColor.TryParse(bare, out var roleColor))
+        {
+            await FollowupAsync(embed: _embed.BuildErrorEmbed(
+                "Role Colour", $"`#{bare}` is not a valid hex code. Example: `#607C8C`", Username).Build(),
+                ephemeral: true);
+            return;
+        }
 
         try
         {
-            var sysColor = System.Drawing.ColorTranslator.FromHtml(html);
-            var roleColor = new Color(sysColor.R, sysColor.G, sysColor.B);
             var guild = Context.Guild;
             var target = (IGuildUser)(userName ?? (SocketGuildUser)Context.User);
             string name = ((SocketGuildUser)target).Username;
@@ -155,7 +160,7 @@ public class ServerCommands(SchedulingService scheduling) : InteractionModuleBas
         catch (Exception ex)
         {
             await FollowupAsync(embed: _embed.BuildErrorEmbed(
-                "Role Colour", $"Invalid hex code: {ex.Message}", Username).Build(),
+                "Role Colour", $"Couldn't update the role: {ex.Message}", Username).Build(),
                 ephemeral: true);
         }
     }

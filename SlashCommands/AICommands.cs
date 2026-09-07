@@ -130,13 +130,14 @@ public class AICommands : InteractionModuleBase<SocketInteractionContext>
         try
         {
             string[] parts  = attachment.Filename.Split('.', StringSplitOptions.TrimEntries);
-            string unique   = $"{parts[0]}_{DateTime.Now:yyyyMMdd_HHmmssfffff}";
-            string path     = Constants.Constants.aiDetectorPath + unique + "." + parts[1];
+            string unique   = $"{parts[0]}_{DateTime.Now:yyyyMMdd_HHmmssfffff}.{parts[1]}";
+            string path     = Path.Combine(Constants.Constants.aiDetectorPath, unique);
 
             using var http      = new HttpClient();
             using var apiClient = new HttpClient();
 
             var bytes = await http.GetByteArrayAsync(attachment.Url);
+            Directory.CreateDirectory(Constants.Constants.aiDetectorPath);
             await File.WriteAllBytesAsync(path, bytes);
 
             using var request = new HttpRequestMessage(

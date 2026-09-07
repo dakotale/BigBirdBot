@@ -142,25 +142,21 @@ public class UtilityCommands(SchedulingService scheduling, ServerService servers
 
         string bare = hexCode.TrimStart('#').ToUpperInvariant();
 
-        try
-        {
-            var sys = System.Drawing.ColorTranslator.FromHtml("#" + bare);
-            var role = new Color(sys.R, sys.G, sys.B);
-
-            await FollowupAsync(embed: _embed.BuildSimpleEmbed(
-                $"🎨  Color Preview — #{bare}",
-                $"**Hex:** `#{bare}`\n" +
-                $"**RGB:** `{sys.R}, {sys.G}, {sys.B}`",
-                role, footer: $"Requested by {Username}", footerIconUrl: AvatarUrl)
-                .WithImageUrl($"https://singlecolorimage.com/get/{bare}/300x80").Build());
-        }
-        catch
+        if (!HexColor.TryParse(bare, out var role))
         {
             await FollowupAsync(embed: _embed.BuildErrorEmbed(
                 "Color Preview",
                 $"`#{bare}` is not a valid hex code. Example: `#607C8C`",
                 Username).Build());
+            return;
         }
+
+        await FollowupAsync(embed: _embed.BuildSimpleEmbed(
+            $"🎨  Color Preview — #{bare}",
+            $"**Hex:** `#{bare}`\n" +
+            $"**RGB:** `{role.R}, {role.G}, {role.B}`",
+            role, footer: $"Requested by {Username}", footerIconUrl: AvatarUrl)
+            .WithImageUrl($"https://singlecolorimage.com/get/{bare}/300x80").Build());
     }
 
 
