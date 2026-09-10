@@ -266,9 +266,17 @@ public class ServerCommands(SchedulingService scheduling) : InteractionModuleBas
             Answers          = answers,
             Duration         = (uint)durationHours,
             AllowMultiselect = true,
+            // Must be set explicitly: Discord.Net serialises the CLR-default (0) otherwise,
+            // and Discord rejects any layout_type other than 1 (PollLayout.Default).
+            LayoutType       = PollLayout.Default,
         };
 
-        await FollowupAsync(poll: poll);
+        // The text line is required: Discord.Net's followup precondition rejects a message with
+        // no Content/Embed/File/Component and doesn't count the poll toward it.
+        await FollowupAsync(
+            text: $"📅 Scheduling poll started by **{Username}** for **{user.DisplayName}**",
+            poll: poll,
+            allowedMentions: AllowedMentions.None);
     }
 
 

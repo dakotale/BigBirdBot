@@ -344,10 +344,14 @@ public sealed class InteractionHandlerService
             _ => "Error"
         };
 
-        string body = result.Error switch
+        string body = result switch
         {
-            InteractionCommandError.BadArgs => "Invalid number of arguments.",
-            InteractionCommandError.Unsuccessful => "Command could not be executed.",
+            { Error: InteractionCommandError.BadArgs } => "Invalid number of arguments.",
+            { Error: InteractionCommandError.Unsuccessful } => "Command could not be executed.",
+            // Surface the real failure (e.g. a Discord API "Invalid Form Body" reason) so a
+            // self-hosted operator can diagnose it without digging through logs. The command
+            // exception is wrapped in an InteractionException — unwrap to the innermost cause.
+            ExecuteResult { Exception: { } ex } => Truncate(DescribeException(Unwrap(ex)), 900),
             _ => result.ErrorReason
         };
 
@@ -360,6 +364,32 @@ public sealed class InteractionHandlerService
         try { await interaction.RespondAsync(embed: embed, ephemeral: true); }
         catch { await interaction.FollowupAsync(embed: embed, ephemeral: true); }
     }
+
+    /// <summary>Trims a string to <paramref name="max"/> characters, appending an ellipsis if it was longer.</summary>
+    private static string Truncate(string s, int max) =>
+        s.Length <= max ? s : s[..(max - 1)] + "…";
+
+    /// <summary>Peels off the framework wrapper exceptions to reach the exception the command actually threw.</summary>
+    private static Exception Unwrap(Exception ex)
+    {
+        while (ex is InteractionException or AggregateException or System.Reflection.TargetInvocationException
+               && ex.InnerException is { } inner)
+            ex = inner;
+        return ex;
+    }
+
+    /// <summary>Formats an exception for the error embed, pulling out the Discord API detail for an <see cref="Discord.Net.HttpException"/>.</summary>
+    private static string DescribeException(Exception ex) => ex switch
+    {
+        Discord.Net.HttpException http =>
+            $"Discord API {(int)http.HttpCode}"
+            + (http.DiscordCode is { } dc ? $" ({(int)dc})" : "")
+            + $": {http.Reason ?? http.Message}"
+            + (http.Errors.Count > 0
+                ? "\n" + string.Join("\n", http.Errors.Select(e => $"• `{e.Path}`: {string.Join("; ", e.Errors.Select(x => x.Message))}"))
+                : ""),
+        _ => $"{ex.GetType().Name}: {ex.Message}",
+    };
 
     /// <summary>Factory delegate Lavalink calls to construct a <see cref="CustomPlayer"/> when joining a voice channel.</summary>
     private static ValueTask<CustomPlayer> CreatePlayerAsync(

@@ -70,9 +70,17 @@ public class UtilityCommands(SchedulingService scheduling, ServerService servers
             Answers          = answers,
             Duration         = (uint)durationHours,
             AllowMultiselect = allowMultiple,
+            // Must be set explicitly: Discord.Net serialises the CLR-default (0) otherwise,
+            // and Discord rejects any layout_type other than 1 (PollLayout.Default).
+            LayoutType       = PollLayout.Default,
         };
 
-        await FollowupAsync(poll: poll);
+        // The text line is not just decoration: Discord.Net's followup precondition rejects a
+        // message that has no Content/Embed/File/Component, and it doesn't count the poll.
+        await FollowupAsync(
+            text: $"🗳️ Poll started by **{Username}**",
+            poll: poll,
+            allowedMentions: AllowedMentions.None);
     }
 
 
