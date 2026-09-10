@@ -10,9 +10,10 @@ namespace DiscordBot.SlashCommands;
 
 /// <summary>
 /// Commands backed by external AI/media APIs:
-///   /chat              — multi-turn conversation via Claude
-///   /detectaibyattachment — Sightengine AI image detection
-///   /mood              — Spotify mood-based track recommendation
+///   /chat      — multi-turn conversation with a character persona via Claude
+///   /support   — multi-turn conversation with a mental-health / identity support guide via Claude
+///   /detectai  — Sightengine AI image detection
+///   /mood      — Spotify mood-based track recommendation
 /// </summary>
 public class AICommands : InteractionModuleBase<SocketInteractionContext>
 {
@@ -21,7 +22,7 @@ public class AICommands : InteractionModuleBase<SocketInteractionContext>
     private readonly AIMessageService _messages;
     private readonly EmbedHelper _embed = new();
 
-    /// <summary>Injects the Spotify, AI chat, and message-history backends used by /mood, /chat, and /detectaibyattachment respectively.</summary>
+    /// <summary>Injects the Spotify, AI chat, and message-history backends used by /mood, /chat &amp; /support, and /detectai respectively.</summary>
     public AICommands(ISpotifyService spotifyService, IAIChatService aiChatService, AIMessageService messages)
     {
         _spotifyService = spotifyService;
@@ -34,39 +35,60 @@ public class AICommands : InteractionModuleBase<SocketInteractionContext>
 
 
     // =========================================================================
-    // /chat
+    // /chat  &  /support
     // =========================================================================
 
     /// <summary>
-    /// Sends the user's message to the AI backend with the chosen persona as system prompt,
-    /// persisting both sides of the exchange as conversation history (unless starting fresh),
-    /// and splits long replies across multiple follow-up messages beyond the embed limit.
+    /// Multi-turn conversation with a light character/novelty persona (or a plain assistant).
+    /// See <see cref="RunChatAsync"/> for the shared history/streaming logic.
     /// </summary>
-    [SlashCommand("chat", "Have a conversation with the bot using a chosen personality.")]
+    [SlashCommand("chat", "Chat with a character persona, or a plain assistant.")]
     [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
-    public async Task HandleChatAsync(
+    public Task HandleChatAsync(
         [Summary("message", "Your message to the bot"), MinLength(1), MaxLength(1000)] string message,
         [Summary("new-conversation", "Start fresh, clearing previous history"), Choice("Yes", "Yes"), Choice("No", "No")] string startNew,
-        [Summary("personality", "Choose a persona for the bot"),
-         Choice("None",                                              "None"),
-         Choice("ADHD Support Guide — executive function, focus, RSD", "ADHD Support Guide"),
-         Choice("Anxiety Support Guide — panic, social, GAD",         "Anxiety Support Guide"),
-         Choice("Bipolar Support Guide — mania & depression",         "Bipolar Support Guide"),
-         Choice("Bisexual Support Guide — bi-affirming guide",        "Bisexual Support Guide"),
-         Choice("BPD Support Guide — DBT skills, emotions, relationships", "BPD Support Guide"),
-         Choice("Cottagecore Witch — cozy, whimsical, nature-y",      "Cottagecore Witch"),
-         Choice("Depression Support Guide — low mood, motivation",    "Depression Support Guide"),
-         Choice("Eating Disorder Recovery Guide — recovery-focused",  "Eating Disorder Recovery Guide"),
-         Choice("Gay Support Guide — gay & lesbian-affirming guide",  "Gay Support Guide"),
-         Choice("Meisho Doto — Umamusume: Pretty Derby",             "Meisho Doto"),
-         Choice("OCD Support Guide — intrusive thoughts, ERP",        "OCD Support Guide"),
-         Choice("PTSD & Trauma Support Guide — flashbacks, grounding", "PTSD & Trauma Support Guide"),
-         Choice("Queer Support Guide — queer-affirming guide",        "Queer Support Guide"),
-         Choice("Schizophrenia Support Guide — psychosis, treatment, stigma", "Schizophrenia Support Guide"),
-         Choice("Sett — League of Legends",                          "Sett"),
-         Choice("T. M. Opera O — Umamusume: Pretty Derby",           "T. M. Opera O"),
-         Choice("Transfirmation — trans-affirming support guide",     "Transfirmation"),
-         Choice("Vi — League of Legends / Arcane",                   "Vi")] string personality)
+        [Summary("personality", "Choose a character persona"),
+         Choice("None — plain assistant",                        "None"),
+         Choice("Cottagecore Witch — cozy, whimsical, nature-y",  "Cottagecore Witch"),
+         Choice("Meisho Doto — Umamusume: Pretty Derby",          "Meisho Doto"),
+         Choice("Sett — League of Legends",                       "Sett"),
+         Choice("T. M. Opera O — Umamusume: Pretty Derby",        "T. M. Opera O"),
+         Choice("Vi — League of Legends / Arcane",                "Vi")] string personality = "None")
+        => RunChatAsync(message, startNew, personality, isSupport: false);
+
+    /// <summary>
+    /// Multi-turn conversation with a mental-health or identity support guide. Same history/streaming
+    /// path as <see cref="HandleChatAsync"/>, but the reply carries a peer-support / crisis-resource
+    /// disclaimer and the persona list is the support-guide set.
+    /// </summary>
+    [SlashCommand("support", "Talk to a mental-health or identity support guide (peer support, not therapy).")]
+    [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
+    public Task HandleSupportAsync(
+        [Summary("message", "What's on your mind"), MinLength(1), MaxLength(1000)] string message,
+        [Summary("new-conversation", "Start fresh, clearing previous history"), Choice("Yes", "Yes"), Choice("No", "No")] string startNew,
+        [Summary("topic", "Which support guide to talk to"),
+         Choice("ADHD — executive function, focus, RSD",             "ADHD Support Guide"),
+         Choice("Anxiety — panic, social, GAD",                      "Anxiety Support Guide"),
+         Choice("Bipolar — mania & depression",                      "Bipolar Support Guide"),
+         Choice("Bisexual — bi-affirming guide",                     "Bisexual Support Guide"),
+         Choice("BPD — DBT skills, emotions, relationships",         "BPD Support Guide"),
+         Choice("Depression — low mood, motivation",                 "Depression Support Guide"),
+         Choice("Eating Disorder Recovery — recovery-focused",       "Eating Disorder Recovery Guide"),
+         Choice("Gay — gay & lesbian-affirming guide",               "Gay Support Guide"),
+         Choice("OCD — intrusive thoughts, ERP",                     "OCD Support Guide"),
+         Choice("PTSD & Trauma — flashbacks, grounding",             "PTSD & Trauma Support Guide"),
+         Choice("Queer — queer-affirming guide",                     "Queer Support Guide"),
+         Choice("Schizophrenia — psychosis, treatment, stigma",      "Schizophrenia Support Guide"),
+         Choice("Transfirmation — trans-affirming support guide",    "Transfirmation")] string topic)
+        => RunChatAsync(message, startNew, topic, isSupport: true);
+
+    /// <summary>
+    /// Shared body for <c>/chat</c> and <c>/support</c>: resolves the persona to a system prompt,
+    /// sends the user's message to the AI backend with per-user conversation history (unless starting
+    /// fresh), persists both sides of the exchange, and splits long replies across follow-up messages
+    /// beyond the embed limit. <paramref name="isSupport"/> adds a peer-support / crisis-resource note.
+    /// </summary>
+    private async Task RunChatAsync(string message, string startNew, string personality, bool isSupport)
     {
         await DeferAsync();
 
@@ -93,7 +115,12 @@ public class AICommands : InteractionModuleBase<SocketInteractionContext>
             await _messages.AddMessageAsync(userId, serverUid, channelId, "assistant", aiText);
 
             string title = personality == "None" ? "Chat" : personality;
-            string description = $"**Message:** {message}\n\n**Response:** {aiText}";
+
+            string body = $"**Message:** {message}\n\n**Response:** {aiText}";
+            string description = isSupport
+                ? "-# Peer support and psychoeducation — not a substitute for professional care. " +
+                  "In crisis? Call or text 988 (US & Canada) or 116 123 (UK & Ireland).\n\n" + body
+                : body;
 
             const int embedLimit = 4096;
             const int messageLimit = 2000;
@@ -113,19 +140,20 @@ public class AICommands : InteractionModuleBase<SocketInteractionContext>
         }
         catch (Exception ex)
         {
-            await FollowupAsync(embed: _embed.BuildErrorEmbed("Chat", ex.Message, Username).Build());
+            await FollowupAsync(embed: _embed.BuildErrorEmbed(
+                isSupport ? "Support" : "Chat", ex.Message, Username).Build());
         }
     }
 
 
     // =========================================================================
-    // /detectaibyattachment
+    // /detectai
     // =========================================================================
 
     /// <summary>Downloads the attached image, submits it to the Sightengine AI-detection API, and reports the resulting AI-likelihood percentage.</summary>
-    [SlashCommand("detectaibyattachment", "Upload an image to check the probability it was AI-generated.")]
+    [SlashCommand("detectai", "Upload an image to check the probability it was AI-generated.")]
     [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
-    public async Task HandleAiByAttachmentAsync(Attachment attachment)
+    public async Task HandleDetectAiAsync(Attachment attachment)
     {
         await DeferAsync();
 

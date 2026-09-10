@@ -17,19 +17,45 @@ namespace DiscordBot.Helper;
 /// </summary>
 public sealed class SchedulingService(IDbContextFactory<BigBirdContext> contextFactory)
 {
-    /// <summary>Schedules a one-off DM reminder. Replaces <c>AddReminder</c>.</summary>
-    public async Task AddReminderAsync(string userId, string message, DateTime remindAtUtc)
+    /// <summary>Schedules a one-off DM reminder and returns its new id (shown to the user for <c>/reminddelete</c>). Replaces <c>AddReminder</c>.</summary>
+    public async Task<int> AddReminderAsync(string userId, string message, DateTime remindAtUtc)
     {
         await using var db = await contextFactory.CreateDbContextAsync();
 
-        db.Reminders.Add(new Reminder
+        var reminder = new Reminder
         {
             UserId = userId,
             Message = message,
             RemindAtUtc = remindAtUtc
-        });
+        };
+        db.Reminders.Add(reminder);
 
         await db.SaveChangesAsync();
+        return reminder.ReminderId;
+    }
+
+    /// <summary>A user's own not-yet-sent reminders, soonest first.</summary>
+    public async Task<IReadOnlyList<PendingReminder>> GetPendingRemindersAsync(string userId)
+    {
+        await using var db = await contextFactory.CreateDbContextAsync();
+
+        return await db.Reminders
+            .Where(r => r.UserId == userId && !r.Sent)
+            .OrderBy(r => r.RemindAtUtc)
+            .Select(r => new PendingReminder(r.ReminderId, r.Message, r.RemindAtUtc))
+            .ToListAsync();
+    }
+
+    /// <summary>Cancels one of a user's pending reminders. Returns false if it isn't theirs, doesn't exist, or already fired.</summary>
+    public async Task<bool> CancelReminderAsync(string userId, int reminderId)
+    {
+        await using var db = await contextFactory.CreateDbContextAsync();
+
+        int removed = await db.Reminders
+            .Where(r => r.ReminderId == reminderId && r.UserId == userId && !r.Sent)
+            .ExecuteDeleteAsync();
+
+        return removed > 0;
     }
 
     /// <summary>
@@ -56,26 +82,105 @@ public sealed class SchedulingService(IDbContextFactory<BigBirdContext> contextF
     }
 
     /// <summary>
-    /// Registers a birthday: one row per year for the next 9 years (this year through +8), so
-    /// the exact-date match in <see cref="GetTodaysBirthdaysAsync"/> fires once annually with
-    /// no wraparound logic. Replaces <c>AddBirthday</c>.
+    /// Registers (or re-registers) a member's birthday: any existing rows for that member in the
+    /// guild are dropped first, then one row is inserted per year for the next 9 occurrences,
+    /// starting this year — or next year if this year's date has already passed. Feb 29 rolls to
+    /// Feb 28 in common years. The exact-date match in <see cref="GetTodaysBirthdaysAsync"/> then
+    /// fires once annually with no wraparound logic. Replaces <c>AddBirthday</c>.
     /// </summary>
-    public async Task AddBirthdayAsync(DateTime birthdayDate, string birthdayUser, string birthdayGuild, string? birthdayChannel)
+    public async Task AddBirthdayAsync(int month, int day, string mention, string guildId, string? channelId)
     {
         await using var db = await contextFactory.CreateDbContextAsync();
 
-        for (int year = 0; year <= 8; year++)
+        // Idempotent re-registration — never stack duplicate announcements.
+        await db.Birthdays
+            .Where(b => b.BirthdayGuild == guildId && b.BirthdayUser == mention)
+            .ExecuteDeleteAsync();
+
+        var today = DateTime.Now.Date;
+        int startYear = today.Year;
+        var clampedThisYear = new DateTime(startYear, month, Math.Min(day, DateTime.DaysInMonth(startYear, month)));
+        if (clampedThisYear < today) startYear++;
+
+        for (int year = startYear; year < startYear + 9; year++)
         {
             db.Birthdays.Add(new Birthday
             {
-                BirthdayDate = birthdayDate.AddYears(year),
-                BirthdayUser = birthdayUser,
-                BirthdayGuild = birthdayGuild,
-                BirthdayChannel = birthdayChannel
+                BirthdayDate = new DateTime(year, month, Math.Min(day, DateTime.DaysInMonth(year, month))),
+                BirthdayUser = mention,
+                BirthdayGuild = guildId,
+                BirthdayChannel = channelId
             });
         }
 
         await db.SaveChangesAsync();
+    }
+
+    /// <summary>Every birthday registered in a guild, deduplicated to each member's next upcoming occurrence, soonest first.</summary>
+    public async Task<IReadOnlyList<RegisteredBirthday>> GetGuildBirthdaysAsync(string guildId)
+    {
+        await using var db = await contextFactory.CreateDbContextAsync();
+
+        var today = DateTime.Now.Date;
+
+        var rows = await db.Birthdays
+            .Where(b => b.BirthdayGuild == guildId && !b.Sent && b.BirthdayDate >= today)
+            .ToListAsync();
+
+        return rows
+            .GroupBy(b => b.BirthdayUser)
+            .Select(g => g.OrderBy(b => b.BirthdayDate).First())
+            .Select(b => new RegisteredBirthday(b.BirthdayUser, b.BirthdayDate, b.BirthdayChannel))
+            .OrderBy(r => (r.NextDate.Month, r.NextDate.Day))
+            .ToList();
+    }
+
+    /// <summary>Removes every future row for a member's birthday in a guild. Returns the number of rows deleted.</summary>
+    public async Task<int> RemoveBirthdayAsync(string guildId, string mention)
+    {
+        await using var db = await contextFactory.CreateDbContextAsync();
+
+        return await db.Birthdays
+            .Where(b => b.BirthdayGuild == guildId && b.BirthdayUser == mention)
+            .ExecuteDeleteAsync();
+    }
+
+    // ── Per-user time zone (shared across servers; used by /remind) ───────────
+
+    /// <summary>A user's saved time-zone token (IANA id or <c>UTC±HH:MM</c>), or null if they haven't set one.</summary>
+    public async Task<string?> GetUserTimeZoneAsync(string userId)
+    {
+        await using var db = await contextFactory.CreateDbContextAsync();
+
+        return await db.UserTimezones
+            .Where(t => t.UserId == userId)
+            .Select(t => t.TimeZone)
+            .FirstOrDefaultAsync();
+    }
+
+    /// <summary>Saves (or replaces) a user's time zone. <paramref name="timeZone"/> should already be a canonical token from <see cref="TimeZoneResolver"/>.</summary>
+    public async Task SetUserTimeZoneAsync(string userId, string timeZone)
+    {
+        await using var db = await contextFactory.CreateDbContextAsync();
+
+        var row = await db.UserTimezones.FirstOrDefaultAsync(t => t.UserId == userId);
+        if (row is null)
+            db.UserTimezones.Add(new UserTimezone { UserId = userId, TimeZone = timeZone, UpdatedOn = DateTime.UtcNow });
+        else
+        {
+            row.TimeZone = timeZone;
+            row.UpdatedOn = DateTime.UtcNow;
+        }
+
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>Clears a user's saved time zone. Returns whether a row existed.</summary>
+    public async Task<bool> ClearUserTimeZoneAsync(string userId)
+    {
+        await using var db = await contextFactory.CreateDbContextAsync();
+
+        return await db.UserTimezones.Where(t => t.UserId == userId).ExecuteDeleteAsync() > 0;
     }
 
     /// <summary>

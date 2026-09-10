@@ -56,6 +56,7 @@ public sealed class BigBirdContext(DbContextOptions<BigBirdContext> options) : D
     // ── Scheduling (reminders / birthdays) ──────────────────────────────────
     public DbSet<Reminder> Reminders => Set<Reminder>();
     public DbSet<Birthday> Birthdays => Set<Birthday>();
+    public DbSet<UserTimezone> UserTimezones => Set<UserTimezone>();
 
     // ── AI chat history ──────────────────────────────────────────────────────
     public DbSet<BotAiMessage> BotAiMessages => Set<BotAiMessage>();
@@ -250,6 +251,15 @@ public sealed class BigBirdContext(DbContextOptions<BigBirdContext> options) : D
             e.Property(x => x.Message).HasColumnName("Message").HasMaxLength(1000);
             e.Property(x => x.RemindAtUtc).HasColumnName("RemindAtUtc").HasColumnType("timestamp");
             e.Property(x => x.Sent).HasColumnName("Sent");
+        });
+
+        modelBuilder.Entity<UserTimezone>(e =>
+        {
+            e.ToTable("UserTimezone");
+            e.HasKey(x => x.UserId);
+            e.Property(x => x.UserId).HasColumnName("UserID").HasMaxLength(50);
+            e.Property(x => x.TimeZone).HasColumnName("TimeZone").HasMaxLength(64);
+            e.Property(x => x.UpdatedOn).HasColumnName("UpdatedOn").HasColumnType("timestamp");
         });
 
         modelBuilder.Entity<Birthday>(e =>

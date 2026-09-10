@@ -36,7 +36,7 @@ namespace DiscordBot.SlashCommands
         }
 
         /// <summary>Changes the bot's own server nickname.</summary>
-        [SlashCommand("editbotnickname", "Change the bot's nickname in this server.")]
+        [SlashCommand("botnick", "Change the bot's nickname in this server.")]
         [CommandContextType(InteractionContextType.Guild)]
         [RequireUserPermission(ChannelPermission.ManageRoles)]
         public async Task HandleBotNicknameAsync(
@@ -65,12 +65,13 @@ namespace DiscordBot.SlashCommands
         {
             await DeferAsync(ephemeral: true);
 
-            var messages = await Context.Channel.GetMessagesAsync(count + 1).FlattenAsync();
+            // A slash command leaves no message in the channel, so fetch exactly `count`.
+            var messages = (await Context.Channel.GetMessagesAsync(count).FlattenAsync()).ToList();
 
             // Discord bulk-delete only works on messages < 14 days old.
             var cutoff = DateTimeOffset.UtcNow.AddDays(-14);
             var eligible = messages.Where(m => m.Timestamp > cutoff).ToList();
-            int skipped = messages.Count() - eligible.Count;
+            int skipped = messages.Count - eligible.Count;
 
             if (eligible.Count == 0)
             {
@@ -80,7 +81,11 @@ namespace DiscordBot.SlashCommands
                 return;
             }
 
-            await ((ITextChannel)Context.Channel).DeleteMessagesAsync(eligible);
+            var channel = (ITextChannel)Context.Channel;
+            if (eligible.Count == 1)
+                await eligible[0].DeleteAsync();          // bulk-delete endpoint requires 2+
+            else
+                await channel.DeleteMessagesAsync(eligible);
 
             string note = skipped > 0
                 ? $"\n*{skipped} message(s) older than 14 days were skipped.*"

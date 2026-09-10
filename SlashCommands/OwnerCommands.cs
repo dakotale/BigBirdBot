@@ -7,8 +7,8 @@ using DiscordBot.Helper;
 namespace DiscordBot.SlashCommands
 {
     /// <summary>Bot-owner-only maintenance commands: cross-server announcements, schedule/connection listings, user table backfill, and manual keyword-image cleanup.</summary>
-    // GuildModule decoration limits these commands to only show by the guild below.
-    [GuildModule(880569055856185354)]
+    // GuildModule decoration limits these commands to only show in the bot developer's home guild.
+    [GuildModule(Constants.Constants.Bot.LogGuildId)]
     public class OwnerCommands(KeywordService keywords, KeywordMaintenanceService keywordMaintenance, ServerService servers, UserService userService, MusicService music) : InteractionModuleBase<SocketInteractionContext>
     {
         /// <summary>Broadcasts a message (with optional attachment) to every server's default channel where the bot has permission to post, reporting which servers were skipped.</summary>

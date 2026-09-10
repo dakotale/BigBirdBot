@@ -1,6 +1,6 @@
 # BigBirdBot
 
-A Discord bot built with [Discord.Net](https://github.com/discord-net/Discord.Net) (C#, .NET 10). BigBirdBot plays music, auto-responds to configured keywords, talks to Claude, runs a small set of server utilities and admin tools, and posts an hourly bonus word puzzle — with per-server data stored in SQL Server.
+A Discord bot built with [Discord.Net](https://github.com/discord-net/Discord.Net) (C#, .NET 10). BigBirdBot plays music, auto-responds to configured keywords, talks to Claude, runs a small set of server utilities and admin tools, and posts an hourly bonus word puzzle — with per-server data stored in PostgreSQL.
 
 ---
 
@@ -13,6 +13,7 @@ A Discord bot built with [Discord.Net](https://github.com/discord-net/Discord.Ne
 - [AutoRole](#autorole)
 - [Server & Utility](#server--utility)
 - [Admin](#admin)
+- [Moderation](#moderation)
 - [Owner](#owner)
 - [Tech Stack](#tech-stack)
 
@@ -35,8 +36,7 @@ Music playback is powered by [Lavalink4NET](https://github.com/angelobreuer/Lava
 | `/nowplaying` | Show the currently playing track with progress bar. |
 | `/queue` | Show the upcoming tracks in the queue. |
 | `/volume <0–100>` | Set playback volume. |
-| `/loop <n>` | Queue the current track N more times. |
-| `/repeat` | Queue the current track one more time. |
+| `/loop <mode>` | Set the repeat mode: `off`, `track` (repeat the current track), or `queue` (repeat the whole queue). |
 | `/shuffle` | Randomize the queue order. |
 | `/clear` | Remove all tracks from the queue. |
 | `/remove <position>` | Remove a specific track from the queue by position. |
@@ -78,8 +78,9 @@ Keyword management requires the **Manage Messages** permission.
 
 | Command | Description |
 |---|---|
-| `/chat <message> <new-conversation> <personality>` | Have a multi-turn conversation with Claude. Conversation history persists per user until you start fresh. Choose "None" for a generic assistant, or a named persona (e.g. Cottagecore Witch, Sett, Vi) to change the system prompt. |
-| `/detectaibyattachment <attachment>` | Upload an image to check the probability it was AI-generated, via the Sightengine API. |
+| `/chat <message> <new-conversation> [personality]` | Multi-turn conversation with Claude using a light character persona (Cottagecore Witch, Meisho Doto, Sett, T. M. Opera O, Vi) or "None" for a plain assistant. History persists per user/channel until you start fresh. |
+| `/support <message> <new-conversation> <topic>` | Multi-turn conversation with a mental-health or identity support guide (ADHD, Anxiety, Bipolar, Bisexual, BPD, Depression, Eating Disorder Recovery, Gay, OCD, PTSD & Trauma, Queer, Schizophrenia, Transfirmation). Every reply carries a peer-support / crisis-resource disclaimer; the personas are framed as psychoeducation and peer support, not therapy. Same history model as `/chat`. |
+| `/detectai <attachment>` | Upload an image to check the probability it was AI-generated, via the Sightengine API. |
 | `/mood <mood>` | Get a random Spotify track matching a described mood (e.g. melancholy, hype, chill). |
 
 ---
@@ -96,11 +97,11 @@ Automatically assigns a configured role to every new member who joins.
 
 | Command | Description |
 |---|---|
-| `/autorole set <role>` | Set the role to assign when a new member joins. |
+| `/autorole set <role> [backfill]` | Set the role to assign when a new member joins. Warns if the role sits above the bot's own role (assignment would fail); `backfill: true` also grants it to every current member. |
 | `/autorole clear` | Remove the auto-role setting for this server. |
 | `/autorole status` | Show the current auto-role configuration. |
 
-Requires the **Manage Roles** permission.
+Requires the **Manage Roles** permission (bot and user).
 
 ---
 
@@ -110,25 +111,37 @@ Requires the **Manage Roles** permission.
 
 | Command | Description |
 |---|---|
-| `/avatar [user]` | Display a user's avatar in full resolution. |
+| `/avatar [user]` | Display a user's avatar in full resolution (works in DMs too). |
 | `/serverinfo` | Show information about the current server. |
-| `/addbirthday <user> <month> <day> [channel]` | Register a member's birthday for bot announcements. |
-| `/setrolecolor <hex> [user]` | Set the colour of your role (or another member's) by hex code (e.g. `#FF5733`). |
-| `/polldnd <user>` | Reaction availability poll for D&D scheduling (next 7 days). |
-| `/reportbug <description>` | Submit a bug report to the bot developer. |
+| `/setrolecolor <hex> [member]` | Set the colour of your personal name-role by hex code (e.g. `#FF5733`). Setting another member's needs **Manage Roles**; the bot needs **Manage Roles**. Abandoned personal roles are cleaned up when the member leaves. |
+| `/polldnd <user> [duration_hours]` | Native multi-select poll of the next 7 days for scheduling a member's D&D session. |
+| `/reportbug <description>` | Submit a bug report to the bot developer (rate-limited to one per minute). |
+
+### Birthdays
+
+The bot posts a greeting in the server's announcement channel on each registered birthday. You may always manage your own; managing someone else's needs **Manage Server**.
+
+| Command | Description |
+|---|---|
+| `/addbirthday <user> <month> <day> [channel]` | Register (or re-register) a birthday. Re-running replaces the previous entry — no duplicate greetings. Rejects impossible dates (e.g. Apr 31). |
+| `/birthdays` | List the birthdays registered in this server, each as its next upcoming date. |
+| `/birthdayremove <user>` | Remove a member's registered birthday. |
 
 ### Utility
 
 | Command | Description |
 |---|---|
 | `/random <max>` | Pick a random number between 1 and the given value. |
-| `/poll <question> <options>` | Create a reaction poll with up to 10 choices. |
-| `/remind <message> <when> [utc_offset]` | Set a DM reminder for yourself. |
+| `/poll <question> <answer1> <answer2> … [duration_hours] [allow_multiple]` | Create a native Discord poll with 2–10 answers. |
+| `/timezone [zone]` | Show, set, or clear your saved time zone — an offset (`-5`, `+5:30`), an IANA name (`Europe/London`), or `clear`. Used by `/remind`. |
+| `/remind <message> <when> [timezone]` | Set a DM reminder. `when` accepts `in 90m`, `in 3 days`, `tomorrow 9am`, or `2026-03-25 15:30` (month/day order), interpreted in your saved `/timezone` unless overridden. |
+| `/reminders` | List your pending reminders with their cancel numbers. |
+| `/reminddelete <id>` | Cancel one of your pending reminders. |
 | `/colorpreview <hex>` | Preview what a hex colour looks like as an embed. |
-| `/dnddice <expression>` | Roll any number of any-sided dice with an optional modifier (e.g. `2d6+3`). |
-| `/fixembed <url>` | Fix embeds for Twitter/X, Reddit, TikTok, and Bluesky links. |
+| `/dnddice <number_of_dice> <sides_on_dice> [modifier]` | Roll up to 100 dice of up to 1000 sides (e.g. `2` × `d6` `+3`), flagging natural 1s and max rolls. |
+| `/fixembed` | **(Manage Server)** Toggle whether the bot fixes Twitter/X, Reddit, TikTok, and Bluesky embeds in this server. |
 
-Birthday reminders and DM reminders are both delivered by the same minute-tick background scheduler that posts the bonus word puzzle.
+Birthday greetings and DM reminders are both delivered by the same minute-tick background scheduler that posts the bonus word puzzle.
 
 ---
 
@@ -139,9 +152,26 @@ These commands require elevated permissions.
 | Command | Permission | Description |
 |---|---|---|
 | `/pronoun` | Manage Messages | Post a pronoun role selection menu for members. |
-| `/editbotnickname <name>` | Manage Roles | Change the bot's nickname in this server. |
-| `/purge <count>` | Manage Messages | Bulk-delete up to 100 messages from the current channel. |
+| `/botnick <name>` | Manage Roles | Change the bot's nickname in this server. |
+| `/purge <count>` | Manage Messages | Bulk-delete up to 100 messages from the current channel (messages older than 14 days can't be bulk-deleted and are skipped). |
 | `/announcements` | Manage Guild | Toggle timed bot announcements (bonus word puzzle, birthdays) for this server. |
+
+---
+
+## Moderation
+
+Each command requires the matching Discord permission from **both** the invoking user and the bot, and refuses targets that neither the caller nor the bot outranks by role hierarchy.
+
+| Command | Permission | Description |
+|---|---|---|
+| `/mod kick <member> [reason]` | Kick Members | Kick a member. |
+| `/mod ban <member> [delete_message_days] [reason]` | Ban Members | Ban a member, optionally pruning 0–7 days of their messages. |
+| `/mod unban <user_id>` | Ban Members | Lift a ban by user ID. |
+| `/mod timeout <member> <minutes> [reason]` | Moderate Members | Time a member out (1 min – 28 days). |
+| `/mod untimeout <member>` | Moderate Members | Clear a member's timeout. |
+| `/mod slowmode <seconds>` | Manage Channels | Set the current channel's slowmode (0–21600s; 0 disables). |
+| `/role add <member> <role>` | Manage Roles | Give a member a role (below the bot's and your own top role). |
+| `/role remove <member> <role>` | Manage Roles | Remove a role from a member. |
 
 ---
 
@@ -156,6 +186,7 @@ Bot-owner-only maintenance tooling, visible only in the developer's own server.
 | `/connplayers` | List all connected music players across voice channels. |
 | `/populateallusers` | Backfill the Users table for a server. |
 | `/delmultiimage` | Delete a multi-keyword image by path. |
+| `/keywordreconcile [purge_orphan_files]` | Sync the keyword image folder with the database — drop rows whose file is gone, and report (or purge) files no row points at. |
 
 ---
 
@@ -174,7 +205,7 @@ Bot-owner-only maintenance tooling, visible only in the developer's own server.
 ### Architecture Notes
 
 - All tables are kept for archival even after a feature's commands and stored procedures are removed — nothing is dropped from the schema, only unused procs.
-- `SQL/Database/dbo/Migrations/` holds hand-written, numbered SQL migrations (schema changes and stored-procedure DROP scripts); they're run manually against the live database, not via EF Core migrations.
+- `SQL/Database/postgres/` holds hand-written, numbered migration scripts (`001_InitialSchema.sql`, `002_…`, `003_UserTimezone.sql`, …), run manually against the live database — there are no EF Core migrations. **After deploying a build that adds one, run the new script:** `psql -U discordbot -d discordbot -h localhost -f SQL/Database/postgres/00N_*.sql`.
 - Every feature area's data access goes through EF Core (`Data/*Entities.cs` + `Helper/*Service.cs`, mapped explicitly onto the existing schema in `Data/BigBirdContext.cs`) — there is no remaining ADO.NET stored-procedure access anywhere in the app.
 - A single background loop (`BotHost.RunSchedulerAsync` in `Program.cs`) drives every time-based feature: DM reminders and birthday greetings (every minute), the hourly bonus word puzzle, and scheduled keyword deliveries.
 - No Windows-only dependencies: keyword images use OS-relative paths (`Constants.keywordDirectory`, resolved via `Helper/KeywordFiles.cs`), hex colours are parsed by `Helper/HexColor.cs`, and there is no `System.Drawing` / `SkiaSharp`.

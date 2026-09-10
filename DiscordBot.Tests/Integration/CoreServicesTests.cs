@@ -126,7 +126,7 @@ public sealed class CoreServicesTests : IClassFixture<DatabaseFixture>
         try
         {
             var today = DateTime.Now.Date;
-            await _scheduling.AddBirthdayAsync(today, "@zztest", TestGuildId.ToString(), null);
+            await _scheduling.AddBirthdayAsync(today.Month, today.Day, "@zztest", TestGuildId.ToString(), null);
 
             await using (var db = _factory.CreateDbContext())
             {

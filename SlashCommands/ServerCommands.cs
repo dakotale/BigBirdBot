@@ -3,6 +3,9 @@ using Discord.Interactions;
 using Discord.WebSocket;
 using DiscordBot.Constants;
 using DiscordBot.Helper;
+using System.Collections.Concurrent;
+using System.Globalization;
+using System.Text;
 
 namespace DiscordBot.SlashCommands;
 
@@ -15,26 +18,23 @@ public class ServerCommands(SchedulingService scheduling) : InteractionModuleBas
 
     private string Username => Context.User.Username;
     private string AvatarUrl => Context.User.GetAvatarUrl();
-    private string UserId => Context.User.Id.ToString();
-    private string ServerId => Context.Guild?.Id.ToString() ?? "DM";
 
-    private static readonly string[] NumberEmojis =
-    [
-        "1️⃣","2️⃣","3️⃣","4️⃣","5️⃣",
-        "6️⃣","7️⃣","8️⃣","9️⃣","🔟"
-    ];
+    // Per-user /reportbug cooldown so the owner's log channel can't be spammed.
+    private static readonly ConcurrentDictionary<ulong, DateTime> _bugReportCooldowns = new();
+    private static readonly TimeSpan BugReportCooldown = TimeSpan.FromSeconds(60);
 
 
-    /// <summary>Shows a member's (or the caller's) avatar at full resolution.</summary>
+    /// <summary>Shows a member's (or the caller's) avatar at full resolution. Works in DMs (where only the caller can be targeted).</summary>
     [SlashCommand("avatar", "Display your avatar or another member's in full resolution.")]
     [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
-    public async Task HandleAvatarAsync(SocketGuildUser? user = null)
+    public async Task HandleAvatarAsync(IUser? user = null)
     {
         await DeferAsync();
-        var target = user ?? (SocketGuildUser)Context.User;
+        var target = user ?? Context.User;
+        string name = (target as IGuildUser)?.DisplayName ?? target.GlobalName ?? target.Username;
 
         await FollowupAsync(embed: _embed.BuildSimpleEmbed(
-            $"{target.DisplayName}'s Avatar", "", Color.Blue,
+            $"{name}'s Avatar", "", Color.Blue,
             footer: $"Requested by {Username}", footerIconUrl: AvatarUrl)
             .WithImageUrl(target.GetDisplayAvatarUrl(size: 1024) ?? target.GetDefaultAvatarUrl()).Build());
     }
@@ -51,7 +51,7 @@ public class ServerCommands(SchedulingService scheduling) : InteractionModuleBas
         await FollowupAsync(embed: _embed.BuildSimpleEmbed(
             $"🏰  {guild.Name}", "", Color.Blue,
             footer: $"ID: {guild.Id}  •  Requested by {Username}", footerIconUrl: AvatarUrl,
-            fields: [("Owner", guild.Owner.DisplayName, true),
+            fields: [("Owner", guild.Owner?.DisplayName ?? "Unknown", true),
                      ("Members", guild.MemberCount.ToString(), true),
                      ("Boost Level", $"Level {(int)guild.PremiumTier}", true),
                      ("Boosts", guild.PremiumSubscriptionCount.ToString(), true),
@@ -63,47 +63,53 @@ public class ServerCommands(SchedulingService scheduling) : InteractionModuleBas
     }
 
 
-    /// <summary>Records a member's birthday for future celebration, creating (and backfilling) a "birthday" role on the server if one doesn't already exist.</summary>
-    [SlashCommand("addbirthday", "Add a member's birthday so the bot can celebrate it.")]
+    /// <summary>
+    /// Registers a member's birthday for the yearly greeting. Re-registering the same member
+    /// replaces their previous entry (no stacked announcements). You may always register your
+    /// own; registering someone else needs Manage Server.
+    /// </summary>
+    [SlashCommand("addbirthday", "Add a birthday so the bot can celebrate it (yours, or anyone's with Manage Server).")]
     [CommandContextType(InteractionContextType.Guild)]
     public async Task HandleBirthdayAsync(
         SocketGuildUser user,
-        [MinValue(1), MaxValue(12)] int monthNumber,
-        [MinValue(1), MaxValue(31)] int dayNumber,
-        [Summary(description: "Channel to post the birthday message in. Defaults to the server's default channel.")]
+        [Summary("month", "Month (1–12)"), MinValue(1), MaxValue(12)] int monthNumber,
+        [Summary("day", "Day of month (1–31)"), MinValue(1), MaxValue(31)] int dayNumber,
+        [Summary("channel", "Where to post the greeting. Defaults to the server's announcement channel.")]
         SocketTextChannel? channel = null)
     {
         await DeferAsync(ephemeral: true);
 
+        if (!MayManageBirthdayFor(user))
+        {
+            await FollowupAsync(embed: _embed.BuildErrorEmbed(
+                "Birthday", "You can only add your own birthday — adding someone else's needs the **Manage Server** permission.",
+                Username).Build(), ephemeral: true);
+            return;
+        }
+
+        // Feb 29 is allowed (stored, and rolled to Feb 28 in common years); reject impossible
+        // combinations like April 31.
+        int maxDay = DateTime.DaysInMonth(2024, monthNumber); // 2024 is a leap year → February allows 29
+        if (dayNumber > maxDay)
+        {
+            await FollowupAsync(embed: _embed.BuildErrorEmbed(
+                "Birthday", $"{CultureInfo.InvariantCulture.DateTimeFormat.GetMonthName(monthNumber)} only has {maxDay} days.",
+                Username).Build(), ephemeral: true);
+            return;
+        }
+
         try
         {
-            var guild = Context.Guild;
-
-            IRole birthdayRole = guild.Roles.FirstOrDefault(r => r.Name.Contains("birthday", StringComparison.OrdinalIgnoreCase));
-            if (birthdayRole == null)
-            {
-                birthdayRole = await guild.CreateRoleAsync("birthday", null, Color.Purple, false, true);
-            }
-
-            await guild.DownloadUsersAsync();
-            var nonBotMembers = guild.Users.Where(u => !u.IsBot).ToList();
-            var membersToAdd = nonBotMembers.Where(u => !u.Roles.Any(r => r.Id == birthdayRole.Id)).ToList();
-            foreach (var member in membersToAdd)
-            {
-                await member.AddRoleAsync(birthdayRole);
-            }
-
-            var birthday = new DateTime(DateTime.Now.Year, monthNumber, dayNumber);
-
-            await scheduling.AddBirthdayAsync(birthday, user.Mention, guild.Id.ToString(), channel?.Id.ToString());
+            await scheduling.AddBirthdayAsync(
+                monthNumber, dayNumber, user.Mention, Context.Guild.Id.ToString(), channel?.Id.ToString());
 
             string channelNote = channel is not null
-                ? $" Announcements will post in {channel.Mention}."
-                : " Announcements will post in the server's default channel.";
+                ? $" Greetings will post in {channel.Mention}."
+                : " Greetings will post in the server's announcement channel.";
 
             await FollowupAsync(embed: _embed.BuildMessageEmbed(
-                "Birthday Added",
-                $"**{user.DisplayName}'s** birthday ({monthNumber}/{dayNumber}) was added.{channelNote}",
+                "🎂  Birthday Added",
+                $"**{user.DisplayName}'s** birthday ({monthNumber}/{dayNumber}) is registered.{channelNote}",
                 "", Username, Color.Blue).Build(), ephemeral: true);
         }
         catch (Exception ex)
@@ -115,14 +121,86 @@ public class ServerCommands(SchedulingService scheduling) : InteractionModuleBas
     }
 
 
-    /// <summary>Sets a member's personal name-role to the given hex color, creating the role positioned just below the bot's role if it doesn't already exist.</summary>
-    [SlashCommand("setrolecolor", "Set the colour of your role by hex code.")]
+    /// <summary>Lists the birthdays registered in this server, each shown as its next upcoming date.</summary>
+    [SlashCommand("birthdays", "List the birthdays registered in this server.")]
     [CommandContextType(InteractionContextType.Guild)]
-    public async Task HandleColorAsync(
-        [MinLength(1), MaxLength(10)] string hexCode,
-        SocketGuildUser? userName = null)
+    public async Task HandleBirthdaysAsync()
     {
         await DeferAsync(ephemeral: true);
+
+        var birthdays = await scheduling.GetGuildBirthdaysAsync(Context.Guild.Id.ToString());
+
+        if (birthdays.Count == 0)
+        {
+            await FollowupAsync(embed: _embed.BuildMessageEmbed(
+                "🎂  Birthdays", "No birthdays are registered in this server yet.",
+                "", Username, Color.Blue).Build(), ephemeral: true);
+            return;
+        }
+
+        var sb = new StringBuilder();
+        foreach (var b in birthdays.Take(40))
+            sb.AppendLine($"- {b.Mention} — **{b.NextDate:MMMM d}**");
+        if (birthdays.Count > 40)
+            sb.AppendLine($"*…and {birthdays.Count - 40} more.*");
+
+        await FollowupAsync(embed: _embed.BuildMessageEmbed(
+            "🎂  Registered Birthdays", sb.ToString(), "", Username, Color.Blue).Build(), ephemeral: true);
+    }
+
+
+    /// <summary>Removes a member's registered birthday. Your own, or anyone's with Manage Server.</summary>
+    [SlashCommand("birthdayremove", "Remove a member's registered birthday.")]
+    [CommandContextType(InteractionContextType.Guild)]
+    public async Task HandleBirthdayRemoveAsync(SocketGuildUser user)
+    {
+        await DeferAsync(ephemeral: true);
+
+        if (!MayManageBirthdayFor(user))
+        {
+            await FollowupAsync(embed: _embed.BuildErrorEmbed(
+                "Birthday", "You can only remove your own birthday — removing someone else's needs the **Manage Server** permission.",
+                Username).Build(), ephemeral: true);
+            return;
+        }
+
+        int removed = await scheduling.RemoveBirthdayAsync(Context.Guild.Id.ToString(), user.Mention);
+
+        await FollowupAsync(embed: _embed.BuildMessageEmbed(
+            removed > 0 ? "🎂  Birthday Removed" : "🎂  Nothing to Remove",
+            removed > 0 ? $"Removed **{user.DisplayName}'s** birthday." : $"**{user.DisplayName}** has no registered birthday.",
+            "", Username, removed > 0 ? Color.Green : Color.Red).Build(), ephemeral: true);
+    }
+
+    /// <summary>True if the caller may add/remove a birthday for <paramref name="target"/> — always for themselves, otherwise Manage Server.</summary>
+    private bool MayManageBirthdayFor(IUser target) =>
+        target.Id == Context.User.Id ||
+        Context.User is SocketGuildUser { GuildPermissions.ManageGuild: true };
+
+
+    /// <summary>
+    /// Sets a member's personal name-role to the given hex colour, creating it just below the
+    /// bot's highest role if it doesn't exist. Setting your own is unrestricted; setting another
+    /// member's needs Manage Roles. The bot needs Manage Roles either way.
+    /// </summary>
+    [SlashCommand("setrolecolor", "Set the colour of your personal role by hex code.")]
+    [CommandContextType(InteractionContextType.Guild)]
+    [RequireBotPermission(GuildPermission.ManageRoles)]
+    public async Task HandleColorAsync(
+        [Summary("hex", "Hex colour, e.g. #607C8C"), MinLength(1), MaxLength(10)] string hexCode,
+        [Summary("member", "Whose colour to set (needs Manage Roles). Defaults to you.")]
+        SocketGuildUser? member = null)
+    {
+        await DeferAsync(ephemeral: true);
+
+        if (member is not null && member.Id != Context.User.Id &&
+            Context.User is not SocketGuildUser { GuildPermissions.ManageRoles: true })
+        {
+            await FollowupAsync(embed: _embed.BuildErrorEmbed(
+                "Role Colour", "Setting another member's role colour needs the **Manage Roles** permission.",
+                Username).Build(), ephemeral: true);
+            return;
+        }
 
         string bare = hexCode.TrimStart('#');
 
@@ -137,8 +215,9 @@ public class ServerCommands(SchedulingService scheduling) : InteractionModuleBas
         try
         {
             var guild = Context.Guild;
-            var target = (IGuildUser)(userName ?? (SocketGuildUser)Context.User);
-            string name = ((SocketGuildUser)target).Username;
+            var target = (IGuildUser)(member ?? (SocketGuildUser)Context.User);
+            string name = target.Username;
+            int botTop = guild.CurrentUser.Roles.Max(r => r.Position);
 
             if (guild.Roles.FirstOrDefault(r => r.Name == name) is { } existing)
             {
@@ -146,16 +225,16 @@ public class ServerCommands(SchedulingService scheduling) : InteractionModuleBas
             }
             else
             {
-                int botPos = guild.Roles.First(r => r.Name == "BigBirdBot").Position;
-                var created = await guild.CreateRoleAsync(name, null, roleColor, false, true);
-                await created.ModifyAsync(p => p.Position = botPos - 1);
+                var created = await guild.CreateRoleAsync(name, null, roleColor, isHoisted: false, isMentionable: false);
+                try { await created.ModifyAsync(p => p.Position = Math.Max(1, botTop - 1)); }
+                catch { /* Discord can reject a position edit; the role still works, just lower down */ }
                 await target.AddRoleAsync(created);
             }
 
             await FollowupAsync(embed: _embed.BuildMessageEmbed(
-                "Role Colour",
-                $"Colour updated to **#{bare.ToUpperInvariant()}**.",
-                "", Username, Color.Blue).Build(), ephemeral: true);
+                "🎨  Role Colour",
+                $"{(target.Id == Context.User.Id ? "Your" : $"**{target.Username}**'s")} colour is now **#{bare.ToUpperInvariant()}**.",
+                "", Username, roleColor).Build(), ephemeral: true);
         }
         catch (Exception ex)
         {
@@ -166,42 +245,50 @@ public class ServerCommands(SchedulingService scheduling) : InteractionModuleBas
     }
 
 
-    /// <summary>Posts a reaction poll for the next 7 calendar days so members can vote on the best day for a given user's D&amp;D session.</summary>
-    [SlashCommand("polldnd", "Reaction poll for D&D weekly scheduling (next 7 days).")]
+    /// <summary>Posts a native multi-select poll of the next 7 calendar days so members can vote on which days work for a given user's D&amp;D session.</summary>
+    [SlashCommand("polldnd", "Poll the next 7 days to schedule a member's D&D session.")]
     [CommandContextType(InteractionContextType.Guild)]
-    public async Task HandlePollDndAsync(SocketGuildUser user)
+    public async Task HandlePollDndAsync(
+        SocketGuildUser user,
+        [Summary("duration_hours", "How many hours the poll stays open (1–768). Default 48."),
+         MinValue(1), MaxValue(768)] int durationHours = 48)
     {
         await DeferAsync();
 
-        var items = Enumerable.Range(1, 7)
+        var answers = Enumerable.Range(1, 7)
             .Select(i => DateTime.Now.AddDays(i))
-            .Select(d => $"{d.DayOfWeek} ({d:MM/dd})")
+            .Select(d => new PollMediaProperties { Text = $"{d.DayOfWeek} ({d:MM/dd})" })
             .ToList();
 
-        var sb = new System.Text.StringBuilder(
-            $"**Best day for {user.Mention} / {user.DisplayName}'s campaign?**\n\nChoices:");
-        for (int i = 0; i < items.Count; i++)
-            sb.Append($"\n{NumberEmojis[i]}  **{items[i]}**");
+        var poll = new PollProperties
+        {
+            Question         = new PollMediaProperties { Text = $"Which days work for {user.DisplayName}'s D&D session?" },
+            Answers          = answers,
+            Duration         = (uint)durationHours,
+            AllowMultiselect = true,
+        };
 
-        var msg = await FollowupAsync(embed: _embed.BuildMessageEmbed(
-            "Poll — D&D Scheduling", sb.ToString(), "",
-            $"Command from: {Username}", Color.Blue).Build());
-
-        for (int i = 0; i < items.Count; i++)
-            await msg.AddReactionAsync(new Emoji(NumberEmojis[i]));
+        await FollowupAsync(poll: poll);
     }
 
 
-    /// <summary>Forwards a user-submitted bug report to the bot owner's fixed log channel.</summary>
+    /// <summary>Forwards a user-submitted bug report to the bot owner's log channel, rate-limited to one per user per minute.</summary>
     [SlashCommand("reportbug", "Found a bug with the bot? Report it here.")]
     [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
     public async Task HandleBugReportAsync(
         [MinLength(1), MaxLength(2000)] string bugFound)
     {
-        const ulong LogGuildId = 880569055856185354UL;
-        const ulong LogChannelId = 1156625507840954369UL;
+        var now = DateTime.UtcNow;
+        if (_bugReportCooldowns.TryGetValue(Context.User.Id, out var last) && now - last < BugReportCooldown)
+        {
+            int wait = (int)Math.Ceiling((BugReportCooldown - (now - last)).TotalSeconds);
+            await RespondAsync($"⏳ Please wait {wait}s before submitting another bug report.", ephemeral: true);
+            return;
+        }
+        _bugReportCooldowns[Context.User.Id] = now;
 
-        var channel = Context.Client.GetGuild(LogGuildId)?.GetTextChannel(LogChannelId);
+        var channel = Context.Client.GetGuild(Constants.Constants.Bot.LogGuildId)
+            ?.GetTextChannel(Constants.Constants.Bot.LogChannelId);
 
         if (channel is not null)
         {

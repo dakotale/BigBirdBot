@@ -94,7 +94,7 @@ public sealed class CustomPlayer : QueuedLavalinkPlayer
             .WithButton("Skip", "audio:skip", ButtonStyle.Secondary, new Emoji("⏭️"), row: 0)
             .WithButton("Stop", "audio:stop", ButtonStyle.Danger, new Emoji("⏹️"), row: 0)
             .WithButton("Shuffle", "audio:shuffle", ButtonStyle.Secondary, new Emoji("🔀"), row: 0)
-            .WithButton("Loop ×1", "audio:loop1", ButtonStyle.Secondary, new Emoji("🔁"), row: 0)
+            .WithButton("Loop", "audio:loop", ButtonStyle.Secondary, new Emoji("🔁"), row: 0)
             .WithButton("Vol −", "audio:vol_down", ButtonStyle.Secondary, new Emoji("🔉"), row: 1)
             .WithButton("Vol +", "audio:vol_up", ButtonStyle.Secondary, new Emoji("🔊"), row: 1)
             .WithButton("Queue", "audio:queue", ButtonStyle.Secondary, new Emoji("📋"), row: 1)

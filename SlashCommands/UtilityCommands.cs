@@ -18,12 +18,6 @@ public class UtilityCommands(SchedulingService scheduling, ServerService servers
     private string Username => Context.User.Username;
     private string AvatarUrl => Context.User.GetAvatarUrl();
 
-    private static readonly string[] NumberEmojis =
-    [
-        "1️⃣","2️⃣","3️⃣","4️⃣","5️⃣",
-        "6️⃣","7️⃣","8️⃣","9️⃣","🔟"
-    ];
-
 
     /// <summary>Rolls a random integer between 1 and the given upper bound (inclusive).</summary>
     [SlashCommand("random", "Randomise a number between 1 and the value you provide.")]
@@ -40,95 +34,173 @@ public class UtilityCommands(SchedulingService scheduling, ServerService servers
     }
 
 
-    /// <summary>Posts a reaction poll for up to 10 non-empty choices (2 required), with an optional image attachment.</summary>
-    [SlashCommand("poll", "Create a reaction poll with up to 10 choices.")]
-    [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
+    /// <summary>Posts a native Discord poll with 2–10 answers, an optional multi-select, and a configurable run time. Guild-only — Discord does not allow bots to create polls in DMs.</summary>
+    [SlashCommand("poll", "Create a poll with up to 10 choices.")]
+    [CommandContextType(InteractionContextType.Guild)]
     public async Task HandlePollAsync(
-        [MinLength(1), MaxLength(2000)] string statement,
-        [MinLength(1)] string pollAnswer1,
-        [MinLength(1)] string pollAnswer2,
-        string? pollAnswer3 = null, string? pollAnswer4 = null,
-        string? pollAnswer5 = null, string? pollAnswer6 = null,
-        string? pollAnswer7 = null, string? pollAnswer8 = null,
-        string? pollAnswer9 = null, string? pollAnswer10 = null,
-        Attachment? attachment = null)
+        [Summary("question"), MinLength(1), MaxLength(300)] string question,
+        [Summary("answer1"), MinLength(1), MaxLength(55)] string answer1,
+        [Summary("answer2"), MinLength(1), MaxLength(55)] string answer2,
+        [Summary("answer3"), MaxLength(55)] string? answer3 = null,
+        [Summary("answer4"), MaxLength(55)] string? answer4 = null,
+        [Summary("answer5"), MaxLength(55)] string? answer5 = null,
+        [Summary("answer6"), MaxLength(55)] string? answer6 = null,
+        [Summary("answer7"), MaxLength(55)] string? answer7 = null,
+        [Summary("answer8"), MaxLength(55)] string? answer8 = null,
+        [Summary("answer9"), MaxLength(55)] string? answer9 = null,
+        [Summary("answer10"), MaxLength(55)] string? answer10 = null,
+        [Summary("duration_hours", "How many hours the poll stays open (1–768). Default 24."),
+         MinValue(1), MaxValue(768)] int durationHours = 24,
+        [Summary("allow_multiple", "Let voters pick more than one answer")] bool allowMultiple = false)
     {
         await DeferAsync();
 
-        var items = new[]
+        var answers = new[]
         {
-            pollAnswer1, pollAnswer2, pollAnswer3, pollAnswer4, pollAnswer5,
-            pollAnswer6, pollAnswer7, pollAnswer8, pollAnswer9, pollAnswer10
+            answer1, answer2, answer3, answer4, answer5,
+            answer6, answer7, answer8, answer9, answer10
         }
-        .Where(s => !string.IsNullOrEmpty(s))
-        .Select(s => s!.Trim())
+        .Where(s => !string.IsNullOrWhiteSpace(s))
+        .Select(s => new PollMediaProperties { Text = s!.Trim() })
         .ToList();
 
-        var sb = new StringBuilder($"**{statement.Trim()}**\n\nChoices:");
-        for (int i = 0; i < items.Count; i++)
-            sb.Append($"\n{NumberEmojis[i]}  **{items[i]}**");
+        var poll = new PollProperties
+        {
+            Question         = new PollMediaProperties { Text = question.Trim() },
+            Answers          = answers,
+            Duration         = (uint)durationHours,
+            AllowMultiselect = allowMultiple,
+        };
 
-        var msg = await FollowupAsync(embed: _embed.BuildMessageEmbed(
-            "Poll", sb.ToString(), "",
-            $"Command from: {Username}", Color.Blue,
-            attachment?.Url ?? "").Build());
-
-        for (int i = 0; i < items.Count; i++)
-            await msg.AddReactionAsync(new Emoji(NumberEmojis[i]));
+        await FollowupAsync(poll: poll);
     }
 
 
-    /// <summary>Schedules a one-off DM reminder at a parsed local date/time (converted to UTC via the given offset), rejecting times under 1 minute or over 1 year away.</summary>
-    [SlashCommand("remind", "Set a DM reminder for yourself at a specific date/time.")]
+    /// <summary>
+    /// Schedules a one-off DM reminder. <c>when</c> is parsed relative to the user's saved
+    /// <c>/timezone</c> (or the per-call <c>timezone</c> override) via <see cref="WhenParser"/>,
+    /// rejecting times under 1 minute or over 1 year away.
+    /// </summary>
+    [SlashCommand("remind", "Set a DM reminder — 'in 2h', 'tomorrow 9am', '2026-03-25 15:30'.")]
     [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
     public async Task HandleRemindAsync(
-        [MinLength(1), MaxLength(500)] string reminder,
-        [Summary("when", "Date and time, e.g. '03/25/2026 3:30 PM' or '2026-03-25 15:30'")] string when,
-        [Summary("utc_offset", "Your UTC offset, e.g. -5 for EST, -8 for PST, +1 for CET")]
-        double utcOffset = 0)
+        [Summary("message", "What to remind you about"), MinLength(1), MaxLength(500)] string reminder,
+        [Summary("when", "e.g. 'in 90m', 'in 3 days', 'tomorrow 9am', '2026-03-25 15:30' (month/day order)")] string when,
+        [Summary("timezone", "Override your saved zone just for this reminder — e.g. -5, Europe/London")] string? timezone = null)
     {
         await DeferAsync(ephemeral: true);
 
-        if (!DateTime.TryParse(when, out DateTime parsedLocal))
+        string userId = Context.User.Id.ToString();
+
+        TimeZoneInfo zone;
+        string zoneLabel;
+        if (!string.IsNullOrWhiteSpace(timezone))
         {
-            await FollowupAsync(embed: _embed.BuildMessageEmbed(
-                "⏰  Invalid Date",
-                "Couldn't parse that date/time. Try a format like `03/25/2026 3:30 PM` or `2026-03-25 15:30`.",
-                AvatarUrl, Username, Color.Red).Build(), ephemeral: true);
+            if (!TimeZoneResolver.TryResolve(timezone, out zone, out var canonical))
+            {
+                await RemindErrorAsync("Unknown Time Zone",
+                    $"Couldn't understand `{timezone}`. Try an offset like `-5` / `+5:30`, or an IANA name like `Europe/London`.");
+                return;
+            }
+            zoneLabel = canonical;
+        }
+        else
+        {
+            string? saved = await scheduling.GetUserTimeZoneAsync(userId);
+            if (saved is null)
+            {
+                await RemindErrorAsync("Set Your Time Zone First",
+                    "I don't know your time zone, so I can't tell when you mean. Run `/timezone` once " +
+                    "(e.g. `/timezone -5` or `/timezone Europe/London`), or pass `timezone:` on this command.");
+                return;
+            }
+            zone = TimeZoneResolver.Resolve(saved);
+            zoneLabel = saved;
+        }
+
+        if (!WhenParser.TryParse(when, zone, DateTime.UtcNow, out var remindAtUtc))
+        {
+            await RemindErrorAsync("Invalid Time",
+                "Couldn't parse that. Try `in 90m`, `in 3 days`, `tomorrow 9am`, or `2026-03-25 15:30`.");
             return;
         }
 
-        var reminderUtc = DateTime.SpecifyKind(parsedLocal, DateTimeKind.Unspecified)
-                          - TimeSpan.FromHours(utcOffset);
-        var delay = reminderUtc - DateTime.UtcNow;
-
+        var delay = remindAtUtc - DateTime.UtcNow;
         if (delay < TimeSpan.FromMinutes(1))
         {
-            await FollowupAsync(embed: _embed.BuildMessageEmbed(
-                "⏰  Too Soon",
-                "Reminders must be at least **1 minute** from now.",
-                AvatarUrl, Username, Color.Red).Build(), ephemeral: true);
+            await RemindErrorAsync("Too Soon", "Reminders must be at least **1 minute** from now.");
             return;
         }
-
         if (delay > TimeSpan.FromDays(365))
         {
-            await FollowupAsync(embed: _embed.BuildMessageEmbed(
-                "⏰  Too Far",
-                "Reminders can be set at most **1 year** in advance.",
-                AvatarUrl, Username, Color.Red).Build(), ephemeral: true);
+            await RemindErrorAsync("Too Far", "Reminders can be set at most **1 year** in advance.");
             return;
         }
 
-        await scheduling.AddReminderAsync(Context.User.Id.ToString(), reminder, reminderUtc);
+        int id = await scheduling.AddReminderAsync(userId, reminder, remindAtUtc);
 
-        string offsetLabel = utcOffset >= 0 ? $"UTC+{utcOffset}" : $"UTC{utcOffset}";
-        string displayTime = parsedLocal.ToString("MMMM d, yyyy 'at' h:mm tt");
+        long unix = new DateTimeOffset(DateTime.SpecifyKind(remindAtUtc, DateTimeKind.Utc), TimeSpan.Zero).ToUnixTimeSeconds();
+        var localWhen = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(remindAtUtc, DateTimeKind.Utc), zone);
 
         await FollowupAsync(embed: _embed.BuildMessageEmbed(
             "⏰  Reminder Set",
-            $"I'll DM you on **{displayTime}** ({offsetLabel}).\n> {reminder}",
+            $"**#{id}** — I'll DM you on **{localWhen:MMMM d, yyyy 'at' h:mm tt}** ({zoneLabel})  •  <t:{unix}:R>\n> {reminder}\n\n" +
+            $"*Cancel with* `/reminddelete id:{id}`.",
             AvatarUrl, Username, Color.Gold).Build(), ephemeral: true);
+    }
+
+    private Task RemindErrorAsync(string title, string body) =>
+        FollowupAsync(embed: _embed.BuildMessageEmbed(
+            $"⏰  {title}", body, AvatarUrl, Username, Color.Red).Build(), ephemeral: true);
+
+
+    /// <summary>Lists the caller's pending (not-yet-sent) reminders with their cancel ids.</summary>
+    [SlashCommand("reminders", "List your pending reminders.")]
+    [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
+    public async Task HandleRemindersAsync()
+    {
+        await DeferAsync(ephemeral: true);
+
+        var pending = await scheduling.GetPendingRemindersAsync(Context.User.Id.ToString());
+
+        if (pending.Count == 0)
+        {
+            await FollowupAsync(embed: _embed.BuildMessageEmbed(
+                "⏰  Reminders", "You have no pending reminders.",
+                AvatarUrl, Username, Color.Blue).Build(), ephemeral: true);
+            return;
+        }
+
+        var sb = new StringBuilder();
+        foreach (var r in pending.Take(25))
+        {
+            long unix = new DateTimeOffset(DateTime.SpecifyKind(r.RemindAtUtc, DateTimeKind.Utc), TimeSpan.Zero).ToUnixTimeSeconds();
+            string msg = r.Message.Length > 80 ? r.Message[..79] + "…" : r.Message;
+            sb.AppendLine($"**#{r.ReminderId}** — <t:{unix}:f>  (<t:{unix}:R>)\n> {msg}");
+        }
+        if (pending.Count > 25)
+            sb.AppendLine($"*…and {pending.Count - 25} more.*");
+
+        await FollowupAsync(embed: _embed.BuildMessageEmbed(
+            "⏰  Your Reminders", sb.ToString(),
+            AvatarUrl, Username, Color.Blue).Build(), ephemeral: true);
+    }
+
+
+    /// <summary>Cancels one of the caller's pending reminders by the id shown in <c>/reminders</c>.</summary>
+    [SlashCommand("reminddelete", "Cancel one of your pending reminders by its number.")]
+    [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
+    public async Task HandleRemindDeleteAsync(
+        [Summary("id", "The reminder number from /reminders"), MinValue(1)] int id)
+    {
+        await DeferAsync(ephemeral: true);
+
+        bool ok = await scheduling.CancelReminderAsync(Context.User.Id.ToString(), id);
+
+        await FollowupAsync(embed: _embed.BuildMessageEmbed(
+            ok ? "⏰  Reminder Cancelled" : "⏰  Not Found",
+            ok ? $"Reminder **#{id}** was cancelled." : $"You have no pending reminder **#{id}**.",
+            AvatarUrl, Username, ok ? Color.Green : Color.Red).Build(), ephemeral: true);
     }
 
 
@@ -161,12 +233,12 @@ public class UtilityCommands(SchedulingService scheduling, ServerService servers
 
 
     /// <summary>Rolls the given number of dice with the given side count plus a flat modifier, flagging natural 1s and max rolls.</summary>
-    [SlashCommand("dnddice", "Roll any number of any-sided dice with an optional modifier.")]
+    [SlashCommand("dnddice", "Roll up to 100 dice of up to 1000 sides, with an optional modifier.")]
     [CommandContextType(InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel)]
     public async Task HandleDndDiceAsync(
-        [MinValue(1)] int numberOfDice,
-        [MinValue(2)] int sidesOnDice,
-        int modifier = 0)
+        [Summary("number_of_dice", "How many dice (1–100)"), MinValue(1), MaxValue(100)] int numberOfDice,
+        [Summary("sides_on_dice", "Sides per die (2–1000)"), MinValue(2), MaxValue(1000)] int sidesOnDice,
+        [Summary("modifier", "Flat number added to the total")] int modifier = 0)
     {
         await DeferAsync();
 
@@ -192,9 +264,10 @@ public class UtilityCommands(SchedulingService scheduling, ServerService servers
     }
 
 
-    /// <summary>Toggles this server's automatic link-embed-fixing (Twitter/Reddit/TikTok/Bsky) via the UpdateBrokenEmbed stored procedure.</summary>
-    [SlashCommand("fixembed", "Let the bot fix embeds for Twitter, Reddit, Tiktok, and Bsky links.")]
+    /// <summary>Toggles this server's automatic link-embed-fixing (Twitter/Reddit/TikTok/Bsky). Requires Manage Server, matching <c>/announcements</c>.</summary>
+    [SlashCommand("fixembed", "Toggle whether the bot fixes Twitter/Reddit/TikTok/Bluesky embeds here.")]
     [CommandContextType(InteractionContextType.Guild)]
+    [RequireUserPermission(GuildPermission.ManageGuild)]
     public async Task HandleEmbeds()
     {
         await DeferAsync(ephemeral: true);

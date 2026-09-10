@@ -115,6 +115,80 @@ public class PersonaHelperTests
         Assert.Equal(18, PersonaHelper.NamedPersonalities.Count);
     }
 
+    // ── SupportTopics / ChatPersonas partition NamedPersonalities ─────────────
+
+    [Fact]
+    public void SupportTopics_AndChatPersonas_PartitionNamedPersonalities()
+    {
+        var combined = PersonaHelper.SupportTopics
+            .Concat(PersonaHelper.ChatPersonas)
+            .ToList();
+
+        Assert.Equal(PersonaHelper.NamedPersonalities.OrderBy(x => x), combined.OrderBy(x => x));
+        Assert.Empty(PersonaHelper.SupportTopics.Intersect(PersonaHelper.ChatPersonas));
+        Assert.Equal(13, PersonaHelper.SupportTopics.Count);
+        Assert.Equal(5, PersonaHelper.ChatPersonas.Count);
+    }
+
+    [Fact]
+    public void ChatPersonas_AreCharacterPersonas_NotSupportGuides()
+    {
+        Assert.DoesNotContain(PersonaHelper.ChatPersonas, p => p.Contains("Support Guide"));
+    }
+
+    [Fact]
+    public void SupportTopics_AllResolveToNonDefaultPrompt()
+    {
+        foreach (string topic in PersonaHelper.SupportTopics)
+        {
+            string result = PersonaHelper.ResolvePersona(topic);
+            Assert.False(string.IsNullOrWhiteSpace(result), $"{topic}: prompt is empty");
+            Assert.NotEqual(DefaultPersona, result);
+        }
+    }
+
+    // ── Every support topic carries crisis resources ─────────────────────────
+    // Clinical guides get this via MentalHealthCore; the identity-affirming guides
+    // (Bisexual/Gay/Queer/Transfirmation) get it via CrisisCore — previously they
+    // had no crisis framing at all.
+
+    [Theory]
+    [InlineData("Bisexual Support Guide")]
+    [InlineData("Gay Support Guide")]
+    [InlineData("Queer Support Guide")]
+    [InlineData("Transfirmation")]
+    public void ResolvePersona_IdentityGuide_IncludesCrisisResources(string persona)
+    {
+        string result = PersonaHelper.ResolvePersona(persona);
+
+        Assert.Contains("suicide or self-harm", result, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("988", result, StringComparison.Ordinal);
+        Assert.Contains("116 123", result, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ResolvePersona_EverySupportTopic_IncludesCrisisResources()
+    {
+        foreach (string topic in PersonaHelper.SupportTopics)
+        {
+            string result = PersonaHelper.ResolvePersona(topic);
+            Assert.Contains("988", result, StringComparison.Ordinal);
+            Assert.Contains("116 123", result, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void ResolvePersona_CharacterPersona_HasNoCrisisFraming()
+    {
+        // Character personas are novelty roleplay, not support — they must not carry
+        // the support-guide safety scaffolding.
+        foreach (string persona in PersonaHelper.ChatPersonas)
+        {
+            string result = PersonaHelper.ResolvePersona(persona);
+            Assert.DoesNotContain("988", result, StringComparison.Ordinal);
+        }
+    }
+
     // ── Mental-health support guides carry the safety framing ─────────────────
 
     [Theory]

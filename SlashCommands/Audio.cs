@@ -52,7 +52,7 @@ public sealed class Audio(IAudioService audioService, MusicService music)
     private const string BtnVolUp = "audio:vol_up";
     private const string BtnVolDown = "audio:vol_down";
     private const string BtnQueueB = "audio:queue";
-    private const string BtnLoop1 = "audio:loop1";
+    private const string BtnLoop = "audio:loop";
 
 
     /// <summary>Typed guild ID — avoids repeated casts throughout the class.</summary>
@@ -266,7 +266,7 @@ public sealed class Audio(IAudioService audioService, MusicService music)
         }
 
         await FollowupAsync(
-            embed: BuildNowPlayingEmbed(player.CurrentTrack!, player.Queue.Count).Build(),
+            embed: BuildNowPlayingEmbed(player.CurrentTrack!, player.Queue.Count, player.RepeatMode).Build(),
             components: BuildPlaybackButtons(paused: false));
     }
 
@@ -293,7 +293,7 @@ public sealed class Audio(IAudioService audioService, MusicService music)
         if (player.Queue.Count == 0)
         {
             await FollowupAsync(
-                embed: BuildNowPlayingEmbed(current, 0).Build(),
+                embed: BuildNowPlayingEmbed(current, 0, player.RepeatMode).Build(),
                 components: BuildPlaybackButtons(paused: false));
             return;
         }
@@ -326,46 +326,26 @@ public sealed class Audio(IAudioService audioService, MusicService music)
             await FollowupAsync(embed: BuildQueuePageEmbed(pages[p], total, current, page: p + 1, pageCount).Build());
     }
 
-    /// <summary>Re-queues the current track N additional times.</summary>
-    [SlashCommand("loop", "Queues the current track N more times.")]
-    public async Task LoopAsync([MinValue(1)] int times)
+    /// <summary>Sets the repeat mode: off, repeat the current track, or repeat the whole queue.</summary>
+    [SlashCommand("loop", "Set repeat mode: off, the current track, or the whole queue.")]
+    public async Task LoopAsync(
+        [Summary("mode", "What to repeat"),
+         Choice("Off", "off"),
+         Choice("Current track", "track"),
+         Choice("Whole queue", "queue")] string mode)
     {
         await DeferAsync();
         var player = await GetPlayerAsync(connectToVoiceChannel: false);
         if (player is null) return;
 
-        if (player.CurrentItem is null)
+        player.RepeatMode = mode switch
         {
-            await ReplyEmbedAsync(EmojiLoop, "Loop", "Nothing is playing to loop.", ColourWarning);
-            return;
-        }
+            "track" => TrackRepeatMode.Track,
+            "queue" => TrackRepeatMode.Queue,
+            _       => TrackRepeatMode.None,
+        };
 
-        var track = player.CurrentTrack!;
-
-        for (int i = 0; i < times; i++)
-            await player.PlayAsync(track);
-
-        await ReplyEmbedAsync(EmojiLoop, "Loop",
-            $"**{track.Title}** will repeat **{times}** more time(s).", ColourSuccess);
-    }
-
-    /// <summary>Re-queues the current track one additional time.</summary>
-    [SlashCommand("repeat", "Queues the current track one more time.")]
-    public async Task RepeatAsync()
-    {
-        await DeferAsync();
-        var player = await GetPlayerAsync(connectToVoiceChannel: false);
-        if (player is null) return;
-
-        if (player.CurrentItem is null)
-        {
-            await ReplyEmbedAsync(EmojiLoop, "Repeat", "Nothing is playing to repeat.", ColourWarning);
-            return;
-        }
-
-        var track = player.CurrentTrack!;
-        await player.PlayAsync(track);
-        await ReplyEmbedAsync(EmojiLoop, "Repeat", $"**{track.Title}** added to queue again.", ColourSuccess);
+        await ReplyEmbedAsync(EmojiLoop, "Loop", RepeatModeDescription(player.RepeatMode), ColourSuccess);
     }
 
     /// <summary>Swaps two tracks in the queue by their 0-based index positions.</summary>
@@ -602,16 +582,20 @@ public sealed class Audio(IAudioService audioService, MusicService music)
         await UpdateNowPlayingMessageAsync(player, player.State is PlayerState.Paused);
     }
 
-    /// <summary>Loop ×1 button handler — re-queues the current track once and refreshes the Now Playing message in place.</summary>
-    [ComponentInteraction(BtnLoop1)]
-    public async Task OnLoop1ButtonAsync()
+    /// <summary>Loop button handler — cycles the repeat mode (off → track → queue → off) and refreshes the Now Playing message in place.</summary>
+    [ComponentInteraction(BtnLoop)]
+    public async Task OnLoopButtonAsync()
     {
         await DeferAsync();
         var player = await GetPlayerAsync(connectToVoiceChannel: false);
         if (player is null) return;
 
-        if (player.CurrentTrack is { } track)
-            await player.PlayAsync(track);
+        player.RepeatMode = player.RepeatMode switch
+        {
+            TrackRepeatMode.None  => TrackRepeatMode.Track,
+            TrackRepeatMode.Track => TrackRepeatMode.Queue,
+            _                     => TrackRepeatMode.None,
+        };
 
         await UpdateNowPlayingMessageAsync(player, player.State is PlayerState.Paused);
     }
@@ -643,7 +627,7 @@ public sealed class Audio(IAudioService audioService, MusicService music)
         if (player.Queue.Count == 0)
         {
             await FollowupAsync(
-                embed: BuildNowPlayingEmbed(player.CurrentTrack!, 0).Build(),
+                embed: BuildNowPlayingEmbed(player.CurrentTrack!, 0, player.RepeatMode).Build(),
                 components: BuildPlaybackButtons(player.State is PlayerState.Paused),
                 ephemeral: true);
             return;
@@ -911,18 +895,18 @@ public sealed class Audio(IAudioService audioService, MusicService music)
         if (player.CurrentTrack is null) return;
 
         await FollowupAsync(
-            embed: BuildNowPlayingEmbed(player.CurrentTrack, player.Queue.Count).Build(),
+            embed: BuildNowPlayingEmbed(player.CurrentTrack, player.Queue.Count, player.RepeatMode).Build(),
             components: BuildPlaybackButtons(paused));
     }
 
     /// <summary>Replaces the original response with an updated Now Playing embed and playback buttons — used by button handlers to refresh in place.</summary>
-    private async Task UpdateNowPlayingMessageAsync(LavalinkPlayer player, bool paused)
+    private async Task UpdateNowPlayingMessageAsync(QueuedLavalinkPlayer player, bool paused)
     {
         if (player.CurrentTrack is null) return;
 
         await ModifyOriginalResponseAsync(m =>
         {
-            m.Embed = BuildNowPlayingEmbed(player.CurrentTrack, 0).Build();
+            m.Embed = BuildNowPlayingEmbed(player.CurrentTrack, player.Queue.Count, player.RepeatMode).Build();
             m.Components = BuildPlaybackButtons(paused);
         });
     }
@@ -980,15 +964,31 @@ public sealed class Audio(IAudioService audioService, MusicService music)
     private async Task ReplyEmbedAsync(string emoji, string title, string description, Color color) =>
         await FollowupAsync(embed: MakeEmbed(emoji, title, color).WithDescription(description).Build());
 
-    /// <summary>Builds the Now Playing embed: artwork thumbnail, title/artist/duration/source fields, and remaining queue count.</summary>
-    private EmbedBuilder BuildNowPlayingEmbed(LavalinkTrack track, int queueRemaining) =>
-        MakeEmbed(EmojiPlay, "Now Playing", ColourDefault)
+    /// <summary>Builds the Now Playing embed: artwork thumbnail, title/artist/duration/source fields, remaining queue count, and (when set) the repeat mode.</summary>
+    private EmbedBuilder BuildNowPlayingEmbed(
+        LavalinkTrack track, int queueRemaining, TrackRepeatMode repeat = TrackRepeatMode.None)
+    {
+        var embed = MakeEmbed(EmojiPlay, "Now Playing", ColourDefault)
             .WithThumbnailUrl(track.ArtworkUri?.ToString())
             .WithDescription($"### [{track.Title}]({track.Uri})")
             .AddField("Artist", track.Author, inline: true)
             .AddField("Duration", $"`{track.Duration:hh\\:mm\\:ss}`", inline: true)
             .AddField("Source", track.SourceName.ToUpperInvariant(), inline: true)
             .AddField("Up Next", $"{queueRemaining} track(s)", inline: true);
+
+        if (repeat is not TrackRepeatMode.None)
+            embed.AddField("Repeat", repeat is TrackRepeatMode.Track ? "🔂  Track" : "🔁  Queue", inline: true);
+
+        return embed;
+    }
+
+    /// <summary>One-line description of a repeat mode, shared by <c>/loop</c> and its button.</summary>
+    private static string RepeatModeDescription(TrackRepeatMode mode) => mode switch
+    {
+        TrackRepeatMode.Track => "🔂  Now repeating the **current track**.",
+        TrackRepeatMode.Queue => "🔁  Now repeating the **whole queue**.",
+        _                     => "➡️  Repeat is **off**.",
+    };
 
     /// <summary>
     /// Builds a single-page queue embed. Does NOT use PageBuilder — the Fergun.Interactive
@@ -1007,7 +1007,7 @@ public sealed class Audio(IAudioService audioService, MusicService music)
             footer: $"Requested by {Context.User.Username}", footerIconUrl: Context.User.GetAvatarUrl());
     }
 
-    /// <summary>Builds the two-row playback control button set (Pause/Resume, Skip, Stop, Shuffle, Loop, Volume, Queue), swapping Pause for Resume when paused.</summary>
+    /// <summary>Builds the two-row playback control button set (Pause/Resume, Skip, Stop, Shuffle, Loop, Volume, Queue), swapping Pause for Resume when paused. The Loop button cycles repeat off → track → queue.</summary>
     private static MessageComponent BuildPlaybackButtons(bool paused) =>
         new ComponentBuilder()
             .WithButton(
@@ -1018,7 +1018,7 @@ public sealed class Audio(IAudioService audioService, MusicService music)
             .WithButton("Skip", BtnSkip, ButtonStyle.Secondary, new Emoji(EmojiSkip), row: 0)
             .WithButton("Stop", BtnStop, ButtonStyle.Danger, new Emoji(EmojiStop), row: 0)
             .WithButton("Shuffle", BtnShuffle, ButtonStyle.Secondary, new Emoji(EmojiShuffle), row: 0)
-            .WithButton("Loop ×1", BtnLoop1, ButtonStyle.Secondary, new Emoji(EmojiLoop), row: 0)
+            .WithButton("Loop", BtnLoop, ButtonStyle.Secondary, new Emoji(EmojiLoop), row: 0)
             .WithButton("Vol −", BtnVolDown, ButtonStyle.Secondary, new Emoji(EmojiVolDown), row: 1)
             .WithButton("Vol +", BtnVolUp, ButtonStyle.Secondary, new Emoji(EmojiVolume), row: 1)
             .WithButton("Queue", BtnQueueB, ButtonStyle.Secondary, new Emoji(EmojiQueue), row: 1)

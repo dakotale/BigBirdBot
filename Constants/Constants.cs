@@ -81,6 +81,26 @@ namespace DiscordBot.Constants
         public static string spotifyClientId => Get(nameof(spotifyClientId), "9d3327c7e115414386b546393c6e935d");
         public static string spotifyClientSecret => Get(nameof(spotifyClientSecret), "e5c19c145b0e4ba68b8b76f3a5acf1b2");
         public static string anthropicApiKey => Get(nameof(anthropicApiKey));
+
+        /// <summary>
+        /// Fixed Discord IDs for the bot developer's own server/channel/account. Previously
+        /// copy-pasted as literals in Program.cs, ServerCommands.cs (/reportbug), and the
+        /// [GuildModule] on OwnerCommands — centralized here so there is one source of truth.
+        /// </summary>
+        public static class Bot
+        {
+            /// <summary>The bot developer's home guild — hosts the log channel and owner-only commands.</summary>
+            public const ulong LogGuildId = 880569055856185354UL;
+
+            /// <summary>Channel in <see cref="LogGuildId"/> that exceptions and bug reports are posted to.</summary>
+            public const ulong LogChannelId = 1156625507840954369UL;
+
+            /// <summary>The bot owner's user ID (used for scheduler failure DMs and RequireOwner checks).</summary>
+            public const ulong OwnerId = 171369791486033920UL;
+
+            /// <summary>The bot's application/user name, as it appears in its managed integration role.</summary>
+            public const string Name = "BigBirdBot";
+        }
     }
 }
 

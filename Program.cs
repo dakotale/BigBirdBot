@@ -106,9 +106,9 @@ internal sealed class BotHost(
     PronounService pronouns,
     MusicService music)
 {
-    private const ulong LogGuildId = 880569055856185354UL;
-    private const ulong LogChannelId = 1156625507840954369UL;
-    private const ulong OwnerId = 171369791486033920UL;
+    private const ulong LogGuildId = Constants.Bot.LogGuildId;
+    private const ulong LogChannelId = Constants.Bot.LogChannelId;
+    private const ulong OwnerId = Constants.Bot.OwnerId;
     private int _schedulerTick = 0;
     private Task? _schedulerTask;
 
@@ -295,13 +295,38 @@ internal sealed class BotHost(
     }
 
 
-    /// <summary>Fires when a member leaves (or is removed from) a guild: purges their DB row and audits the departure.</summary>
+    /// <summary>Fires when a member leaves (or is removed from) a guild: purges their DB row, audits the departure, and cleans up their abandoned <c>/setrolecolor</c> personal role.</summary>
     private async Task OnUserLeftAsync(SocketGuild guild, SocketUser user)
     {
         if (user.IsBot || user.IsWebhook) return; // bots/webhooks aren't tracked in the user table
 
         await userService.DeleteUserAsync(user.Id.ToString(), guild.Id);
         await audit.InsertUserLeftAuditAsync(user.Id, guild.Id);
+        await CleanupPersonalColourRoleAsync(guild, user);
+    }
+
+    /// <summary>
+    /// Deletes the personal colour role <c>/setrolecolor</c> creates for a member (named after
+    /// their username) once they leave, so those roles don't pile up toward Discord's 250-role
+    /// limit. Heavily guarded: only an unmanaged role, below the bot, named exactly for the
+    /// departing user, with no remaining members, is removed.
+    /// </summary>
+    private async Task CleanupPersonalColourRoleAsync(SocketGuild guild, SocketUser user)
+    {
+        try
+        {
+            int botTop = guild.CurrentUser.Roles.Max(r => r.Position);
+
+            var role = guild.Roles.FirstOrDefault(r =>
+                r.Name == user.Username &&
+                !r.IsManaged && !r.IsEveryone &&
+                r.Position < botTop &&
+                r.Members.All(m => m.Id == user.Id));
+
+            if (role is not null)
+                await role.DeleteAsync();
+        }
+        catch { /* best-effort; missing perms or a race is fine */ }
     }
 
     /// <summary>Fires when a member joins a guild: records them in the DB, audits the join, and assigns the guild's auto-role (if configured).</summary>

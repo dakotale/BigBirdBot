@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 namespace DiscordBot.Helper;
 
 /// <summary>
-/// EF Core access for <c>/chat</c> conversation history and the <c>/detectaibyattachment</c>
+/// EF Core access for <c>/chat</c> &amp; <c>/support</c> conversation history and the <c>/detectai</c>
 /// result parser. Replaces <c>AddBotAIMessage</c>, <c>DeleteBotAIMessage</c>,
 /// <c>GetBotAIMessage</c>, and <c>GetAIJSONImageReturn</c>.
 /// </summary>

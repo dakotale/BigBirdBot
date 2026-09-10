@@ -1,3 +1,4 @@
+using DiscordBot.Constants;
 using DiscordBot.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -19,7 +20,7 @@ public sealed class AuditService(IDbContextFactory<BigBirdContext> contextFactor
     /// The bot owner's user id. <c>AddAudit</c> silently skipped logging for this one user —
     /// preserved here since it's the observed behaviour, not something to "fix".
     /// </summary>
-    private const string OwnerId = "171369791486033920";
+    private static readonly string OwnerId = Constants.Constants.Bot.OwnerId.ToString();
 
     /// <summary>Records a generic slash-command execution against a server (or DM channel). Replaces <c>AddAudit</c>.</summary>
     public async Task InsertAuditAsync(string command, string createdBy, long? serverId)

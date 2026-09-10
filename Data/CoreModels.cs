@@ -19,6 +19,12 @@ public sealed record AnnouncementsToggleResult(bool Enabled, string Message);
 /// <summary>A due one-off reminder to deliver now (replaces a <c>GetDueReminders</c> row).</summary>
 public sealed record DueReminder(string UserId, string Message);
 
+/// <summary>One of a user's own pending reminders, as listed by <c>/reminders</c>.</summary>
+public sealed record PendingReminder(int ReminderId, string Message, DateTime RemindAtUtc);
+
+/// <summary>One registered birthday in a guild, as listed by <c>/birthdays</c> (deduplicated to the next upcoming occurrence).</summary>
+public sealed record RegisteredBirthday(string Mention, DateTime NextDate, string? ChannelId);
+
 /// <summary>
 /// A birthday to celebrate today (replaces a <c>GetTodaysBirthdays</c> row). <see cref="GuildId"/>
 /// is left as the raw stored string (not pre-parsed) so a malformed/missing value only skips
