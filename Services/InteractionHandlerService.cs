@@ -296,8 +296,10 @@ public sealed class InteractionHandlerService
 
             var result = await _handler.ExecuteCommandAsync(context, _services);
 
+            // InteractionExecuted fires for every matched command (all run modes) and handles
+            // the log-channel report there; here we only cover dispatch-level failures.
             if (!result.IsSuccess)
-                await SendErrorAsync(interaction, result);
+                await SendErrorAsync(interaction, result, reportToLog: false);
         }
         catch
         {
@@ -329,11 +331,16 @@ public sealed class InteractionHandlerService
         ICommandInfo info, IInteractionContext context, IResult result)
     {
         if (!result.IsSuccess)
-            await SendErrorAsync(context.Interaction, result);
+            await SendErrorAsync(context.Interaction, result, info, reportToLog: true);
     }
 
-    /// <summary>Posts a plain-language ephemeral error embed for a failed interaction, falling back to a followup if the initial response was already used.</summary>
-    private static async Task SendErrorAsync(IDiscordInteraction interaction, IResult result)
+    /// <summary>
+    /// Posts a plain-language ephemeral error embed for a failed interaction (falling back to a
+    /// followup if the initial response was already used), and mirrors any underlying exception
+    /// to the owner's log channel — command exceptions otherwise only reach a local log file.
+    /// </summary>
+    private async Task SendErrorAsync(
+        IDiscordInteraction interaction, IResult result, ICommandInfo? info = null, bool reportToLog = false)
     {
         string title = result.Error switch
         {
@@ -362,7 +369,34 @@ public sealed class InteractionHandlerService
             Color.Red).Build();
 
         try { await interaction.RespondAsync(embed: embed, ephemeral: true); }
-        catch { await interaction.FollowupAsync(embed: embed, ephemeral: true); }
+        catch { try { await interaction.FollowupAsync(embed: embed, ephemeral: true); } catch { /* interaction expired */ } }
+
+        // Mirror real exceptions to the owner's log channel (fire-and-forget) so operator-side
+        // failures like the poll bug don't depend on a user reporting them.
+        if (reportToLog && result is ExecuteResult { Exception: { } rawEx })
+            _ = ReportToLogChannelAsync(interaction, info, Unwrap(rawEx));
+    }
+
+    /// <summary>Posts a command-exception report to the bot developer's log channel. Never throws.</summary>
+    private async Task ReportToLogChannelAsync(IDiscordInteraction interaction, ICommandInfo? info, Exception ex)
+    {
+        try
+        {
+            var channel = _client.GetGuild(Constants.Constants.Bot.LogGuildId)
+                ?.GetTextChannel(Constants.Constants.Bot.LogChannelId);
+            if (channel is null) return;
+
+            string where = interaction is SocketInteraction { Channel: SocketGuildChannel gc }
+                ? $"{gc.Guild.Name} / #{gc.Name}"
+                : "DM";
+
+            await channel.SendMessageAsync(embed: new EmbedHelper().BuildMessageEmbed(
+                "Command Exception",
+                $"**Command:** `/{info?.Name ?? "?"}`\n**By:** {interaction.User} in **{where}**\n\n" +
+                $"```\n{Truncate(ex.ToString(), 1800)}\n```",
+                "", "BigBirdBot", Color.Red).Build());
+        }
+        catch { /* logging must never cascade */ }
     }
 
     /// <summary>Trims a string to <paramref name="max"/> characters, appending an ellipsis if it was longer.</summary>

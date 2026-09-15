@@ -193,13 +193,16 @@ public sealed class CoreServicesTests : IClassFixture<DatabaseFixture>
             await _ai.AddMessageAsync(TestUserId, serverUid, channelId, "user", "hello");
             await _ai.AddMessageAsync(TestUserId, serverUid, channelId, "assistant", "hi there");
 
-            var history = await _ai.GetHistoryAsync(TestUserId, serverUid, channelId);
+            var history = await _ai.GetHistoryAsync(TestUserId, channelId);
             Assert.Equal(2, history.Count);
             Assert.Equal(("user", "hello"), history[0]);
             Assert.Equal(("assistant", "hi there"), history[1]);
 
-            await _ai.DeleteHistoryAsync(TestUserId, serverUid, channelId);
-            Assert.Empty(await _ai.GetHistoryAsync(TestUserId, serverUid, channelId));
+            // History is scoped to the channel, not the whole server.
+            Assert.Empty(await _ai.GetHistoryAsync(TestUserId, "zzchannel-other"));
+
+            await _ai.DeleteHistoryAsync(TestUserId, channelId);
+            Assert.Empty(await _ai.GetHistoryAsync(TestUserId, channelId));
         }
         finally { await CleanupAsync(); }
     }

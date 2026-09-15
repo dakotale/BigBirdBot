@@ -112,6 +112,12 @@ internal sealed class BotHost(
     private int _schedulerTick = 0;
     private Task? _schedulerTask;
 
+    // Consecutive scheduled-keyword-delivery failures per user, so a permanently failing
+    // delivery (e.g. DMs disabled) is retried a few times, notified once, then left alone
+    // until it succeeds again — instead of spamming the owner every tick forever.
+    private const int MaxDeliveryRetries = 5;
+    private readonly ConcurrentDictionary<string, int> _deliveryFailures = new();
+
     // Tracks messages we're waiting on Discord's own link crawler to embed,
     // keyed by message ID, so the /fixembed fallback only fires when Discord's
     // native embed genuinely failed to produce media.
@@ -261,7 +267,7 @@ internal sealed class BotHost(
     private async Task OnConnectedAsync()
     {
         await logger.InfoAsync("Bot connected");
-        await client.SetGameAsync("/reportbug");
+        await client.SetGameAsync("/help  •  /reportbug");
 
         // Restart scheduler if it died while Discord was disconnected.
         if (_schedulerTask is null || _schedulerTask.IsCompleted)
@@ -426,24 +432,23 @@ internal sealed class BotHost(
             return;
 
         var pronounList = await pronouns.GetAllAsync();
-        string pronounSelected = "";
-        var guild = client.GetGuild(component.GuildId!.Value);
 
+        // Resolve just the button that was clicked — don't touch the other pronoun roles.
+        string? pronounSelected = null;
         foreach (var (id, name) in pronounList)
-        {
-            // Lazily create the pronoun role on this guild the first time it's needed.
-            if (!guild.Roles.Any(r => r.Name == name))
-                await guild.CreateRoleAsync(name);
-
             if (id.ToString() == component.Data.CustomId)
                 pronounSelected = name;
-        }
 
-        guild = client.GetGuild(component.GuildId!.Value); // re-fetch: role list above may have just changed
-        var role = guild.Roles.FirstOrDefault(r => r.Name == pronounSelected);
+        if (pronounSelected is null) return; // not a pronoun button after all
+
+        var guild = client.GetGuild(component.GuildId!.Value);
+
+        // Lazily create only the selected pronoun role, the first time someone picks it.
+        IRole? role = guild.Roles.FirstOrDefault(r => r.Name == pronounSelected)
+                      ?? (IRole)await guild.CreateRoleAsync(pronounSelected);
         var guildUser = guild.GetUser(component.User.Id);
 
-        if (role is null) return;
+        if (role is null || guildUser is null) return;
 
         bool hasRole = guildUser.Roles.Any(r => r.Name == role.Name);
 
@@ -1211,20 +1216,49 @@ internal sealed class BotHost(
                         .Build();
                     await user.SendMessageAsync(embed: deadEmbed);
                 }
+
+                // Delivered cleanly — reset this user's failure streak.
+                _deliveryFailures.TryRemove(userId, out _);
             }
             catch (HttpException ex)
             {
-                await NotifyOwnerAsync(
-                    $"DM failed for user {userId} — they may have DMs disabled.\n{ex.Message}");
+                // Almost always "DMs disabled". GetDueDeliveriesAsync already rescheduled the
+                // row forward, so it retries next cycle — just don't re-notify every time.
+                if (ShouldNotifyDeliveryFailure(userId, out int attempt))
+                    await NotifyOwnerAsync(
+                        $"DM failed for user {userId} (they may have DMs disabled) — attempt {attempt}. " +
+                        $"Suppressing further notices for this user until a delivery succeeds.\n{ex.Message}");
             }
             catch (Exception ex)
             {
-                await keywords.RequeueScheduleAsync(userId);
-                await NotifyOwnerAsync(
-                    $"Scheduled send failed for user {userId}.\n{ex.StackTrace}\n" +
-                    $"Requeued for {DateTime.Now.AddMinutes(1):yyyy-MM-dd hh:mm tt}.");
+                int attempt = _deliveryFailures.AddOrUpdate(userId, 1, (_, n) => n + 1);
+
+                if (attempt <= MaxDeliveryRetries)
+                {
+                    await keywords.RequeueScheduleAsync(userId);
+                    if (attempt == 1)
+                        await NotifyOwnerAsync(
+                            $"Scheduled send failed for user {userId} (attempt {attempt}) — retrying.\n{ex.GetType().Name}: {ex.Message}");
+                }
+                else
+                {
+                    await NotifyOwnerAsync(
+                        $"Scheduled send for user {userId} has failed {attempt} times — no longer retrying this cycle. " +
+                        $"Last error: {ex.GetType().Name}: {ex.Message}");
+                }
             }
         }
+    }
+
+    /// <summary>
+    /// Records one delivery failure for a user and reports whether the owner should be
+    /// notified (only on the first failure of a streak). Used for the <see cref="HttpException"/>
+    /// path, where <c>GetDueDeliveriesAsync</c> already handles rescheduling.
+    /// </summary>
+    private bool ShouldNotifyDeliveryFailure(string userId, out int attempt)
+    {
+        attempt = _deliveryFailures.AddOrUpdate(userId, 1, (_, n) => n + 1);
+        return attempt == 1;
     }
 
 
@@ -1351,11 +1385,29 @@ internal sealed class BotHost(
             .BuildMessageEmbed("Log", message, "", "BigBirdBot", color).Build());
     }
 
-    /// <summary>Sends a plain DM to the bot owner — used for scheduler/keyword failures that need attention.</summary>
+    /// <summary>
+    /// Sends a plain DM to the bot owner — used for scheduler/keyword failures that need
+    /// attention. Best-effort: resolves the owner via the socket cache then REST, and swallows
+    /// any failure to the local log rather than letting it escape (this is called from the
+    /// scheduler's own catch blocks, where an unhandled throw would kill the loop).
+    /// </summary>
     private async Task NotifyOwnerAsync(string message)
     {
-        var owner = await client.GetUserAsync(OwnerId);
-        await owner.SendMessageAsync(message);
+        try
+        {
+            IUser? owner = client.GetUser(OwnerId) ?? (IUser?)await client.Rest.GetUserAsync(OwnerId);
+            if (owner is null)
+            {
+                await logger.WarningAsync($"[NotifyOwner] Could not resolve owner {OwnerId}. Dropped message: {message}");
+                return;
+            }
+
+            await owner.SendMessageAsync(message);
+        }
+        catch (Exception ex)
+        {
+            await logger.WarningAsync($"[NotifyOwner] Failed to DM owner ({ex.GetType().Name}: {ex.Message}). Dropped message: {message}");
+        }
     }
 
 

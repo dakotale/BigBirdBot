@@ -76,17 +76,21 @@ public sealed class Audio(IAudioService audioService, MusicService music)
             return;
         }
 
+        // Check for an existing connection *before* we try to join — otherwise the just-joined
+        // player always reports IsConnected and the success path below never runs.
+        var existing = await audioService.Players.GetPlayerAsync(Context.Guild);
+        if (existing is { ConnectionState.IsConnected: true })
+        {
+            await ReplyEmbedAsync(EmojiJoin, "Join", "I'm already connected to a voice channel!", ColourWarning);
+            return;
+        }
+
         await audioService.StartAsync();
         await Task.Delay(3_000);
         await AddPlayerConnectedAsync(voiceState);
 
         var player = await GetPlayerAsync(connectToVoiceChannel: true);
-
-        if (player is null || player.ConnectionState.IsConnected)
-        {
-            await ReplyEmbedAsync(EmojiJoin, "Join", "I'm already connected to a voice channel!", ColourWarning);
-            return;
-        }
+        if (player is null) return; // GetPlayerAsync already replied with the reason
 
         int vol = await GetVolumeAsync(GuildId);
         var embed = MakeEmbed(EmojiJoin, "Joined", ColourSuccess)

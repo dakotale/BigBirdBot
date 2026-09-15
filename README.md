@@ -2,6 +2,8 @@
 
 A Discord bot built with [Discord.Net](https://github.com/discord-net/Discord.Net) (C#, .NET 10). BigBirdBot plays music, auto-responds to configured keywords, talks to Claude, runs a small set of server utilities and admin tools, and posts an hourly bonus word puzzle — with per-server data stored in PostgreSQL.
 
+Run **`/help`** in any server (or DM) for a browsable, category-by-category command list.
+
 ---
 
 ## Table of Contents
@@ -59,7 +61,7 @@ All grouped under `/keyword` to keep the command list small.
 | `/keyword delete <keyword>` | Permanently remove a keyword and all its entries/mappings. |
 | `/keyword rename <old> <new>` | Rename an existing keyword. |
 | `/keyword info <keyword>` | Show entry count and stats for a keyword. |
-| `/keyword list` | List all keywords registered in this server. |
+| `/keyword list` | List all keywords registered in this server (de-duplicated by keyword name, paginated). |
 | `/keyword alias add <keyword> <alias>` | Create a trigger word that serves entries from an existing keyword. |
 | `/keyword alias delete <alias>` | Remove a keyword alias. |
 | `/keyword alias list <keyword>` | List all aliases pointing to a keyword. |
@@ -131,6 +133,7 @@ The bot posts a greeting in the server's announcement channel on each registered
 
 | Command | Description |
 |---|---|
+| `/help [category]` | Browse the bot's commands, grouped by category (ephemeral). |
 | `/random <max>` | Pick a random number between 1 and the given value. |
 | `/poll <question> <answer1> <answer2> … [duration_hours] [allow_multiple]` | Create a native Discord poll with 2–10 answers. |
 | `/timezone [zone]` | Show, set, or clear your saved time zone — an offset (`-5`, `+5:30`), an IANA name (`Europe/London`), or `clear`. Used by `/remind`. |

@@ -1,15 +1,19 @@
 using Anthropic;
 using Anthropic.Models.Messages;
-using System.Text;
 
 namespace DiscordBot.Services;
 
-/// <summary>Anthropic-backed implementation of <see cref="IAIChatService"/>, used by the /ai chat commands.</summary>
+/// <summary>Anthropic-backed implementation of <see cref="IAIChatService"/>, used by the /chat and /support commands.</summary>
 public sealed class AIChatService : IAIChatService
 {
     private readonly AnthropicClient _client = new() { ApiKey = Constants.Constants.anthropicApiKey };
 
-    /// <summary>Streams a completion from Claude using the given persona as the system prompt, then returns the assembled text.</summary>
+    /// <summary>
+    /// Sends a completion request to Claude using the given persona as the system prompt and
+    /// returns the assembled text. Throws <see cref="InvalidOperationException"/> (surfaced to
+    /// the user by the command's catch block) when the model declines the request or returns
+    /// no usable text — so a bad turn is never persisted as conversation history.
+    /// </summary>
     public async Task<string> GetResponseAsync(string persona, IEnumerable<(string Role, string Text)> history, string userMessage)
     {
         var messages = history
@@ -26,20 +30,29 @@ public sealed class AIChatService : IAIChatService
 
         var parameters = new MessageCreateParams
         {
-            Model = Model.ClaudeOpus4_7,
-            MaxTokens = 2048,
+            Model = Model.ClaudeOpus5,
+            MaxTokens = 4000,               // ~2 Discord messages of prose; the embed limit caps useful length anyway
+            Thinking = new ThinkingConfigAdaptive(),
+            OutputConfig = new OutputConfig { Effort = Effort.Low },   // chat workload — keep it responsive
             System = persona,
             Messages = messages
         };
 
-        var sb = new StringBuilder();
-        await foreach (var streamEvent in _client.Messages.CreateStreaming(parameters))
-        {
-            if (streamEvent.TryPickContentBlockDelta(out var delta) &&
-                delta.Delta.TryPickText(out var text))
-                sb.Append(text.Text);
-        }
+        var response = await _client.Messages.Create(parameters);
 
-        return sb.ToString();
+        if (response.StopReason == "refusal")
+            throw new InvalidOperationException(
+                "Claude declined to respond to that message. Try rephrasing, or start a new conversation.");
+
+        string text = string.Concat(response.Content
+            .Select(b => b.Value)
+            .OfType<TextBlock>()
+            .Select(t => t.Text));
+
+        if (string.IsNullOrWhiteSpace(text))
+            throw new InvalidOperationException(
+                "No usable reply came back. Try again, or start a new conversation with `new-conversation: Yes`.");
+
+        return text.Trim();
     }
 }

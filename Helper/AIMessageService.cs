@@ -30,32 +30,38 @@ public sealed class AIMessageService(IDbContextFactory<BigBirdContext> contextFa
     }
 
     /// <summary>
-    /// Clears a user's conversation history for a server or channel (matches either — same
-    /// OR condition as the original). Replaces <c>DeleteBotAIMessage</c>.
+    /// Clears a user's conversation history <b>for one channel</b> — the same scope
+    /// <see cref="GetHistoryAsync"/> reads, so "start fresh" and "what the model sees" always
+    /// agree. Replaces <c>DeleteBotAIMessage</c> (which also matched server-wide, causing
+    /// history to bleed across every channel in a guild).
     /// </summary>
-    public async Task DeleteHistoryAsync(string userId, string serverUid, string channelId)
+    public async Task DeleteHistoryAsync(string userId, string channelId)
     {
         await using var db = await contextFactory.CreateDbContextAsync();
 
         await db.BotAiMessages
-            .Where(m => m.UserId == userId && (m.ServerUid == serverUid || m.ChannelId == channelId))
+            .Where(m => m.UserId == userId && m.ChannelId == channelId)
             .ExecuteDeleteAsync();
     }
 
     /// <summary>
-    /// A user's conversation history for a server or channel (matches either), oldest first.
-    /// Replaces <c>GetBotAIMessage</c>.
+    /// A user's most recent conversation turns <b>in one channel</b>, oldest first, capped to
+    /// <paramref name="maxTurns"/> exchanges (one user + one assistant row each) so a
+    /// long-running conversation doesn't resend an ever-growing prompt. Replaces
+    /// <c>GetBotAIMessage</c>.
     /// </summary>
-    public async Task<IReadOnlyList<(string Role, string Text)>> GetHistoryAsync(string userId, string serverUid, string channelId)
+    public async Task<IReadOnlyList<(string Role, string Text)>> GetHistoryAsync(string userId, string channelId, int maxTurns = 12)
     {
         await using var db = await contextFactory.CreateDbContextAsync();
 
         var rows = await db.BotAiMessages
-            .Where(m => m.UserId == userId && (m.ServerUid == serverUid || m.ChannelId == channelId))
-            .OrderBy(m => m.BotAiMessageId)
+            .Where(m => m.UserId == userId && m.ChannelId == channelId)
+            .OrderByDescending(m => m.BotAiMessageId)
+            .Take(maxTurns * 2)
             .Select(m => new { m.ChatRole, m.ChatMessage })
             .ToListAsync();
 
+        rows.Reverse();
         return rows.Select(r => (r.ChatRole, r.ChatMessage)).ToList();
     }
 

@@ -103,11 +103,11 @@ public class AICommands : InteractionModuleBase<SocketInteractionContext>
         try
         {
             if (isNew)
-                await _messages.DeleteHistoryAsync(userId, serverUid, channelId);
+                await _messages.DeleteHistoryAsync(userId, channelId);
 
             var historyPairs = isNew
                 ? []
-                : await _messages.GetHistoryAsync(userId, serverUid, channelId);
+                : await _messages.GetHistoryAsync(userId, channelId);
 
             string aiText = await _aiChatService.GetResponseAsync(persona, historyPairs, message);
 

@@ -225,18 +225,29 @@ public sealed class KeywordService(IDbContextFactory<BigBirdContext> contextFact
             .ExecuteUpdateAsync(s => s.SetProperty(k => k.Keyword, newName));
     }
 
-    /// <summary>Every keyword registered in a server, oldest first. Replaces <c>GetChatKeywordsByServer</c>.</summary>
+    /// <summary>
+    /// Every keyword registered in a server, oldest first, de-duplicated by keyword name.
+    /// A server can accumulate rows that resolve to the same keyword — historical duplicate
+    /// map rows, or distinct trigger words whose computed <c>Keyword</c> column collides — so
+    /// the listing collapses them (case-insensitively) to the first-registered entry.
+    /// Replaces <c>GetChatKeywordsByServer</c>.
+    /// </summary>
     public async Task<IReadOnlyList<KeywordListEntry>> GetKeywordsForServerAsync(ulong serverId)
     {
         await using var db = await contextFactory.CreateDbContextAsync();
 
         long sid = (long)serverId;
 
-        return await db.ChatKeywordMaps
+        var rows = await db.ChatKeywordMaps
             .Where(m => m.ServerId == sid)
             .OrderBy(m => m.Id)
             .Select(m => new KeywordListEntry(m.Keyword, m.AddKeyword, m.CreatedBy))
             .ToListAsync();
+
+        return rows
+            .GroupBy(r => r.Keyword.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.First())
+            .ToList();
     }
 
     /// <summary>
