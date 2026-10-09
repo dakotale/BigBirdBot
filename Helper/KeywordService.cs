@@ -469,9 +469,7 @@ public sealed class KeywordService(IDbContextFactory<BigBirdContext> contextFact
 
         var newTime = DateTime.Now.AddMinutes(1);
 
-        await db.UsersScheduledKeywords
-            .Where(u => u.UserId == userId)
-            .ExecuteUpdateAsync(s => s.SetProperty(u => u.ScheduledDateTime, newTime));
+        await RescheduleUsersAsync(db, [userId], newTime);
 
         return $"The user was added successfully and the following keywords ({string.Join(", ", keywords)}) " +
                $"will be sent at {newTime:HH:mm:ss}";
@@ -508,9 +506,7 @@ public sealed class KeywordService(IDbContextFactory<BigBirdContext> contextFact
 
         var dueUserIds = due.Select(d => d.UserId).Distinct().ToList();
 
-        await db.UsersScheduledKeywords
-            .Where(u => dueUserIds.Contains(u.UserId))
-            .ExecuteUpdateAsync(s => s.SetProperty(u => u.ScheduledDateTime, rescheduleTo));
+        await RescheduleUsersAsync(db, dueUserIds, rescheduleTo);
 
         var results = new List<DueKeywordDelivery>();
         var entriesByKeyword = new Dictionary<string, List<(int Id, string Path)>>();
@@ -537,6 +533,37 @@ public sealed class KeywordService(IDbContextFactory<BigBirdContext> contextFact
 
         AddWeekdaySpecials(now, dueUserIds, results);
         return results;
+    }
+
+    /// <summary>
+    /// Moves every row of the given users to <paramref name="newTime"/>. The table's key is
+    /// (UserId, ChatKeyword, ScheduledDateTime), so a bulk UPDATE would violate it whenever a
+    /// user holds the same keyword at several times; those rows collapse into one instead.
+    /// </summary>
+    private static async Task RescheduleUsersAsync(
+        BigBirdContext db, IReadOnlyCollection<string> userIds, DateTime newTime)
+    {
+        await using var tx = await db.Database.BeginTransactionAsync();
+
+        var pairs = await db.UsersScheduledKeywords
+            .Where(u => userIds.Contains(u.UserId))
+            .Select(u => new { u.UserId, u.ChatKeyword })
+            .Distinct()
+            .ToListAsync();
+
+        await db.UsersScheduledKeywords
+            .Where(u => userIds.Contains(u.UserId))
+            .ExecuteDeleteAsync();
+
+        db.UsersScheduledKeywords.AddRange(pairs.Select(p => new UsersScheduledKeyword
+        {
+            UserId = p.UserId,
+            ChatKeyword = p.ChatKeyword,
+            ScheduledDateTime = newTime
+        }));
+        await db.SaveChangesAsync();
+
+        await tx.CommitAsync();
     }
 
     /// <summary>Hard-coded Monday/Friday bonus deliveries for two specific users (from <c>GetUsersScheduledKeyword</c>).</summary>
